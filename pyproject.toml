@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-comps"
+version = "0.1.0"
+description = "Public market comparables finder"
+requires-python = ">=3.9"
+dependencies = [
+    "streamlit>=1.32.0",
+    "openai>=1.12.0",
+    "yfinance>=0.2.37",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "pandas>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["market_comps*"]
