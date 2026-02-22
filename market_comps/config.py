@@ -46,7 +46,7 @@ class Settings:
     )
     default_model: str = field(
         default_factory=lambda: _get_secret(
-            "DEFAULT_MODEL", "google/gemini-flash-1.5"
+            "DEFAULT_MODEL", "google/gemini-2.5-flash-lite-preview-06-17"
         )
     )
 
@@ -55,9 +55,8 @@ class Settings:
     # These are approximate; check https://openrouter.ai/models for current rates.
     MODEL_PRICING: dict[str, tuple[float, float]] = field(
         default_factory=lambda: {
-            "google/gemini-flash-1.5": (0.075, 0.30),
-            "google/gemini-flash-1.5-8b": (0.0375, 0.15),
-            "google/gemini-2.0-flash-001": (0.10, 0.40),
+            "google/gemini-2.5-flash-lite-preview-06-17": (0.10, 0.40),
+            "google/gemini-2.5-flash-preview-05-20": (0.15, 0.60),
             "openai/gpt-4o-mini": (0.15, 0.60),
             "openai/gpt-4o": (2.50, 10.00),
             "anthropic/claude-3-haiku": (0.25, 1.25),
@@ -74,3 +73,15 @@ class Settings:
 
 # Singleton — import this anywhere
 settings = Settings()
+
+# Centralised model list — import from here in all pages
+MODEL_OPTIONS: list[str] = [
+    "google/gemini-2.5-flash-lite-preview-06-17",
+    "google/gemini-2.5-flash-preview-05-20",
+    "google/gemini-2.0-flash-001",
+    "openai/gpt-4o-mini",
+    "openai/gpt-4o",
+    "anthropic/claude-3-haiku",
+    "anthropic/claude-3.5-sonnet",
+    "meta-llama/llama-3.3-70b-instruct",
+]
