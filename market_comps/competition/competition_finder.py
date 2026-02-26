@@ -14,11 +14,11 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Callable
 
 from market_comps.llm_client import LLMClient
 from market_comps.models import LLMUsage
-from market_comps.cross_checker import LLMChorus, ChorusResult
+from market_comps.cross_checker import LLMChorus, ChorusResult, ModelResponse
 from market_comps.cross_checker.cross_checker import DEFAULT_MODELS, DEFAULT_SUMMARY_MODEL
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ Identify the key competitors for the following company:
 
 Company: {company}
 Description: {description}
+{competitors_to_include}
 
 List BOTH public AND private competitors. For each competitor provide:
 - Company name
@@ -39,7 +40,7 @@ List BOTH public AND private competitors. For each competitor provide:
 - Brief description (1-2 sentences) of what they do
 - Key differentiator vs the subject company
 - If PUBLIC: stock ticker, market cap (USD), last reported annual revenue (USD), EV/Revenue multiple
-- If PRIVATE: latest funding round type (Seed/Series A/.../Unknown), amount raised (USD), year of latest round
+- If PRIVATE: latest funding round type (Seed/Series A/.../Unknown), amount raised (USD), year of latest round, notable investors, and details if they have been acquired (acquirer, exit amount USD, exit year)
 
 Be specific and factual. Cite your sources with full URLs.
 Only include companies you are confident are real competitors with verifiable information.
@@ -73,6 +74,10 @@ Return ONLY valid JSON in this exact structure (no markdown, no prose):
       "latest_round": "<round type e.g. Series C, or null>",
       "amount_raised_usd": <total amount raised in USD or null>,
       "funding_year": <year as integer or null>,
+      "investors": ["<investor 1>", "<investor 2>"],
+      "exit_acquirer": "<name of acquiring company or null>",
+      "exit_amount_usd": <exit valuation in USD or null>,
+      "exit_date": "<year or YYYY-MM or null>",
       "source_urls": ["<url1>", "<url2>"]
     }
   ]
@@ -100,6 +105,10 @@ class Competitor:
     latest_round: Optional[str] = None
     amount_raised_usd: Optional[float] = None
     funding_year: Optional[int] = None
+    investors: list[str] = field(default_factory=list)
+    exit_acquirer: Optional[str] = None
+    exit_amount_usd: Optional[float] = None
+    exit_date: Optional[str] = None
     # Sources
     source_urls: list[str] = field(default_factory=list)
 
@@ -163,14 +172,26 @@ class CompetitionFinder:
         self._chorus_models = chorus_models or DEFAULT_MODELS
         self._summary_model = summary_model
 
-    def run(self, company: str, description: str = "") -> CompetitionResult:
+    def run(self, company: str, description: str = "", competitors_to_include: str = "", **kwargs) -> CompetitionResult:
+        """
+        Run the research.
+        Kwargs:
+            on_model_complete: Optional callback for each model result.
+        """
+        on_model_complete = kwargs.get("on_model_complete")
         result = CompetitionResult(company=company, description=description)
 
         # ── Phase 1: Chorus research ──────────────────────────────────────
         logger.info("CompetitionFinder: Phase 1 — querying chorus for %s", company)
+        
+        comp_include_str = ""
+        if competitors_to_include.strip():
+            comp_include_str = f"Make sure to evaluate and include these specific competitors if relevant: {competitors_to_include.strip()}"
+
         question = _COMPETITION_QUESTION_TEMPLATE.format(
             company=company,
             description=description or "Not specified",
+            competitors_to_include=comp_include_str,
         )
         try:
             chorus_result = self._chorus.run(
@@ -178,6 +199,7 @@ class CompetitionFinder:
                 models=self._chorus_models,
                 summary_model=self._summary_model,
                 temperature=0.3,
+                on_model_complete=on_model_complete,
             )
             result.chorus_result = chorus_result
         except Exception as exc:
@@ -259,6 +281,10 @@ def _parse_competitors(raw: list[dict]) -> list[Competitor]:
                 latest_round=item.get("latest_round") or None,
                 amount_raised_usd=_to_float(item.get("amount_raised_usd")),
                 funding_year=_to_int(item.get("funding_year")),
+                investors=item.get("investors") or [],
+                exit_acquirer=item.get("exit_acquirer") or None,
+                exit_amount_usd=_to_float(item.get("exit_amount_usd")),
+                exit_date=item.get("exit_date") or None,
                 source_urls=item.get("source_urls") or [],
             ))
         except Exception as exc:

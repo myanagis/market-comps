@@ -27,20 +27,13 @@ from market_comps.company_primer import CompanyPrimerFinder, PrimerResult, Compa
 from market_comps.company_primer.primer_finder import PRIMER_DEFAULT_MODELS
 from market_comps.cross_checker.cross_checker import DEFAULT_MODELS as ALL_CHORUS_MODELS
 
+from market_comps.ui import create_chorus_progress_status, inject_global_style
+
+inject_global_style()
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-.main-header { padding: 1.5rem 0 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid #334155; }
-.main-header h1 { color: #e2e8f0; font-size: 2rem; font-weight: 700; margin: 0 0 0.3rem 0; letter-spacing: -0.5px; }
-.main-header p  { color: #94a3b8; font-size: 1rem; margin: 0; }
-.accent { color: #818cf8; }
-
-.section-header { color: #cbd5e1; font-size: 1.1rem; font-weight: 600;
-    border-bottom: 1px solid #334155; padding-bottom: 0.4rem; margin: 1.5rem 0 1rem 0; }
-
 /* Company card */
 .company-card { background: #1e293b; border: 1px solid #334155; border-radius: 14px;
     padding: 1.4rem 1.6rem; margin-bottom: 1.4rem; }
@@ -91,10 +84,8 @@ if "primer_companies" not in st.session_state:
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="main-header">
-    <h1>🏢 <span class="accent">Company Primer</span></h1>
-    <p>Research one or more companies with the Chorus of LLMs — get a structured profile for each.</p>
-</div>
+<h1>🏢 Company Primer</h1>
+<p>Research one or more companies using a Chorus of Models to extract a definitive profile, key facts, and verified sources.</p>
 """, unsafe_allow_html=True)
 
 # ── Company input rows ────────────────────────────────────────────────────────
@@ -141,12 +132,18 @@ with col_add:
         st.rerun()
 
 # ── Config ────────────────────────────────────────────────────────────────────
+def format_model(m: str) -> str:
+    from market_comps.config import settings
+    in_price, out_price = settings.get_model_pricing(m)
+    return f"{m} (${in_price:.2f} / ${out_price:.2f})"
+
 with st.expander("⚙️ Chorus Configuration", expanded=False):
     selected_models = st.multiselect(
         "Models (queried in parallel per company)",
         options=_ALL_MODEL_OPTIONS,
         default=PRIMER_DEFAULT_MODELS,
-        help="All selected models are queried simultaneously for each company.",
+        format_func=format_model,
+        help="All selected models are queried simultaneously for each company. Prices shown: $input / $output per 1M tokens.",
     )
 
 valid_companies = [c for c in companies if c["name"].strip()]
@@ -185,37 +182,21 @@ if run_clicked and valid_companies and selected_models:
     all_profiles: list[CompanyProfile] = []
     result_placeholder = st.empty()
 
-    n_models = len(selected_models)
-
     for entry in valid_companies:
         name = entry["name"].strip()
         context = entry["context"].strip()
 
-        with st.status(f"🏢 Researching **{name}**…", expanded=True) as status:
-            model_lines: dict[str, object] = {}
-            for m in selected_models:
-                model_lines[m] = st.empty()
-                model_lines[m].markdown(f"🕐 `{m.split('/')[-1]}` — waiting…")
+        status, on_done = create_chorus_progress_status(
+            status_label=f"🏢 Researching **{name}**…",
+            models=selected_models,
+        )
 
-            completed = [0]
-
-            def _on_model(resp, _lines=model_lines, _status=status, _n=n_models,
-                          _count=completed):
-                _count[0] += 1
-                icon = "✅" if resp.success else "❌"
-                t = f"{resp.elapsed_seconds:.1f}s"
-                short = resp.model.split("/")[-1]
-                if resp.success:
-                    _lines[resp.model].markdown(f"{icon} `{short}` — done in {t}")
-                else:
-                    _lines[resp.model].markdown(f"{icon} `{short}` — error ({t})")
-                _status.update(label=f"🏢 **{name}** — {_count[0]}/{_n} models done…")
-
+        with status:
             try:
                 profile = finder.run_one(
                     name=name,
                     context=context,
-                    on_model_complete=_on_model,
+                    on_model_complete=on_done,
                 )
                 all_profiles.append(profile)
                 t = profile.total_usage
@@ -227,6 +208,7 @@ if run_clicked and valid_companies and selected_models:
                 status.update(label=f"❌ **{name}** — {exc}", state="error")
 
     st.session_state["primer_result"] = PrimerResult(profiles=all_profiles)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Results
@@ -327,3 +309,12 @@ and rejects facts not present in the raw research.
 
 </div>
 """, unsafe_allow_html=True)
+
+    st.markdown("#### LLM Prompts Used")
+    from market_comps.company_primer.primer_finder import _RESEARCH_QUESTION_TEMPLATE, _EXTRACTION_SYSTEM
+    
+    st.markdown("**1. Initial Research (sent to Chorus models)**")
+    st.code(_RESEARCH_QUESTION_TEMPLATE, language="text")
+    
+    st.markdown("**2. Synthesis (sent to Summarizer model)**")
+    st.code(_EXTRACTION_SYSTEM, language="text")

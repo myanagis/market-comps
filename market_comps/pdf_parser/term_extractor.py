@@ -42,6 +42,7 @@ TERM_SHEET_FIELDS = [
     "Participating Preferred",
     "Anti-Dilution Protection",
     "Dividend Rate",
+    "Dividend Rate Calculation Type"
     "Board Composition",
     "Pro-Rata Rights",
     "Information Rights",

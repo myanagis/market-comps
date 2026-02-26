@@ -13,16 +13,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+from market_comps.ui import inject_global_style
+
+inject_global_style()
+
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-.main-header { padding: 1.5rem 0 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid #334155; }
-.main-header h1 { color: #e2e8f0; font-size: 2rem; font-weight: 700; margin: 0 0 0.3rem 0; letter-spacing: -0.5px; }
-.main-header p  { color: #94a3b8; font-size: 1rem; margin: 0; }
-.accent { color: #818cf8; }
-
 .faq-container { max-width: 800px; margin: 0 auto; padding-top: 1rem; }
 .faq-q { color: #e2e8f0; font-size: 1.15rem; font-weight: 600; margin: 1.5rem 0 0.5rem 0; }
 .faq-a { color: #94a3b8; font-size: 1rem; line-height: 1.6; margin-bottom: 1.5rem; padding-left: 1rem; border-left: 2px solid #334155; }
@@ -32,10 +28,8 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<div class="main-header">
-    <h1>❓ <span class="accent">Frequently Asked Questions</span></h1>
-    <p>Common questions about Market Comps, the Chorus of LLMs, and data privacy.</p>
-</div>
+<h1>❓ FAQ</h1>
+<p>Common questions about Market Comps, the Chorus of LLMs, and data privacy.</p>
 
 <div class="faq-container">
 

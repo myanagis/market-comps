@@ -21,26 +21,13 @@ st.set_page_config(
 )
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
+from market_comps.ui import inject_global_style
+
+inject_global_style()
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-.main-header {
-    padding: 1.5rem 0 1rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid #334155;
-}
-.main-header h1 { color: #e2e8f0; font-size: 2rem; font-weight: 700; margin: 0 0 0.3rem 0; letter-spacing: -0.5px; }
-.main-header p  { color: #94a3b8; font-size: 1rem; margin: 0; }
-.accent { color: #34d399; }
-
-.section-header {
-    color: #cbd5e1; font-size: 1.1rem; font-weight: 600;
-    border-bottom: 1px solid #334155; padding-bottom: 0.4rem;
-    margin: 1.5rem 0 1rem 0;
-}
-
 .doc-type-badge {
     display: inline-block;
     padding: 0.35rem 0.8rem;
@@ -91,10 +78,8 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="main-header">
-    <h1>📄 <span class="accent">PDF Parser</span></h1>
-    <p>Upload a PDF to extract key terms (term sheets) or generate a summary (other documents).</p>
-</div>
+<h1>📄 PDF Parser</h1>
+<p>Upload a PDF to extract key terms (term sheets) or generate a summary (other documents).</p>
 """, unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -128,14 +113,19 @@ else:
     st.caption(f"📎 **{uploaded_file.name}** — {file_size_kb:.1f} KB")
 
     # Advanced Options
+    def format_model(m: str) -> str:
+        in_price, out_price = settings.get_model_pricing(m)
+        return f"{m} (${in_price:.2f} / ${out_price:.2f})"
+
     with st.expander("⚙️ Advanced Options", expanded=False):
         _ao1, _ao2 = st.columns([3, 1])
         with _ao1:
             model = st.selectbox(
-                "LLM Model",
+                "LLM Model (Prices shown: $input / $output per 1M tokens)",
                 MODEL_OPTIONS,
                 index=MODEL_OPTIONS.index(settings.default_model)
                 if settings.default_model in MODEL_OPTIONS else 0,
+                format_func=format_model,
             )
         with _ao2:
             engine_label = st.selectbox("PDF Engine", list(ENGINE_OPTIONS.keys()), index=0)
@@ -346,7 +336,18 @@ Anti-hallucination rules are applied at each step: the model must quote verbatim
 default to "not found" when information is absent. A troubleshooting section shows the raw extracted text
 for verification.
 """)
-
+    
+    st.markdown("#### LLM Prompts Used")
+    from market_comps.pdf_parser.term_extractor import _CLASSIFY_PROMPT, _EXTRACT_PROMPT, _SUMMARIZE_PROMPT
+    
+    st.markdown("**1. Document Classification**")
+    st.code(_CLASSIFY_PROMPT, language="text")
+    
+    st.markdown("**2. Term Extraction (for Term Sheets & SAFEs)**")
+    st.code(_EXTRACT_PROMPT, language="text")
+    
+    st.markdown("**3. Summarization (for other document types)**")
+    st.code(_SUMMARIZE_PROMPT, language="text")
 
 
 

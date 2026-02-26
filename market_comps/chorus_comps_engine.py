@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+from typing import Optional, Callable
 
 from market_comps.cross_checker import LLMChorus
 from market_comps.cross_checker.cross_checker import DEFAULT_MODELS, DEFAULT_SUMMARY_MODEL
@@ -54,7 +54,7 @@ class ChorusCompsEngine:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        chorus_models: Optional[list[str]] = None,
+        models: Optional[list[str]] = None,
         summary_model: str = DEFAULT_SUMMARY_MODEL,
         max_fetch_workers: int = 8,
     ) -> None:
@@ -64,15 +64,19 @@ class ChorusCompsEngine:
             llm_client=self._dedup_llm,
             max_workers=max_fetch_workers,
         )
-        self._chorus_models = chorus_models or DEFAULT_MODELS
+        self._chorus_models = models or DEFAULT_MODELS
         self._summary_model = summary_model
 
-    def run(
+    def find_comps(
         self,
-        query: str,
-        n_comps: int = 10,
+        company: str,
+        description: str = "",
         filters: Optional[ScanFilters] = None,
+        limit: int = 10,
+        on_model_complete: Optional[Callable] = None,
     ) -> CompsResult:
+        query = company
+        n_comps = limit
         filters = filters or ScanFilters()
         cumulative_usage = LLMUsage()
         errors: list[str] = []
@@ -86,6 +90,7 @@ class ChorusCompsEngine:
                 models=self._chorus_models,
                 summary_model=self._summary_model,
                 temperature=0.2,
+                on_model_complete=on_model_complete,
             )
             # Accumulate chorus usage
             t = chorus_result.total_usage

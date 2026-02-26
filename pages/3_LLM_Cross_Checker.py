@@ -35,17 +35,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+from market_comps.ui import inject_global_style
+
+inject_global_style()
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-.main-header { padding: 1.5rem 0 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid #334155; }
-.main-header h1 { color: #e2e8f0; font-size: 2rem; font-weight: 700; margin: 0 0 0.3rem 0; letter-spacing: -0.5px; }
-.main-header p  { color: #94a3b8; font-size: 1rem; margin: 0; }
-.accent { color: #818cf8; }
-
 .section-header {
     color: #cbd5e1; font-size: 1.05rem; font-weight: 600;
     border-bottom: 1px solid #334155; padding-bottom: 0.4rem;
@@ -140,12 +136,17 @@ ALL_MODEL_OPTIONS = sorted(set(DEFAULT_MODELS + [
 ]))
 
 with st.expander("⚙️ Advanced Options", expanded=False):
+    def format_model(m: str) -> str:
+        in_price, out_price = settings.get_model_pricing(m)
+        return f"{m} (${in_price:.2f} / ${out_price:.2f})"
+
     _ao1, _ao2 = st.columns([3, 1])
     with _ao1:
         selected_models = st.multiselect(
             "Models to query",
             options=ALL_MODEL_OPTIONS,
             default=DEFAULT_MODELS,
+            format_func=format_model,
             help="All selected models are queried in parallel.",
         )
     with _ao2:
@@ -153,8 +154,11 @@ with st.expander("⚙️ Advanced Options", expanded=False):
             "Summary model",
             options=[DEFAULT_SUMMARY_MODEL] + [m for m in ALL_MODEL_OPTIONS if m != DEFAULT_SUMMARY_MODEL],
             index=0,
+            format_func=format_model,
             help="Model used to synthesize a unified answer from all responses.",
         )
+
+from market_comps.ui import create_chorus_progress_status
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 run_clicked = st.button(
@@ -167,34 +171,18 @@ if run_clicked and question.strip() and selected_models:
     st.session_state["cc_result"] = None
     checker = LLMChorus()
 
-    completed_count = 0
-    n_models = len(selected_models)
+    status, on_done = create_chorus_progress_status(
+        status_label=f"⏳ Querying {len(selected_models)} models…",
+        models=selected_models,
+    )
 
-    with st.status(f"⏳ Querying {n_models} models…", expanded=True) as status:
-        model_lines: dict[str, object] = {}
-        # Pre-create a placeholder per model so they appear in order
-        for m in selected_models:
-            model_lines[m] = st.empty()
-            model_lines[m].markdown(f"🕐 `{m.split('/')[-1]}` — waiting…")
-
-        def _on_done(resp):
-            nonlocal completed_count
-            completed_count += 1
-            icon = "✅" if resp.success else "❌"
-            t = f"{resp.elapsed_seconds:.1f}s"
-            short = resp.model.split("/")[-1]
-            if resp.success:
-                model_lines[resp.model].markdown(f"{icon} `{short}` — done in {t}")
-            else:
-                model_lines[resp.model].markdown(f"{icon} `{short}` — error: {resp.error} ({t})")
-            status.update(label=f"⏳ {completed_count}/{n_models} models complete…")
-
+    with status:
         try:
             result = checker.run(
                 question=question.strip(),
                 models=selected_models,
                 summary_model=summary_model,
-                on_model_complete=_on_done,
+                on_model_complete=on_done,
             )
             status.update(label=f"🧠 Synthesizing with `{summary_model}`…")
             st.session_state["cc_result"] = result
@@ -366,6 +354,16 @@ with st.expander("🤖 How this page works", expanded=False):
 
 Stats (per-model response time, token counts, costs) are tracked and shown in the collapsible section.
 """)
+    
+    st.markdown("#### LLM Prompts Used")
+    from market_comps.cross_checker.cross_checker import SYSTEM_INSTRUCTIONS, _SUMMARY_SYSTEM
+    
+    st.markdown("**1. Answering Questions (sent to Chorus models)**")
+    st.markdown("Your input question is prefixed with these anti-hallucination constraints:")
+    st.code(SYSTEM_INSTRUCTIONS, language="text")
+    
+    st.markdown("**2. Synthesis (sent to Summarizer model)**")
+    st.code(_SUMMARY_SYSTEM, language="text")
 
 
 
