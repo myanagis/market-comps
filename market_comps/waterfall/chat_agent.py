@@ -35,6 +35,16 @@ For `remove_security`, provide the `series_name`.
 For `update_exit`, provide `exit_value_usd` and optionally `exit_date`.
 
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
+
+Example format:
+{
+  "action": "add_security",
+  "message": "Adding the $5M SAFE now.",
+  "security": {
+    "series_name": "Seed SAFE",
+    ...
+  }
+}
 """
 
 # JSON schema we want the model to output
@@ -83,7 +93,7 @@ ACTION_SCHEMA = {
             }
         }
     },
-    "required": ["action"]
+    "required": ["action", "message"]
 }
 
 
@@ -116,7 +126,20 @@ Based on the rules, what is the appropriate JSON action?
                 temperature=0.1
             )
             
-            message = parsed_json.get("message", "Processing your request...")
+            # Defensive unpacking in case LLM wraps the action (e.g. {"add_security": {...}})
+            if "action" not in parsed_json:
+                for possible_action in ["add_security", "edit_security", "remove_security", "update_exit", "ask_question"]:
+                    if possible_action in parsed_json:
+                        inner_data = parsed_json[possible_action]
+                        if isinstance(inner_data, dict):
+                            parsed_json = {
+                                "action": possible_action,
+                                "message": inner_data.get("message", "Processing..."),
+                                "security": inner_data
+                            }
+                        break
+                        
+            message = parsed_json.get("message", "I have updated the model based on your request.")
             return parsed_json, message
             
         except Exception as e:
