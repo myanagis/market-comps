@@ -80,13 +80,15 @@ st.subheader("💬 Chat to Edit Cap Table")
 # Display chat messages
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        # Escape $ so Streamlit doesn't render it as KaTeX
+        safe_markdown = message["content"].replace("$", r"\$")
+        st.markdown(safe_markdown)
 
 # Chat input
 if prompt := st.chat_input("E.g., 'Add a $5M Series A at $20M pre-money' or 'What if we exit for $100M?'"):
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(prompt.replace("$", r"\$"))
 
     with st.chat_message("assistant"):
         with st.spinner("Processing..."):
@@ -143,7 +145,7 @@ if prompt := st.chat_input("E.g., 'Add a $5M Series A at $20M pre-money' or 'Wha
                     
                 # Store updated state just in case
                 st.session_state.cap_table = ct
-                st.markdown(reply_msg)
+                st.markdown(reply_msg.replace("$", r"\$"))
                 st.session_state.chat_history.append({"role": "assistant", "content": reply_msg})
                 
                 # Force UI refresh to show new table state
