@@ -92,25 +92,40 @@ if prompt := st.chat_input("E.g., 'Add a $5M Series A at $20M pre-money' or 'Wha
         with st.spinner("Processing..."):
             agent = WaterfallChatAgent(model="openai/gpt-4o")
             try:
-                action_data, reply_msg = agent.process_message(prompt, ct)
+                # Pass chat history excluding the very prompt we just added to avoid duplicating it
+                history_context = st.session_state.chat_history[:-1] 
+                action_data, reply_msg = agent.process_message(prompt, ct, chat_history=history_context)
                 
                 # Apply the action
                 action = action_data.get("action")
                 
                 if action == "add_security" and "security" in action_data:
                     sec_data = action_data["security"]
-                    new_sec = SecurityClass(**sec_data)
-                    ct.add_security(new_sec)
-                    reply_msg += f"\n\n*(Added {new_sec.series_name} to Cap Table)*"
+                    try:
+                        new_sec = SecurityClass(**sec_data)
+                        ct.add_security(new_sec)
+                        reply_msg += f"\n\n*(Added {new_sec.series_name} to Cap Table)*"
+                    except Exception as ve:
+                        reply_msg = f"I'm missing some required fields for that security (e.g., Security Type). Could you clarify?"
+                        st.session_state.chat_history.append({"role": "assistant", "content": reply_msg})
+                        st.markdown(reply_msg)
+                        st.rerun()
                     
                 elif action == "edit_security" and "security" in action_data:
                     # Remove old and add new
                     sec_data = action_data["security"]
                     series_name = sec_data.get("series_name")
                     if series_name:
-                        ct.remove_security(series_name)
-                        ct.add_security(SecurityClass(**sec_data))
-                        reply_msg += f"\n\n*(Updated {series_name})*"
+                        try:
+                            new_sec = SecurityClass(**sec_data)
+                            ct.remove_security(series_name)
+                            ct.add_security(new_sec)
+                            reply_msg += f"\n\n*(Updated {series_name})*"
+                        except Exception as ve:
+                            reply_msg = f"I'm missing some required fields to update that security (e.g., Security Type). Could you clarify?"
+                            st.session_state.chat_history.append({"role": "assistant", "content": reply_msg})
+                            st.markdown(reply_msg)
+                            st.rerun()
                         
                 elif action == "remove_security" and "series_to_remove" in action_data:
                     series_name = action_data["series_to_remove"]

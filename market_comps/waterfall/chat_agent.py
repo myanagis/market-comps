@@ -13,12 +13,12 @@ You are an expert venture capital analyst and cap table manager.
 The user will describe a sequence of funding events, changes to their cap table, or an exit scenario.
 Your job is to parse their natural language description into structured JSON actions to update the model.
 
-You have access to the current state of the CapTable. Check if the user is ADDING, EDITING, or REMOVING a security, or UPDATING the exit scenario.
+You have access to the current state of the CapTable and the Recent Chat History. Check if the user is ADDING, EDITING, or REMOVING a security, or UPDATING the exit scenario.
 
 If the user provides an event but vital information is missing, respond with a conversational question asking for the missing info. Valid triggers for asking questions:
 - Missing amount raised or valuation cap for a SAFE.
 - Missing share price or valuation for a priced round.
-- If a security is participating, you MUST ask if there is a participation cap (if not provided).
+- If a Preferred equity security is participating, you MUST ask if there is a participation cap (if not provided). NOTE: Convertible Notes and SAFEs do NOT have participation (do NOT set `is_participating` for them), but you CAN ask if they have a liquidation preference.
 - If a security is a convertible note/debt with an interest rate, you MUST ask if the interest is simple or compounding (if not provided).
 
 If you have enough information, emit a structured JSON object with the appropriate action type.
@@ -30,7 +30,7 @@ Valid action types:
 4. `update_exit`
 5. `ask_question` (Use this if you need more info, and provide your question in the `message` field).
 
-For `add_security` or `edit_security`, you must provide the fields to populate `SecurityClass`. 
+For `add_security` or `edit_security`, you must provide the fields to populate `SecurityClass`. You MUST include `series_name` and `security_type`.
 For `remove_security`, provide the `series_name`.
 For `update_exit`, provide `exit_value_usd` and optionally `exit_date`.
 
@@ -42,6 +42,7 @@ Example format:
   "message": "Adding the $5M SAFE now.",
   "security": {
     "series_name": "Seed SAFE",
+    "security_type": "safe",
     ...
   }
 }
@@ -79,7 +80,8 @@ ACTION_SCHEMA = {
                 "valuation_cap": {"type": "number"},
                 "interest_rate": {"type": "number"},
                 "is_interest_compounding": {"type": "boolean"}
-            }
+            },
+            "required": ["series_name", "security_type"]
         },
         "series_to_remove": {
             "type": "string",
@@ -101,7 +103,7 @@ class WaterfallChatAgent:
     def __init__(self, model: str = "openai/gpt-4o"):
         self.client = LLMClient(model=model)
         
-    def process_message(self, user_message: str, current_cap_table: CapTable) -> Tuple[Dict[str, Any], str]:
+    def process_message(self, user_message: str, current_cap_table: CapTable, chat_history: Optional[list] = None) -> Tuple[Dict[str, Any], str]:
         """
         Processes a user message along with the current state of the cap table.
         Returns a tuple: (action_dict, llm_reply_message)
@@ -109,7 +111,20 @@ class WaterfallChatAgent:
         # Create a state summary to send to the LLM
         cap_table_json = current_cap_table.model_dump_json(indent=2)
         
+        # Format chat history
+        history_str = "No recent chatting history."
+        if chat_history:
+            history_lines = []
+            for msg in chat_history[-5:]: # Keep last 5 messages for context
+                role = msg.get("role", "unknown").upper()
+                content = msg.get("content", "")
+                history_lines.append(f"{role}: {content}")
+            history_str = "\n".join(history_lines)
+        
         prompt = f"""\
+RECENT CHAT HISTORY:
+{history_str}
+
 CURRENT CAP TABLE STATE:
 {cap_table_json}
 
