@@ -356,14 +356,14 @@ Stats (per-model response time, token counts, costs) are tracked and shown in th
 """)
     
     st.markdown("#### LLM Prompts Used")
-    from market_comps.cross_checker.cross_checker import SYSTEM_INSTRUCTIONS, _SUMMARY_SYSTEM
+    from market_comps.cross_checker.cross_checker import SYSTEM_INSTRUCTIONS, SUMMARY_INSTRUCTIONS
     
     st.markdown("**1. Answering Questions (sent to Chorus models)**")
     st.markdown("Your input question is prefixed with these anti-hallucination constraints:")
     st.code(SYSTEM_INSTRUCTIONS, language="text")
     
     st.markdown("**2. Synthesis (sent to Summarizer model)**")
-    st.code(_SUMMARY_SYSTEM, language="text")
+    st.code(SUMMARY_INSTRUCTIONS, language="text")
 
 
 
