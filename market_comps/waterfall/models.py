@@ -1,82 +1,70 @@
-from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field
 from enum import Enum
-import uuid
-import datetime
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, List, Dict
+from datetime import date
 
 class SecurityType(str, Enum):
     COMMON = "common"
-    PREFERRED = "preferred"
+    CONVERTIBLE_NOTE = "convertible note"
     SAFE = "safe"
-    CONVERTIBLE_NOTE = "convertible_note"
-    WARRANT = "warrant"
-    OPTION = "option"
+    PREFERRED = "preferred"
 
-class SecurityClass(BaseModel):
-    """
-    Represents a specific class or series of security in the cap table.
-    """
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    series_name: str = Field(description="Name of the round/series (e.g., 'Series A', 'Seed SAFE')")
-    security_type: SecurityType = Field(description="Type of the security")
-    
-    # Dates
-    close_date: Optional[str] = Field(None, description="Date the round closed (YYYY-MM-DD)")
-    maturity_date: Optional[str] = Field(None, description="Maturity date for Notes/SAFEs (YYYY-MM-DD)")
-    
-    # Economics & Ranking
-    seniority: int = Field(default=1, description="Payout ranking relative to others. Lower number = paid earlier (e.g. 1 is senior to 2). Defaults to 1.")
-    
-    # Preferred/Common properties
-    issue_price: Optional[float] = Field(None, description="Price per share (if applicable)")
-    total_investment_usd: Optional[float] = Field(None, description="Total dollars invested in this class")
-    total_shares: Optional[int] = Field(None, description="Number of shares issued in this class")
-    
-    # Liquidation Pref & Participation
-    liquidation_preference_multiple: float = Field(default=1.0, description="Multiple of investment returned before common (e.g., 1.0x)")
-    is_participating: bool = Field(default=False, description="Does this preferred class participate with common after its liq pref?")
-    participation_cap_multiple: Optional[float] = Field(None, description="The max total return multiple if participating (e.g. 2.0x). None = uncapped.")
-    
-    # SAFEs / Convertibles specific
-    discount_rate: Optional[float] = Field(None, description="Discount rate for converting to preferred (e.g., 0.20 for 20% discount)")
-    valuation_cap: Optional[float] = Field(None, description="Valuation cap for converting to preferred")
-    interest_rate: Optional[float] = Field(None, description="Annual interest rate (e.g. 0.08 for 8%)")
-    is_interest_compounding: bool = Field(default=False, description="Whether the interest compounds annually")
+class Security(BaseModel):
+    security_type: SecurityType
+    name: str = Field(description="Name or label for the security (e.g., 'Series A', 'Seed SAFE')")
+    date: date
+    total_shares: Optional[int] = None
+    fully_diluted_shares: Optional[int] = None
+    capital_raised: float = 0.0
+    liquidity_preference: float = Field(default=1.0, description="Liquidity preference multiple (e.g., 1.0x)")
 
-    def __str__(self):
-        return f"{self.series_name} ({self.security_type.value})"
+    # Convertible Note & SAFE specifics
+    interest_rate: Optional[float] = None
+    is_compounding: Optional[bool] = None
+    maturity_date: Optional[date] = None
+    pre_money_cap: Optional[float] = None
+    discount: Optional[float] = None
 
+    # Priced Rounds (Preferred / Equity)
+    pre_money: Optional[float] = None
+    post_money: Optional[float] = None
+    post_money_options_pool_percentage: Optional[float] = None
 
-class CapTable(BaseModel):
-    """
-    Holds the complete state of the company's capital stack.
-    """
-    company_name: str = "My Startup"
-    securities: List[SecurityClass] = Field(default_factory=list)
-    
-    # Pre-money and post-money references for context (useful for the LLM)
-    latest_post_money_valuation: Optional[float] = None
-
-    def add_security(self, security: SecurityClass):
-        self.securities.append(security)
-
-    def remove_security(self, series_name: str) -> bool:
-        original_count = len(self.securities)
-        self.securities = [s for s in self.securities if s.series_name.lower() != series_name.lower()]
-        return len(self.securities) < original_count
-
-    def get_security(self, series_name: str) -> Optional[SecurityClass]:
-        for s in self.securities:
-            if s.series_name.lower() == series_name.lower():
-                return s
-        return None
+    @model_validator(mode='after')
+    def validate_security_fields(self):
+        if self.security_type == SecurityType.CONVERTIBLE_NOTE:
+            if self.pre_money_cap is None:
+                raise ValueError("Pre-money cap is required for convertible notes")
+        
+        if self.security_type == SecurityType.PREFERRED:
+            if self.pre_money is None or self.post_money is None:
+                raise ValueError("Pre-money and post-money are required for priced rounds")
+            
+        return self
 
 class ExitScenario(BaseModel):
-    """
-    Represents an arbitrary exit event.
-    """
-    exit_value_usd: float = Field(..., description="Total enterprise value at exit")
-    exit_date: Optional[str] = Field(None, description="Date of exit (YYYY-MM-DD)")
+    exit_value: float
+    exit_date: date
+
+class ExitResult(BaseModel):
+    payouts: Dict[str, float]
+    moic: Dict[str, float]
+    explanations: List[str]
+
+class WaterfallModel(BaseModel):
+    securities: List[Security]
     
-    # To be populated by calculator
-    payouts: Dict[str, float] = Field(default_factory=dict, description="Map of SecurityClass ID to total payout amount")
+    def calculate_exit_waterfall(self, exit_scenario: ExitScenario) -> ExitResult:
+        """
+        STUB: Calculate the distribution of proceeds to each security in an exit scenario.
+        
+        This will need to handle:
+        1. Determining chronological order or seniority
+        2. Converting notes / SAFEs
+        3. Paying out liquidity preferences
+        4. Distributing remaining proceeds to common and participating preferred
+        """
+        # TODO: Implement exit waterfall logic guided by user
+        from market_comps.waterfall.calculator import WaterfallCalculator
+        return WaterfallCalculator.calculate_exit_waterfall(self, exit_scenario)
+

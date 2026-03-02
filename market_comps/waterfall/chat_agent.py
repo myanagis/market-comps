@@ -17,7 +17,8 @@ You have access to the current state of the CapTable and the Recent Chat History
 
 If the user provides an event but vital information is missing, respond with a conversational question asking for the missing info. Valid triggers for asking questions:
 - Missing amount raised or valuation cap for a SAFE.
-- Missing share price or valuation for a priced round.
+- If adding a Preferred or Common equity round, you MUST ask for the pre-money or post-money valuation if neither are provided, AS WELL AS the total amount raised.
+- Missing share price (if valuation isn't provided) for a priced round.
 - If a Preferred equity security is participating, you MUST ask if there is a participation cap (if not provided). NOTE: Convertible Notes and SAFEs do NOT have participation (do NOT set `is_participating` for them), but you CAN ask if they have a liquidation preference.
 - If a security is a convertible note/debt with an interest rate, you MUST ask if the interest is simple or compounding (if not provided).
 
@@ -32,7 +33,7 @@ Valid action types:
 
 For `add_security` or `edit_security`, you must provide the fields to populate `SecurityClass`. You MUST include `series_name` and `security_type`.
 For `remove_security`, provide the `series_name`.
-For `update_exit`, provide `exit_value_usd` and optionally `exit_date`.
+For `update_exit`, provide `exit_value_usd` and optionally `exit_date` INSIDE the `exit_scenario` object.
 
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
 
@@ -73,6 +74,8 @@ ACTION_SCHEMA = {
                 "issue_price": {"type": "number"},
                 "total_investment_usd": {"type": "number"},
                 "total_shares": {"type": "integer"},
+                "pre_money_valuation": {"type": "number"},
+                "post_money_valuation": {"type": "number"},
                 "liquidation_preference_multiple": {"type": "number"},
                 "is_participating": {"type": "boolean"},
                 "participation_cap_multiple": {"type": "number"},
