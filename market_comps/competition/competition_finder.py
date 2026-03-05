@@ -75,10 +75,10 @@ Rules:
 - Deduplicate: if the same company appears multiple times, keep a single merged record.
 
 Return ONLY valid JSON in this exact structure (no markdown, no prose). Try to return EXACTLY {n} competitors:
-{
+{{
   "landscape": "<2-4 sentence summary of the competitive landscape>",
   "competitors": [
-    {
+    {{
       "name": "<company name>",
       "type": "<public|private>",
       "ticker": "<TICKER or null>",
@@ -96,9 +96,9 @@ Return ONLY valid JSON in this exact structure (no markdown, no prose). Try to r
       "exit_amount_usd": <exit valuation in USD or null>,
       "exit_date": "<year or YYYY-MM or null>",
       "source_urls": ["<url1>", "<url2>"]
-    }
+    }}
   ]
-}
+}}
 """
 
 
