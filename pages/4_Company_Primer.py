@@ -66,15 +66,7 @@ _DOLLAR_RE = re.compile(r'(?<![\\\$])\$(?=[\d,])')
 def _md(text: str) -> None:
     st.markdown(_DOLLAR_RE.sub(r'\\$', text))
 
-# ── All model options for the multiselect ────────────────────────────────────
-_ALL_MODEL_OPTIONS = sorted(set(ALL_CHORUS_MODELS + PRIMER_DEFAULT_MODELS + [
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-    "google/gemini-2.0-flash-001",
-    "x-ai/grok-4-fast",
-    "minimax/minimax-m2.5",
-    "mistralai/mixtral-8x7b-instruct",
-]))
+from market_comps.config import MODEL_OPTIONS as _ALL_MODEL_OPTIONS
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "primer_result" not in st.session_state:

@@ -352,14 +352,7 @@ with col_c:
 # ── Config ────────────────────────────────────────────────────────────────────
 from market_comps.cross_checker.cross_checker import DEFAULT_MODELS as _CHORUS_DEFAULTS
 
-_ALL_CHORUS_OPTIONS = sorted(set(_CHORUS_DEFAULTS + [
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-    "google/gemini-2.0-flash-001",
-    "mistralai/mixtral-8x7b-instruct",
-    "cohere/command-r-plus",
-    "deepseek/deepseek-chat",
-]))
+from market_comps.config import MODEL_OPTIONS as _ALL_CHORUS_OPTIONS
 
 def format_model(m: str) -> str:
     in_price, out_price = settings.get_model_pricing(m)
@@ -455,6 +448,7 @@ if run_clicked and query.strip() and chorus_models:
             result = engine.find_comps(
                 company=query.strip(),
                 description=description.strip(),
+                competitors_to_include=competitors_to_include.strip(),
                 filters=filters,
                 limit=n_comps,
                 on_model_complete=on_done_comps,

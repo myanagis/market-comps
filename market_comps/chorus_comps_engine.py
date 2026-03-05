@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 _COMPS_QUESTION_TEMPLATE = """\
 List the {n} best publicly traded comparable companies for:
 
-"{query}"
+Company: "{query}"
+Description: {description}
+{competitors_to_include}
 
 For each company provide:
 - Company name
@@ -71,6 +73,7 @@ class ChorusCompsEngine:
         self,
         company: str,
         description: str = "",
+        competitors_to_include: str = "",
         filters: Optional[ScanFilters] = None,
         limit: int = 10,
         on_model_complete: Optional[Callable] = None,
@@ -83,7 +86,17 @@ class ChorusCompsEngine:
 
         # ── Phase 1: Chorus ticker research ──────────────────────────────
         logger.info("ChorusCompsEngine: Phase 1 — querying chorus for comps on %r", query)
-        question = _COMPS_QUESTION_TEMPLATE.format(query=query, n=n_comps + 5)
+        
+        comp_include_str = ""
+        if competitors_to_include.strip():
+            comp_include_str = f"Make sure to evaluate and include these specific competitors if relevant: {competitors_to_include.strip()}"
+
+        question = _COMPS_QUESTION_TEMPLATE.format(
+            query=query,
+            description=description or "Not specified",
+            competitors_to_include=comp_include_str,
+            n=n_comps + 5
+        )
         try:
             chorus_result = self._chorus.run(
                 question=question,

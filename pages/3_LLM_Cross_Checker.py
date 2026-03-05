@@ -121,19 +121,7 @@ with st.expander("📋 Model Instructions (appended automatically)", expanded=Fa
     )
 
 # ── Advanced Options ──────────────────────────────────────────────────────────
-# Build a broad candidate list for the multiselect
-ALL_MODEL_OPTIONS = sorted(set(DEFAULT_MODELS + [
-    "anthropic/claude-3-haiku",
-    "anthropic/claude-3.5-sonnet",
-    "openai/gpt-4o",
-    "google/gemini-2.0-flash-001",
-    "google/gemini-2.5-flash-preview-05-20",
-    "mistralai/mistral-7b-instruct",
-    "mistralai/mixtral-8x7b-instruct",
-    "cohere/command-r-plus",
-    "perplexity/llama-3.1-sonar-large-128k-online",
-    "deepseek/deepseek-chat",
-]))
+from market_comps.config import MODEL_OPTIONS as ALL_MODEL_OPTIONS
 
 with st.expander("⚙️ Advanced Options", expanded=False):
     def format_model(m: str) -> str:

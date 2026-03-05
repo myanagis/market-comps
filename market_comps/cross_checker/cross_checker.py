@@ -24,15 +24,7 @@ logger = logging.getLogger(__name__)
 # Default models and configuration
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODELS: list[str] = [
-    "deepseek/deepseek-v3.2",           # DeepSeek V3.2
-    "x-ai/grok-4-fast",                 # xAI Grok 4 Fast
-    "openai/gpt-4o-mini",               # GPT-4o mini
-    "meta-llama/llama-3.3-70b-instruct",  # Llama 3.3 70B
-    "minimax/minimax-m2.5",             # MiniMax M2.5
-]
-
-DEFAULT_SUMMARY_MODEL = "openai/gpt-4o-mini"
+from market_comps.config import DEFAULT_MODELS, DEFAULT_SUMMARY_MODEL
 
 # Injected at the end of every user message — not editable by the user,
 # but shown in the UI for transparency.
