@@ -18,19 +18,29 @@ from market_comps.models import CompsResult, LLMUsage, ScanFilters
 logger = logging.getLogger(__name__)
 
 _COMPS_QUESTION_TEMPLATE = """\
-List the {n} best publicly traded comparable companies for:
+Identify the {n} best publicly traded comparable companies for:
 
 Company: "{query}"
 Description: {description}
+
+Include the following competitors if applicable:
 {competitors_to_include}
+
+First identify the primary industry and closely related segments.
+
+Then list the {n} most comparable PUBLIC companies by business model, customers, and revenue drivers.
 
 For each company provide:
 - Company name
-- Stock ticker symbol (e.g. CRM, ADBE, MSFT)
+- Stock ticker
 - Primary exchange (NYSE, NASDAQ, etc.)
-- 1-sentence rationale for why it's a good comparable
+- Primary business segment
+- 1-sentence rationale explaining why it is a good comparable
 
-Cite sources with full URLs. Only include real, currently listed public companies.
+Return results in a table.
+
+Cite sources with full URLs.  
+Only include real, currently listed public companies.
 """
 
 _DEDUP_SYSTEM = """\

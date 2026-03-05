@@ -1,6 +1,6 @@
 # pages/1_Public_Comps.py
 """
-Competition & Public Comps — Find competitors and publicly traded comparables.
+Public Comps — Find publicly traded comparables using the Chorus of LLMs.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import streamlit as st
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Competition & Public Comps",
+    page_title="Public Comps",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -28,9 +28,7 @@ logging.basicConfig(
 )
 
 # ── Imports ───────────────────────────────────────────────────────────────────
-from market_comps.comps_engine import CompsEngine
 from market_comps.chorus_comps_engine import ChorusCompsEngine
-from market_comps.competition import CompetitionFinder, CompetitionResult, Competitor
 from market_comps.config import settings, MODEL_OPTIONS
 from market_comps.models import CompsResult, CompanyMetrics, ScanFilters
 
@@ -55,9 +53,6 @@ st.markdown("""
 
 .how-it-works { color: #94a3b8; font-size: 0.88rem; line-height: 1.7; }
 .how-it-works h4 { color: #cbd5e1; margin: 0.8rem 0 0.3rem 0; }
-
-.public-badge  { background: #0d3b2e; border: 1px solid #16a34a; color: #4ade80; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-.private-badge { background: #2d1b4e; border: 1px solid #7c3aed; color: #a78bfa; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,9 +70,6 @@ def fmt_multiple(val: Optional[float], suffix: str = "x") -> str:
 
 def fmt_pct(val: Optional[float]) -> str:
     return "—" if val is None else f"{val:.1f}%"
-
-def fmt_int(val: Optional[int]) -> str:
-    return "—" if val is None else str(val)
 
 def build_dataframe(comps: list[CompanyMetrics]) -> pd.DataFrame:
     rows = []
@@ -115,99 +107,7 @@ def build_export_dataframe(comps: list[CompanyMetrics]) -> pd.DataFrame:
         })
     return pd.DataFrame(rows)
 
-def _domain(url: str) -> str:
-    """Extract readable domain from a URL for display."""
-    try:
-        from urllib.parse import urlparse
-        h = urlparse(url).netloc
-        return h.replace("www.", "") or url[:40]
-    except Exception:
-        return url[:40]
-
-def build_competition_data(result: CompetitionResult) -> tuple[pd.DataFrame, pd.DataFrame, str, str, str]:
-    """Return (public_df, private_df, footnotes_html, pub_html, priv_html)."""
-    url_to_id = {}
-    footnotes = []
-    
-    def _get_footnote_markers(urls: list[str], html: bool = False) -> str:
-        if not urls: return ""
-        markers = []
-        for u in urls:
-            if u not in url_to_id:
-                url_to_id[u] = len(url_to_id) + 1
-                footnotes.append((url_to_id[u], u))
-            if html:
-                markers.append(f'<a href="{u}" class="fn-link" target="_blank" title="{u}">[{url_to_id[u]}]</a>')
-            else:
-                markers.append(f"[{url_to_id[u]}]")
-        return "".join(markers)
-
-    pub_rows_df, priv_rows_df = [], []
-    pub_rows_html, priv_rows_html = [], []
-    
-    for c in result.competitors:
-        markers_txt = _get_footnote_markers(c.source_urls, html=False)
-        markers_html = _get_footnote_markers(c.source_urls, html=True)
-        
-        name_txt = f"{c.name} {markers_txt}".strip()
-        name_html = f"<strong>{c.name}</strong>{markers_html}"
-        
-        if c.type == "public":
-            row_dict = {
-                "Company": name_txt,
-                "Ticker": c.ticker or "—",
-                "Country": getattr(c, "country", None) or "—",
-                "Market Cap": fmt_currency(c.market_cap_usd),
-                "Revenue": fmt_currency(c.revenue_usd),
-                "EV/Revenue": fmt_multiple(c.ev_to_revenue)
-            }
-            pub_rows_df.append(row_dict)
-            pub_rows_html.append([name_html, row_dict["Ticker"], row_dict["Country"], row_dict["Market Cap"], row_dict["Revenue"], row_dict["EV/Revenue"]])
-        else:
-            inv = ", ".join(getattr(c, "investors", [])) or "—"
-            exit_acq = getattr(c, "exit_acquirer", None)
-            exit_amt = fmt_currency(getattr(c, "exit_amount_usd", None))
-            exit_d = getattr(c, "exit_date", None)
-            if exit_acq:
-                exit_str = f"Acq. by {exit_acq}"
-                if exit_amt != "—": exit_str += f" ({exit_amt})"
-                if exit_d: exit_str += f" in {exit_d}"
-            else:
-                exit_str = "—"
-                
-            row_dict = {
-                "Company": name_txt,
-                "Country": getattr(c, "country", None) or "—",
-                "Latest Round": c.latest_round or "—",
-                "Amount Raised": fmt_currency(c.amount_raised_usd),
-                "Investors": inv,
-                "Exit": exit_str
-            }
-            priv_rows_df.append(row_dict)
-            priv_rows_html.append([name_html, row_dict["Country"], row_dict["Latest Round"], row_dict["Amount Raised"], row_dict["Investors"], row_dict["Exit"]])
-            
-    def _tbl(headers, rows):
-        if not rows: return "<p><em>No data.</em></p>"
-        h = "".join(f"<th>{x}</th>" for x in headers)
-        r = "".join("<tr>" + "".join(f"<td>{x}</td>" for x in row) + "</tr>" for row in rows)
-        return f'<table class="printable-table"><thead><tr>{h}</tr></thead><tbody>{r}</tbody></table>'
-        
-    pub_html = _tbl(["Company", "Ticker", "Country", "Market Cap", "Revenue", "EV/Revenue"], pub_rows_html)
-    priv_html = _tbl(["Company", "Country", "Latest Round", "Amount Raised", "Investors", "Exit"], priv_rows_html)
-    
-    fn_html = ""
-    if footnotes:
-        items = "".join(f'<p><a href="{u}" target="_blank">[{i}] {_domain(u)}</a></p>' for i, u in footnotes)
-        fn_html = f'<div class="legend-box"><strong>Sources</strong>{items}</div>'
-        
-    return pd.DataFrame(pub_rows_df), pd.DataFrame(priv_rows_df), fn_html, pub_html, priv_html
-
-def generate_html_report(
-    query: str,
-    comp_result: Optional["CompetitionResult"],
-    comps_result: Optional["CompsResult"],
-) -> str:
-    """Generate a self-contained styled HTML report."""
+def generate_html_report(query: str, comps_result: CompsResult) -> str:
     from datetime import datetime
     now = datetime.now().strftime("%B %d, %Y %H:%M")
 
@@ -221,50 +121,6 @@ def generate_html_report(
         )
         return f"<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>"
 
-    # competition section
-    comp_html = ""
-    if comp_result:
-        landscape = comp_result.landscape or ""
-        _, _, fn_tHtml, pub_tHtml, priv_tHtml = build_competition_data(comp_result)
-        # detail rows
-        details = ""
-        for c in comp_result.competitors:
-            sources = " ".join(f'<a href="{u}" target="_blank">{_domain(u)}</a>' for u in c.source_urls)
-            badge = "PUBLIC" if c.type == "public" else "PRIVATE"
-            fin = ""
-            if c.type == "public":
-                fin = f"Market Cap: {fmt_currency(c.market_cap_usd)} &nbsp;|&nbsp; Revenue: {fmt_currency(c.revenue_usd)} &nbsp;|&nbsp; EV/Rev: {fmt_multiple(c.ev_to_revenue)}"
-            else:
-                inv = ", ".join(getattr(c, "investors", [])) or "—"
-                exit_acq = getattr(c, "exit_acquirer", None)
-                exit_amt = fmt_currency(getattr(c, "exit_amount_usd", None))
-                exit_d = getattr(c, "exit_date", None)
-                if exit_acq:
-                    exit_str = f"Acq. by {exit_acq}"
-                    if exit_amt != "—": exit_str += f" ({exit_amt})"
-                    if exit_d: exit_str += f" in {exit_d}"
-                else:
-                    exit_str = "—"
-                fin = f"Latest Round: {c.latest_round or '—'} &nbsp;|&nbsp; Raised: {fmt_currency(c.amount_raised_usd)} &nbsp;|&nbsp; Year: {fmt_int(c.funding_year)} &nbsp;|&nbsp; Investors: {inv} &nbsp;|&nbsp; Exit: {exit_str}"
-            details += f"""
-            <div class="card">
-              <div class="card-header"><span class="badge badge-{c.type}">{badge}</span> <strong>{c.name}</strong>{' (' + c.ticker + ')' if c.ticker else ''}{(' &mdash; ' + getattr(c, 'country', None)) if getattr(c, 'country', None) else ''}</div>
-              <p>{c.description}</p>
-              <p><em>Differentiator:</em> {c.differentiation}</p>
-              <p class="fin">{fin}</p>
-              {('<p class="sources">Sources: ' + sources + '</p>') if sources else ''}
-            </div>"""
-        
-        comp_html = f"""
-        <h2>Competitive Landscape</h2>
-        <p>{landscape}</p>
-        <h3>Public Competitors</h3>{pub_tHtml}
-        <h3>Private Competitors</h3>{priv_tHtml}
-        {fn_tHtml}
-        <h3>Competitor Details</h3>{details}
-        """
-
-    # public comps section
     comps_html = ""
     if comps_result and comps_result.comps:
         comps_df = build_dataframe(comps_result.comps)
@@ -274,27 +130,17 @@ def generate_html_report(
     body{font-family:'Segoe UI',Arial,sans-serif;max-width:1100px;margin:40px auto;padding:0 24px;color:#1e293b;background:#fff}
     h1{color:#1e40af;border-bottom:2px solid #3b82f6;padding-bottom:8px}
     h2{color:#1e293b;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-top:2rem}
-    h3{color:#475569;margin-top:1.5rem}
     table{border-collapse:collapse;width:100%;margin:12px 0;font-size:0.88rem}
     th{background:#1e40af;color:#fff;padding:8px 10px;text-align:left}
     td{padding:7px 10px;border-bottom:1px solid #e2e8f0}
     tr:nth-child(even) td{background:#f8fafc}
-    .card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:12px}
-    .card-header{font-size:1rem;margin-bottom:6px}
-    .badge{padding:2px 8px;border-radius:4px;font-size:0.75rem;font-weight:700}
-    .badge-public{background:#dcfce7;color:#166534}
-    .badge-private{background:#ede9fe;color:#5b21b6}
-    .fin{color:#475569;font-size:0.88rem}
-    .sources{font-size:0.82rem;color:#64748b}
-    .sources a{color:#2563eb}
     .meta{color:#94a3b8;font-size:0.82rem;margin-bottom:2rem}
     """
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-    <title>Competition &amp; Public Comps: {query}</title>
+    <title>Public Comps: {query}</title>
     <style>{css}</style></head><body>
-    <h1>Competition &amp; Public Comps Report</h1>
+    <h1>Public Comps Report</h1>
     <p class="meta">Query: <strong>{query}</strong> &nbsp;&mdash;&nbsp; Generated: {now}</p>
-    {comp_html}
     {comps_html}
     </body></html>"""
 
@@ -314,14 +160,12 @@ def _sortable(val: str) -> float:
 # ── Session state ─────────────────────────────────────────────────────────────
 if "result" not in st.session_state:
     st.session_state["result"] = None
-if "comp_result" not in st.session_state:
-    st.session_state["comp_result"] = None
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
-    <h1>📊 <span class="accent">Competition</span> <span style="color:#64748b">&</span> <span class="accent">Public Comps</span></h1>
-    <p>Find competitors (public &amp; private) and publicly traded comparables for any company.</p>
+    <h1>📊 <span class="accent">Public</span> <span style="color:#64748b">Comps</span></h1>
+    <p>Discover publicly traded comparables with live market data for any company.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -352,8 +196,6 @@ with col_c:
 # ── Config ────────────────────────────────────────────────────────────────────
 from market_comps.cross_checker.cross_checker import DEFAULT_MODELS as _CHORUS_DEFAULTS
 
-from market_comps.config import MODEL_OPTIONS as _ALL_CHORUS_OPTIONS
-
 def format_model(m: str) -> str:
     in_price, out_price = settings.get_model_pricing(m)
     return f"{m} (${in_price:.2f} / ${out_price:.2f})"
@@ -362,15 +204,14 @@ with st.expander("⚙️ Advanced Options", expanded=False):
     _ao1, _ao2 = st.columns([3, 1])
     with _ao1:
         chorus_models = st.multiselect(
-            "Chorus models (queried in parallel for both competition and public comps)",
-            options=_ALL_CHORUS_OPTIONS,
+            "Chorus models (queried in parallel for public comps)",
+            options=MODEL_OPTIONS,
             default=_CHORUS_DEFAULTS,
             format_func=format_model,
-            help="All selected models are queried in parallel. Prices shown are ($input / $output) per 1M tokens.",
         )
     with _ao2:
         n_comps = st.slider("Number of Comps", min_value=5, max_value=30, value=10, step=1)
-    st.markdown("**Filters (public comps only)**")
+    st.markdown("**Filters (Yahoo Finance execution)**")
     _fc1, _fc2 = st.columns(2)
     with _fc1:
         filter_countries = st.text_input("Countries (comma-separated)", "", placeholder="e.g. United States, Canada")
@@ -388,26 +229,25 @@ with st.expander("⚙️ Advanced Options", expanded=False):
 _b1, _bpad = st.columns([2, 6])
 with _b1:
     run_clicked = st.button(
-        "🔍 Find Competitors & Public Comps",
+        "🔍 Find Public Comps",
         type="primary",
         disabled=not query.strip() or not chorus_models,
         use_container_width=True,
     )
 
-if st.session_state.get("result") is None and st.session_state.get("comp_result") is None and not run_clicked:
+if st.session_state.get("result") is None and not run_clicked:
     st.markdown("""
     <div class="info-box">
-        👆 Enter a <b>company name</b> or <b>industry</b> and click <b>Find Competitors &amp; Public Comps</b>.<br><br>
-        The Chorus of LLMs will research both <b>public and private competitors</b> and discover
-        <b>publicly traded comparables</b> with live market metrics — all in one go.
+        👆 Enter a <b>company name</b> or <b>industry</b> and click <b>Find Public Comps</b>.<br><br>
+        The Chorus of LLMs will discover
+        <b>publicly traded comparables</b> matching your description and load live market metrics via Yahoo Finance.
     </div>
     """, unsafe_allow_html=True)
 
 def _split(s): return [x.strip() for x in s.split(",") if x.strip()]
 
-# ── Run both searches on button click ────────────────────────────────────────
+# ── Run on button click ────────────────────────────────────────
 if run_clicked and query.strip() and chorus_models:
-    st.session_state["comp_result"] = None
     st.session_state["result"] = None
 
     filters = ScanFilters(
@@ -417,29 +257,8 @@ if run_clicked and query.strip() and chorus_models:
         max_market_cap_usd=max_mc_b * 1e9 if max_mc_b > 0 else None,
     )
 
-    # Phase A: competition finder
-    status_comp, on_done_comp = create_chorus_progress_status(
-        status_label=f"⏳ **Phase 1/2** — Querying {len(chorus_models)} models for competitors of **{query}**…",
-        models=chorus_models,
-    )
-    with status_comp:
-        try:
-            finder = CompetitionFinder(chorus_models=chorus_models)
-            comp_result = finder.run(
-                company=query.strip(),
-                description=description.strip(),
-                competitors_to_include=competitors_to_include.strip(),
-                on_model_complete=on_done_comp,
-            )
-            st.session_state["comp_result"] = comp_result
-            status_comp.update(label=f"✅ **Phase 1/2** — Competition done", state="complete", expanded=False)
-        except Exception as exc:
-            status_comp.update(label=f"❌ Competition Finder error: {exc}", state="error")
-            st.error(f"❌ Competition Finder error: {exc}")
-
-    # Phase B: public comps
     status_comps, on_done_comps = create_chorus_progress_status(
-        status_label=f"⏳ **Phase 2/2** — Querying {len(chorus_models)} models for public comparable tickers…",
+        status_label=f"⏳ Querying {len(chorus_models)} models for public comparable tickers…",
         models=chorus_models,
     )
     with status_comps:
@@ -454,119 +273,11 @@ if run_clicked and query.strip() and chorus_models:
                 on_model_complete=on_done_comps,
             )
             st.session_state["result"] = result
-            status_comps.update(label=f"✅ **Phase 2/2** — Public Comps done", state="complete", expanded=False)
+            status_comps.update(label=f"✅ Public Comps done", state="complete", expanded=False)
         except Exception as exc:
             status_comps.update(label=f"❌ Public Comps error: {exc}", state="error")
             st.error(f"❌ Public Comps error: {exc}")
-    # End of run
-# ══════════════════════════════════════════════════════════════════════════════
-# Results: Competition
-# ══════════════════════════════════════════════════════════════════════════════
-comp_result: Optional[CompetitionResult] = st.session_state.get("comp_result")
 
-if comp_result is not None:
-    st.markdown('<div class="section-header">🏢 Competitive Landscape</div>', unsafe_allow_html=True)
-
-    if comp_result.errors:
-        for e in comp_result.errors:
-            st.warning(f"⚠️ {e}")
-
-    # Free-text landscape
-    if comp_result.landscape:
-        st.markdown(comp_result.landscape)
-
-    pub_df, priv_df, fn_html, _, _ = build_competition_data(comp_result)
-
-    # Usage badge
-    cu = comp_result.total_llm_usage
-    st.markdown(
-        f'<div class="usage-badge"><b>LLM usage:</b> {cu.call_count} calls &nbsp;|&nbsp; '
-        f'{cu.total_tokens:,} tokens &nbsp;|&nbsp; Est. ${cu.estimated_cost_usd:.5f}</div>',
-        unsafe_allow_html=True,
-    )
-
-    _ct1, _ct2 = st.columns(2)
-
-    with _ct1:
-        n_pub = len(comp_result.public_competitors)
-        st.markdown(
-            f'<div class="section-header">🟢 Public Competitors <span style="font-size:0.85rem;color:#64748b">({n_pub})</span></div>',
-            unsafe_allow_html=True,
-        )
-        if pub_df.empty:
-            st.caption("No public competitors identified.")
-        else:
-            st.dataframe(pub_df, use_container_width=True, hide_index=True)
-
-    with _ct2:
-        n_priv = len(comp_result.private_competitors)
-        st.markdown(
-            f'<div class="section-header">🟣 Private Competitors <span style="font-size:0.85rem;color:#64748b">({n_priv})</span></div>',
-            unsafe_allow_html=True,
-        )
-        if priv_df.empty:
-            st.caption("No private competitors identified.")
-        else:
-            st.dataframe(priv_df, use_container_width=True, hide_index=True)
-
-    if fn_html:
-        st.markdown(fn_html, unsafe_allow_html=True)
-
-    # Detailed cards
-    if comp_result.competitors:
-        with st.expander(f"📋 Competitor Details ({len(comp_result.competitors)} companies)", expanded=False):
-            for c in comp_result.competitors:
-                badge = '<span class="public-badge">PUBLIC</span>' if c.type == "public" else '<span class="private-badge">PRIVATE</span>'
-                with st.expander(f"**{c.name}**" + (f" ({c.ticker})" if c.ticker else ""), expanded=False):
-                    st.markdown(badge, unsafe_allow_html=True)
-                    if c.description:
-                        st.markdown(f"**Description:** {c.description}")
-                    if c.differentiation:
-                        st.markdown(f"**Differentiator:** {c.differentiation}")
-                    if c.type == "public":
-                        _d1, _d2, _d3 = st.columns(3)
-                        _d1.metric("Market Cap", fmt_currency(c.market_cap_usd))
-                        _d2.metric("Revenue", fmt_currency(c.revenue_usd))
-                        _d3.metric("EV/Revenue", fmt_multiple(c.ev_to_revenue))
-                    else:
-                        inv = ", ".join(getattr(c, "investors", [])) or "—"
-                        exit_acq = getattr(c, "exit_acquirer", None)
-                        exit_amt = fmt_currency(getattr(c, "exit_amount_usd", None))
-                        exit_d = getattr(c, "exit_date", None)
-                        
-                        _d1, _d2, _d3, _d4 = st.columns(4)
-                        _d1.metric("Latest Round", c.latest_round or "—")
-                        _d2.metric("Amount Raised", fmt_currency(c.amount_raised_usd))
-                        _d3.metric("Year", fmt_int(c.funding_year))
-                        
-                        if exit_acq:
-                            exit_str = f"{exit_acq}"
-                            if exit_amt != "—": exit_str += f" ({exit_amt})"
-                            if exit_d: exit_str += f"\n{exit_d}"
-                            _d4.metric("Acquired By", exit_str)
-                        else:
-                            _d4.metric("Investors", inv)
-                            
-                    if c.source_urls:
-                        links = " · ".join(f"[{_domain(u)}]({u})" for u in c.source_urls)
-                        st.markdown(f"**Sources:** {links}")
-
-    # Chorus detail
-    if comp_result.chorus_result:
-        cr = comp_result.chorus_result
-        with st.expander("🎼 Individual Model Responses (Chorus)", expanded=False):
-            tab_labels = [
-                ("✅ " if r.success else "❌ ") + r.model.split("/")[-1]
-                for r in cr.responses
-            ]
-            tabs = st.tabs(tab_labels)
-            for tab, resp in zip(tabs, cr.responses):
-                with tab:
-                    st.caption(f"`{resp.model}`")
-                    if resp.success:
-                        st.markdown(resp.content)
-                    else:
-                        st.error(resp.error)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Results: Public Comps
@@ -655,30 +366,27 @@ if result is not None:
         csv_bytes = export_df.to_csv(index=False).encode("utf-8")
         safe_query = "".join(c if c.isalnum() else "_" for c in result.query)[:40]
         st.download_button("📥 Download CSV", data=csv_bytes,
-                           file_name=f"market_comps_{safe_query}.csv", mime="text/csv", type="secondary")
+                           file_name=f"public_comps_{safe_query}.csv", mime="text/csv", type="secondary")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Download Report
 # ══════════════════════════════════════════════════════════════════════════════
-_cr = st.session_state.get("comp_result")
 _pr = st.session_state.get("result")
-if _cr is not None or _pr is not None:
+if _pr is not None:
     st.markdown('<div class="section-header">⬇️ Download Report</div>', unsafe_allow_html=True)
-    _report_query = query.strip() or (
-        _pr.query if _pr else (_cr.company if _cr else "report")
-    )
-    html_bytes = generate_html_report(_report_query, _cr, _pr).encode("utf-8")
+    _report_query = query.strip() or "report"
+    html_bytes = generate_html_report(_report_query, _pr).encode("utf-8")
     safe_q = "".join(c if c.isalnum() else "_" for c in _report_query)[:40]
     col_dl1, col_dl2 = st.columns([2, 6])
     with col_dl1:
         st.download_button(
             "📄 Download HTML Report",
             data=html_bytes,
-            file_name=f"comps_report_{safe_q}.html",
+            file_name=f"public_comps_report_{safe_q}.html",
             mime="text/html",
             type="primary",
             use_container_width=True,
-            help="Opens in any browser. Use File → Print → Save as PDF to get a PDF.",
+            help="Opens in any browser. Use File → Print → Save as PDF.",
         )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -688,35 +396,20 @@ with st.expander("🤖 How this page works", expanded=False):
     st.markdown("""
 <div class="how-it-works">
 
-<h4>Find Competitors</h4>
-Uses the <b>Chorus of LLMs</b> — five AI models queried in parallel — to research both public and private competitors.
-A structured extraction pass then deduplicates results and pulls out key metrics:
-for <b>public companies</b>: market cap, revenue, EV/Revenue;
-for <b>private companies</b>: latest round, amount raised, and year.
-Sources are cited and reliability-marked (✅ authoritative / ⚠️ secondary).
-
 <h4>Find Public Comps</h4>
 Five LLMs suggest public comparable tickers in parallel, a deduplication LLM reconciles them,
 and then live financial data is fetched from <b>yfinance</b> (market cap, EV, revenue TTM/NTM, margins, growth).
 
 <h4>Sources and Accuracy</h4>
 Market metrics come directly from <b>Yahoo Finance</b> (real-time).
-Competitor research relies on LLM knowledge — always verify funding data and financials with primary sources.
 </div>
 """, unsafe_allow_html=True)
     
     st.markdown("#### LLM Prompts Used")
-    from market_comps.competition.competition_finder import _COMPETITION_QUESTION_TEMPLATE, _EXTRACTION_SYSTEM as _COMPETITION_EXTRACTION
     from market_comps.chorus_comps_engine import _COMPS_QUESTION_TEMPLATE, _DEDUP_SYSTEM
     
-    st.markdown("**1. Finding Competitors (sent to Chorus models)**")
-    st.code(_COMPETITION_QUESTION_TEMPLATE, language="text")
-    
-    st.markdown("**2. Deduplicating Competitors (sent to Summarizer model)**")
-    st.code(_COMPETITION_EXTRACTION, language="text")
-    
-    st.markdown("**3. Finding Public Comps (sent to Chorus models)**")
+    st.markdown("**1. Finding Public Comps (sent to Chorus models)**")
     st.code(_COMPS_QUESTION_TEMPLATE, language="text")
     
-    st.markdown("**4. Deduplicating Comps (sent to Summarizer model)**")
+    st.markdown("**2. Deduplicating Comps (sent to Summarizer model)**")
     st.code(_DEDUP_SYSTEM, language="text")

@@ -28,26 +28,43 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _COMPETITION_QUESTION_TEMPLATE = """\
-Identify the key competitors for the following company:
+Identify the primary industry and related market segments for:
 
-Company: {company}
+Company: "{company}"
 Description: {description}
-{competitors_to_include}
 
-List BOTH public AND private competitors. For each competitor provide:
+List 20–30 companies operating in these markets (public or private).
+
+Include companies mentioned in:
+- industry reports
+- venture funding announcements
+- analyst coverage
+- similar product categories
+
+Return a table with:
 - Company name
-- Whether it is public (traded) or private
-- Brief description (1-2 sentences) of what they do
-- Key differentiator vs the subject company
-- If PUBLIC: stock ticker, market cap (USD), last reported annual revenue (USD), EV/Revenue multiple
-- If PRIVATE: latest funding round type (Seed/Series A/.../Unknown), amount raised (USD), year of latest round, notable investors, and details if they have been acquired (acquirer, exit amount USD, exit year)
+- Public or Private
+- Primary segment
+- 1 sentence description
 
-Be specific and factual. Cite your sources with full URLs.
-Only include companies you are confident are real competitors with verifiable information.
+Include the following companies if relevant:
+{competitors_to_include}
 """
 
-_EXTRACTION_SYSTEM = """\
-You are a financial data extraction engine. Extract structured competitor data from the provided research.
+_EXTRACTION_SYSTEM_TEMPLATE = """\
+You are a financial data extraction engine. 
+From the provided research on candidate companies, identify the {n} best comparable companies overall (can be public or private) for:
+
+Company: "{company}"
+Description: {description}
+
+Select the companies that are most comparable based on:
+- business model
+- customers
+- revenue drivers
+
+For each company, extract its key financial data and exit/funding history from the source text.
+Include BOTH public and private competitors if they are among the best comparables.
 
 Rules:
 - Only include companies explicitly mentioned in the research below.
@@ -57,7 +74,7 @@ Rules:
 - Round monetary values to reasonable precision (e.g. market cap in billions).
 - Deduplicate: if the same company appears multiple times, keep a single merged record.
 
-Return ONLY valid JSON in this exact structure (no markdown, no prose):
+Return ONLY valid JSON in this exact structure (no markdown, no prose). Try to return EXACTLY {n} competitors:
 {
   "landscape": "<2-4 sentence summary of the competitive landscape>",
   "competitors": [
@@ -67,7 +84,7 @@ Return ONLY valid JSON in this exact structure (no markdown, no prose):
       "ticker": "<TICKER or null>",
       "country": "<headquarters country, e.g. United States, or null>",
       "description": "<what they do, 1-2 sentences>",
-      "differentiation": "<key differentiator vs subject company, 1 sentence>",
+      "differentiation": "<1 sentence rationale for why it is a good comparable>",
       "market_cap_usd": <number in USD or null>,
       "revenue_usd": <annual revenue in USD or null>,
       "ev_to_revenue": <EV/Revenue multiple as float or null>,
@@ -172,7 +189,7 @@ class CompetitionFinder:
         self._chorus_models = chorus_models or DEFAULT_MODELS
         self._summary_model = summary_model
 
-    def run(self, company: str, description: str = "", competitors_to_include: str = "", **kwargs) -> CompetitionResult:
+    def run(self, company: str, description: str = "", competitors_to_include: str = "", limit: int = 15, **kwargs) -> CompetitionResult:
         """
         Run the research.
         Kwargs:
@@ -223,14 +240,17 @@ class CompetitionFinder:
         # ── Phase 2: Structured extraction ────────────────────────────────
         logger.info("CompetitionFinder: Phase 2 — extracting structured data")
         extraction_prompt = (
-            f"Company being analyzed: **{company}**\n"
-            f"Description: {description or 'Not specified'}\n\n"
             f"Research from multiple AI models:\n\n{all_responses}"
+        )
+        extraction_system = _EXTRACTION_SYSTEM_TEMPLATE.format(
+            n=limit,
+            company=company,
+            description=description or 'Not specified'
         )
         try:
             raw, usage = self._llm.simple_text(
                 prompt=extraction_prompt,
-                system_prompt=_EXTRACTION_SYSTEM,
+                system_prompt=extraction_system,
                 model=self._summary_model,
                 temperature=0.1,
             )
