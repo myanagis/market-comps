@@ -23,6 +23,8 @@ pg = st.navigation([
     st.Page("pages/4_Company_Primer.py",    title="Company Primer",         icon="📚"),
     st.Page("pages/5_FAQ.py",               title="FAQ",                    icon="❓"),
     st.Page("pages/6_Waterfall_Calculator.py", title="Waterfall Calculator",icon="💧"),
+    st.Page("pages/7_Directory_Analyzer.py", title="Directory Analyzer",    icon="📁"),
+    st.Page("pages/8_Cash_Flow_Analysis.py", title="Cash Flow Analysis",    icon="💸"),
 ])
 
 pg.run()
