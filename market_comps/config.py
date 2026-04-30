@@ -73,6 +73,7 @@ class Settings:
             "mistralai/mixtral-8x7b-instruct": (0.5400, 0.5400),
             "openai/gpt-4o": (2.5000, 10.0000),
             "openai/gpt-4o-mini": (0.1500, 0.6000),
+            "perplexity/llama-3.1-sonar-huge-128k-online": (5.0000, 5.0000),
             "x-ai/grok-4": (3.0000, 15.0000),
             "x-ai/grok-4-fast": (0.2000, 0.5000),
         }
@@ -105,6 +106,7 @@ MODEL_OPTIONS: list[str] = [
     "mistralai/mixtral-8x7b-instruct",
     "openai/gpt-4o",
     "openai/gpt-4o-mini",
+    "perplexity/llama-3.1-sonar-huge-128k-online",
     "x-ai/grok-4",
     "x-ai/grok-4-fast",
 ]
