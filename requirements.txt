@@ -10,3 +10,6 @@ streamlit-tags
 polars
 pyxirr
 xlsxwriter
+pypdf
+python-docx
+python-pptx

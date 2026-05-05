@@ -8,12 +8,27 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+from pathlib import Path
+from pypdf import PdfReader
+from docx import Document
+from pptx import Presentation
+from market_comps.pdf_parser.pdf_client import PDFClient
+
 from market_comps.ui import inject_global_style
 from market_comps.config import MODEL_OPTIONS
 from market_comps.schema_framework.engine import run_schema_extraction, synthesize_evidence
 from market_comps.config import settings
 
 inject_global_style()
+
+_DIR = Path(__file__).resolve().parent.parent / "market_comps" / "schema_framework"
+_SCHEMA_PATH = _DIR / "starter_schema.json"
+_PROMPT_PATH = _DIR / "evidence_extraction_prompt.md"
+_SYNTH_PROMPT_PATH = _DIR / "synthesis_prompt.md"
+
+def _load_asset(path: Path) -> str:
+    with path.open("r", encoding="utf-8") as f:
+        return f.read()
 
 st.markdown("""
 <h1>📋 Schema-Driven Framework</h1>
@@ -25,6 +40,12 @@ if "sdf_sources" not in st.session_state:
     st.session_state["sdf_sources"] = [{"source_name": "article_1", "source_date": "", "text": ""}]
 if "sdf_results" not in st.session_state:
     st.session_state["sdf_results"] = None
+if "sdf_schema" not in st.session_state:
+    st.session_state["sdf_schema"] = _load_asset(_SCHEMA_PATH)
+if "sdf_ext_prompt" not in st.session_state:
+    st.session_state["sdf_ext_prompt"] = _load_asset(_PROMPT_PATH)
+if "sdf_synth_prompt" not in st.session_state:
+    st.session_state["sdf_synth_prompt"] = _load_asset(_SYNTH_PROMPT_PATH)
 
 # Configure model
 def format_model(m: str) -> str:
@@ -46,6 +67,31 @@ with st.expander("⚙️ Configuration", expanded=True):
             options=MODEL_OPTIONS,
             index=default_idx,
             format_func=format_model,
+        )
+
+with st.expander("🛠️ Advanced Configuration", expanded=False):
+    st.markdown("**Editable Schema & Prompts**")
+    st.session_state["sdf_schema"] = st.text_area(
+        "JSON Schema", 
+        value=st.session_state["sdf_schema"], 
+        height=250,
+        help="Edit the JSON schema used for evidence extraction."
+    )
+    
+    col_ext, col_syn = st.columns(2)
+    with col_ext:
+        st.session_state["sdf_ext_prompt"] = st.text_area(
+            "Extraction Prompt", 
+            value=st.session_state["sdf_ext_prompt"], 
+            height=250,
+            help="Prompt used for structured extraction from raw text."
+        )
+    with col_syn:
+        st.session_state["sdf_synth_prompt"] = st.text_area(
+            "Synthesis Prompt", 
+            value=st.session_state["sdf_synth_prompt"], 
+            height=250,
+            help="Prompt used to synthesize all extracted evidence."
         )
 
 # ── Inputs ────────────────────────────────────────────────────────────────────
@@ -87,6 +133,69 @@ with col_add:
         st.session_state["sdf_sources"] = sources
         st.rerun()
 
+st.markdown("---")
+st.markdown("#### Or Upload a Document")
+
+uploaded_file = st.file_uploader("Upload File", type=["txt", "docx", "pptx", "pdf"])
+
+if uploaded_file is not None:
+    filename = uploaded_file.name
+    ext = filename.split(".")[-1].lower()
+    file_bytes = uploaded_file.getvalue()
+    
+    if st.session_state.get("last_uploaded_file") != uploaded_file.file_id:
+        extracted_text = ""
+        
+        if ext == "txt":
+            extracted_text = file_bytes.decode("utf-8", errors="replace")
+        elif ext == "docx":
+            import io
+            doc = Document(io.BytesIO(file_bytes))
+            extracted_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        elif ext == "pptx":
+            import io
+            prs = Presentation(io.BytesIO(file_bytes))
+            text_runs = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text_runs.append(shape.text)
+            extracted_text = "\n".join(text_runs)
+        elif ext == "pdf":
+            import io
+            pdf = PdfReader(io.BytesIO(file_bytes))
+            num_pages = len(pdf.pages)
+            
+            confirm_key = f"confirm_pdf_{uploaded_file.file_id}"
+            
+            if num_pages > 20 and not st.session_state.get(confirm_key, False):
+                st.warning(f"This PDF has {num_pages} pages. Mistral OCR costs roughly $2 / 1000 pages. Do you want to proceed with extraction?")
+                if st.button("Confirm Mistral OCR Processing"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+                else:
+                    st.stop()
+            
+            with st.spinner("Extracting text via Mistral OCR... This might take a minute."):
+                client = PDFClient(pdf_engine="mistral-ocr", model=selected_model)
+                raw_text, _, usage = client.send(
+                    prompt="Extract the raw text from this document as accurately as possible.", 
+                    pdf_bytes=file_bytes, 
+                    filename=filename
+                )
+                extracted_text = raw_text
+                st.success(f"Extracted {num_pages} pages via Mistral OCR.")
+        
+        if extracted_text and ext != "pdf":
+            with st.spinner("Processing file..."):
+                pass # Already processed synchronously
+                
+        if extracted_text:
+            sources.append({"source_name": filename, "source_date": "", "text": extracted_text})
+            st.session_state["sdf_sources"] = sources
+            st.session_state["last_uploaded_file"] = uploaded_file.file_id
+            st.rerun()
+
 valid_sources = [s for s in sources if s["text"].strip()]
 
 # ── Run ───────────────────────────────────────────────────────────────────────
@@ -114,7 +223,9 @@ if analyze_clicked and valid_sources:
                 text=s["text"],
                 source_name=src_name,
                 source_date=s.get("source_date", ""),
-                model=selected_model
+                model=selected_model,
+                schema_text=st.session_state["sdf_schema"],
+                extraction_prompt_template=st.session_state["sdf_ext_prompt"]
             )
             elapsed = time.time() - t0
             result["extraction_time_s"] = elapsed
@@ -123,7 +234,11 @@ if analyze_clicked and valid_sources:
         
         st.write("Synthesizing extracted evidence...")
         t_synth = time.time()
-        synthesis, synth_usage = synthesize_evidence(extracted_data, model=selected_model)
+        synthesis, synth_usage = synthesize_evidence(
+            extracted_data, 
+            model=selected_model,
+            synth_prompt_template=st.session_state["sdf_synth_prompt"]
+        )
         synth_elapsed = time.time() - t_synth
         st.write(f"✅ Synthesized evidence in {synth_elapsed:.1f}s")
         
