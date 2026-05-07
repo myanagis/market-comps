@@ -112,6 +112,12 @@ else:
     file_size_kb = uploaded_file.size / 1024
     st.caption(f"📎 **{uploaded_file.name}** — {file_size_kb:.1f} KB")
 
+    action = st.radio(
+        "Action",
+        ["Extract Term Sheet (Structured)", "Transcribe Pitch Deck (High-Fidelity)"],
+        horizontal=True
+    )
+
     # Advanced Options
     def format_model(m: str) -> str:
         in_price, out_price = settings.get_model_pricing(m)
@@ -128,14 +134,23 @@ else:
                 format_func=format_model,
             )
         with _ao2:
-            ENGINE_OPTIONS = {
-                "PDF Text (Free)": "pdf-text",
-                "Mistral OCR ($2 / 1k pages)": "mistral-ocr",
-                "VLM (Image-based)": "vlm",
-                "Native (input tokens)": "native",
-            }
-            engine_label = st.selectbox("PDF Engine", list(ENGINE_OPTIONS.keys()), index=0)
-        engine = ENGINE_OPTIONS[engine_label]
+            if action == "Extract Term Sheet (Structured)":
+                ENGINE_OPTIONS = {
+                    "PDF Text (Free)": "pdf-text",
+                    "Mistral OCR ($2 / 1k pages)": "mistral-ocr",
+                    "Native (input tokens)": "native",
+                }
+                engine_label = st.selectbox("PDF Engine", list(ENGINE_OPTIONS.keys()), index=0)
+                engine = ENGINE_OPTIONS[engine_label]
+            else:
+                METHOD_OPTIONS = {
+                    "OCR (Mistral)": "ocr",
+                    "Text Reader (Native)": "text",
+                    "VLM (Image-based)": "vlm",
+                    "Hybrid (VLM + Text cross-check)": "vlm_plus_text"
+                }
+                method_label = st.selectbox("Extraction Method", list(METHOD_OPTIONS.keys()), index=3)
+                method = METHOD_OPTIONS[method_label]
 
     parse_clicked = st.button("🔍 Parse Document", type="primary")
 
@@ -186,40 +201,26 @@ else:
                 st.info("🔄 **Step 0** — Processing document…")
     
             try:
-                if engine == "vlm":
-                    import fitz
-                    import base64
-                    from market_comps.llm_client import LLMClient
+                if action == "Transcribe Pitch Deck (High-Fidelity)":
+                    from market_comps.pdf_parser.document_processor import process_document
                     
-                    with st.spinner("🖼️ Converting PDF pages to images for VLM transcription..."):
-                        doc = fitz.open(stream=file_bytes, filetype="pdf")
-                        messages = [{"role": "user", "content": [{"type": "text", "text": "Please transcribe the content of these document pages exactly as they appear. Preserve the structure of any tables, charts, or graphs using markdown representations. Include all text."}]}]
+                    with st.spinner(f"Transcribing via {method}..."):
+                        content, usage = process_document(file_bytes, filename, method, model)
                         
-                        for page in doc:
-                            pix = page.get_pixmap(dpi=150)
-                            img_bytes = pix.tobytes("jpeg")
-                            b64 = base64.b64encode(img_bytes).decode("utf-8")
-                            messages[0]["content"].append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
-                            
-                    with st.spinner("🧠 Sending images to VLM..."):
-                        client = LLMClient(model=model)
-                        content, usage = client.chat_completion(messages=messages, temperature=0.0)
-                        
-                        class VLMResult:
+                        class TranscriptionResult:
                             def __init__(self):
-                                self.document_type = "pdf"
-                                self.doc_type_confidence = "N/A"
-                                self.doc_type_rationale = "Parsed via VLM Image Engine"
+                                self.document_type = "presentation"
+                                self.doc_type_confidence = "high"
+                                self.doc_type_rationale = f"Transcribed via {method}"
                                 self.llm_usage = usage
-                                self.pdf_pages = len(doc)
-                                self.pdf_engine = "vlm"
                                 self.model_used = model
+                                self.pdf_engine = method
                                 self.summary = content
                                 self.raw_extracted_text = content
                                 self.terms = []
                                 self.errors = []
                         
-                        st.session_state["pdf_result"] = VLMResult()
+                        st.session_state["pdf_result"] = TranscriptionResult()
                         progress.empty()
 
                 else:
