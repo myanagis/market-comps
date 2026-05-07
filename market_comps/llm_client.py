@@ -59,7 +59,7 @@ class LLMClient:
 
     def chat_completion(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: Optional[str] = None,
         response_format: Optional[dict] = None,
         temperature: float = 0.2,

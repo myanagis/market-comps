@@ -78,8 +78,8 @@ st.markdown("""
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<h1>📄 PDF Parser</h1>
-<p>Upload a PDF to extract key terms (term sheets) or generate a summary (other documents).</p>
+<h1>📄 Document Parser</h1>
+<p>Upload a PDF or PPTX to extract key terms (term sheets), generate a summary, or transcribe visually.</p>
 """, unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -95,15 +95,15 @@ ENGINE_OPTIONS = {
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 uploaded_file = st.file_uploader(
-    "Upload a PDF",
-    type=["pdf"],
+    "Upload a PDF or PPTX",
+    type=["pdf", "pptx"],
     label_visibility="collapsed",
 )
 
 if uploaded_file is None:
     st.markdown("""
     <div class="info-box">
-        👆 Upload a <b>PDF file</b> above to get started — term sheets, SAFE notes,
+        👆 Upload a <b>PDF or PPTX file</b> above to get started — term sheets, SAFE notes,
         convertible notes, or any other document.
     </div>
     """, unsafe_allow_html=True)
@@ -128,6 +128,12 @@ else:
                 format_func=format_model,
             )
         with _ao2:
+            ENGINE_OPTIONS = {
+                "PDF Text (Free)": "pdf-text",
+                "Mistral OCR ($2 / 1k pages)": "mistral-ocr",
+                "VLM (Image-based)": "vlm",
+                "Native (input tokens)": "native",
+            }
             engine_label = st.selectbox("PDF Engine", list(ENGINE_OPTIONS.keys()), index=0)
         engine = ENGINE_OPTIONS[engine_label]
 
@@ -135,32 +141,99 @@ else:
 
     # ── Run pipeline ──────────────────────────────────────────────────────────
     if parse_clicked:
-        pdf_bytes = uploaded_file.read()
-        progress = st.empty()
+        file_bytes = uploaded_file.read()
+        filename = uploaded_file.name
 
-        with progress.container():
-            st.info("🔄 **Step 0** — Classifying document type…")
+        # --- PPTX Flow ---
+        if filename.lower().endswith(".pptx"):
+            with st.spinner("🔄 Extracting text from presentation..."):
+                import io
+                from pptx import Presentation
+                
+                prs = Presentation(io.BytesIO(file_bytes))
+                text_runs = []
+                for slide_num, slide in enumerate(prs.slides):
+                    slide_text = []
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text.strip():
+                            slide_text.append(shape.text.strip())
+                    if slide_text:
+                        text_runs.append(f"--- Slide {slide_num + 1} ---\n" + "\n".join(slide_text))
+                
+                extracted_text = "\n\n".join(text_runs)
+                
+                class PPTXResult:
+                    def __init__(self):
+                        self.document_type = "presentation"
+                        self.doc_type_confidence = "high"
+                        self.doc_type_rationale = "Directly extracted from PPTX file."
+                        from market_comps.models import LLMUsage
+                        self.llm_usage = LLMUsage()
+                        self.model_used = "N/A"
+                        self.pdf_engine = "python-pptx"
+                        self.summary = extracted_text
+                        self.raw_extracted_text = extracted_text
+                        self.terms = []
+                        self.errors = []
+                        
+                st.session_state["pdf_result"] = PPTXResult()
 
-        try:
-            extractor = TermExtractor(model=model, pdf_engine=engine)
+        # --- PDF Flow ---
+        else:
+            progress = st.empty()
+    
+            with progress.container():
+                st.info("🔄 **Step 0** — Processing document…")
+    
+            try:
+                if engine == "vlm":
+                    import fitz
+                    import base64
+                    from market_comps.llm_client import LLMClient
+                    
+                    with st.spinner("🖼️ Converting PDF pages to images for VLM transcription..."):
+                        doc = fitz.open(stream=file_bytes, filetype="pdf")
+                        messages = [{"role": "user", "content": [{"type": "text", "text": "Please transcribe the content of these document pages exactly as they appear. Preserve the structure of any tables, charts, or graphs using markdown representations. Include all text."}]}]
+                        
+                        for page in doc:
+                            pix = page.get_pixmap(dpi=150)
+                            img_bytes = pix.tobytes("jpeg")
+                            b64 = base64.b64encode(img_bytes).decode("utf-8")
+                            messages[0]["content"].append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+                            
+                    with st.spinner("🧠 Sending images to VLM..."):
+                        client = LLMClient(model=model)
+                        content, usage = client.chat_completion(messages=messages, temperature=0.0)
+                        
+                        class VLMResult:
+                            def __init__(self):
+                                self.document_type = "pdf"
+                                self.doc_type_confidence = "N/A"
+                                self.doc_type_rationale = "Parsed via VLM Image Engine"
+                                self.llm_usage = usage
+                                self.pdf_pages = len(doc)
+                                self.pdf_engine = "vlm"
+                                self.model_used = model
+                                self.summary = content
+                                self.raw_extracted_text = content
+                                self.terms = []
+                                self.errors = []
+                        
+                        st.session_state["pdf_result"] = VLMResult()
+                        progress.empty()
 
-            # Monkey-patch to show step progress in UI
-            original_run = extractor.run
-
-            def run_with_progress(pdf_bytes, filename):
-                # We'll run normally; progress updates happen between steps
-                return original_run(pdf_bytes, filename)
-
-            with st.spinner(""):
-                result = extractor.run(pdf_bytes=pdf_bytes, filename=uploaded_file.name)
-
-            st.session_state["pdf_result"] = result
-            progress.empty()
-
-        except Exception as exc:
-            progress.empty()
-            st.error(f"❌ Parser error: {exc}")
-            st.session_state["pdf_result"] = None
+                else:
+                    extractor = TermExtractor(model=model, pdf_engine=engine)
+                    with st.spinner(""):
+                        result = extractor.run(pdf_bytes=file_bytes, filename=filename)
+        
+                    st.session_state["pdf_result"] = result
+                    progress.empty()
+    
+            except Exception as exc:
+                progress.empty()
+                st.error(f"❌ Parser error: {exc}")
+                st.session_state["pdf_result"] = None
 
 # ── Results ───────────────────────────────────────────────────────────────────
 result = st.session_state.get("pdf_result")
@@ -188,6 +261,8 @@ if result is not None:
         "convertible_note": "badge-conv",
         "loi": "badge-loi",
         "letter_of_intent": "badge-loi",
+        "presentation": "badge-loi",
+        "pdf": "badge-loi",
     }
     LABEL_MAP = {
         "term_sheet": "📋 Term Sheet",
@@ -195,6 +270,8 @@ if result is not None:
         "convertible_note": "📝 Convertible Note",
         "loi": "🤝 Letter of Intent",
         "letter_of_intent": "🤝 Letter of Intent",
+        "presentation": "📊 PowerPoint Presentation",
+        "pdf": "📄 PDF Document (VLM)",
         "other": "📂 Other Document",
     }
     badge_cls = BADGE_CLASS.get(result.document_type, "badge-unk")

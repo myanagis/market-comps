@@ -13,3 +13,4 @@ xlsxwriter
 pypdf
 python-docx
 python-pptx
+pymupdf
