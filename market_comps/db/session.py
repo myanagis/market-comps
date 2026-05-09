@@ -28,14 +28,25 @@ def get_database_url(direct: bool = False) -> str:
 # We use the standard URL for the app engine
 url = get_database_url(direct=False)
 if not url:
-    # Fallback to in-memory sqlite if URL not found (e.g., during some testing or startup)
     url = "sqlite:///:memory:"
 
 engine = create_engine(url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def _get_active_session_maker():
+    global engine, SessionLocal
+    # If the engine was initialized with sqlite memory before secrets were loaded,
+    # try to re-initialize it now.
+    if str(engine.url) == "sqlite:///:memory:":
+        new_url = get_database_url(direct=False)
+        if new_url and new_url != "sqlite:///:memory:":
+            engine = create_engine(new_url, pool_pre_ping=True)
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return SessionLocal
+
 def get_db():
-    db = SessionLocal()
+    session_factory = _get_active_session_maker()
+    db = session_factory()
     try:
         yield db
     finally:
