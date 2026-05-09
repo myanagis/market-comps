@@ -18,6 +18,7 @@ st.set_page_config(
 pg = st.navigation({
     "Apps": [
         st.Page("pages/11_CT_Business_Registry.py", title="CT Business Registry", icon="🏢"),
+        st.Page("pages/12_CRM_Manager.py", title="CRM Manager", icon="🗄️"),
     ],
     "Tools (Beta)":
     [
