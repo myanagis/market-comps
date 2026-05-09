@@ -32,6 +32,8 @@ class Organization(Base, TimestampMixin):
     fund_profiles = relationship("FundProfile", back_populates="parent_organization")
     program_profiles = relationship("ProgramProfile", back_populates="parent_organization")
     roles = relationship("PersonOrganizationRole", back_populates="organization")
+    raw_entities = relationship("RawEntity", back_populates="organization")
+    updates = relationship("EntityUpdate", back_populates="organization")
 
 
 class CompanyProfile(Base, TimestampMixin):
@@ -104,6 +106,8 @@ class Person(Base, TimestampMixin):
 
     emails = relationship("PersonEmail", back_populates="person")
     roles = relationship("PersonOrganizationRole", back_populates="person")
+    raw_entities = relationship("RawEntity", back_populates="person")
+    updates = relationship("EntityUpdate", back_populates="person")
 
 
 class PersonEmail(Base, TimestampMixin):
@@ -140,3 +144,104 @@ class PersonOrganizationRole(Base, TimestampMixin):
 
     person = relationship("Person", back_populates="roles")
     organization = relationship("Organization", back_populates="roles")
+
+
+class DataSource(Base, TimestampMixin):
+    __tablename__ = 'data_sources'
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_name = Column(String, nullable=False)
+    source_type = Column(String)
+    base_url = Column(String)
+    description = Column(String)
+    auth_type = Column(String)
+    is_active = Column(Boolean, default=True)
+
+    configs = relationship("IngestionConfig", back_populates="data_source")
+
+class IngestionConfig(Base, TimestampMixin):
+    __tablename__ = 'ingestion_configs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    data_source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=False)
+    config_name = Column(String, nullable=False)
+    ingestion_type = Column(String) # API, SCRAPE, IMPORT
+    endpoint_url = Column(String)
+    http_method = Column(String)
+    query_params_json = Column(JSON)
+    headers_json = Column(JSON)
+    schedule_type = Column(String) # MANUAL, DAILY, WEEKLY, EVERY_OTHER_WEEK, MONTHLY
+    next_run_at = Column(DateTime)
+    last_run_at = Column(DateTime)
+    last_success_at = Column(DateTime)
+    is_active = Column(Boolean, default=True)
+    owner_user_id = Column(String, nullable=True)
+    metadata_json = Column(JSON)
+
+    data_source = relationship("DataSource", back_populates="configs")
+    jobs = relationship("IngestionJob", back_populates="config")
+
+class IngestionJob(Base, TimestampMixin):
+    __tablename__ = 'ingestion_jobs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    ingestion_config_id = Column(Integer, ForeignKey('ingestion_configs.id'), nullable=False)
+    job_status = Column(String)
+    triggered_by = Column(String) # SCEDHULER, MANUAL, ETC.
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    records_processed = Column(Integer, default=0)
+    records_created = Column(Integer, default=0)
+    records_updated = Column(Integer, default=0)
+    records_failed = Column(Integer, default=0)
+    error_message = Column(String)
+    job_logs_json = Column(JSON)
+    metadata_json = Column(JSON)
+
+    config = relationship("IngestionConfig", back_populates="jobs")
+    raw_entities = relationship("RawEntity", back_populates="job")
+    entity_updates = relationship("EntityUpdate", back_populates="job")
+
+class RawEntity(Base, TimestampMixin):
+    __tablename__ = 'raw_entities'
+
+    id = Column(Integer, primary_key=True, index=True)
+    ingestion_job_id = Column(Integer, ForeignKey('ingestion_jobs.id'), nullable=False)
+    entity_type = Column(String) # ORGANIZATION, PERSON
+    
+    matched_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    matched_person_id = Column(UUID(as_uuid=True), ForeignKey('people.id'), nullable=True, index=True)
+    
+    raw_name = Column(String)
+    normalized_name = Column(String, index=True)
+    source_url = Column(String)
+    source_identifier = Column(String)
+    raw_payload_json = Column(JSON)
+    detected_at = Column(DateTime)
+
+    job = relationship("IngestionJob", back_populates="raw_entities")
+    organization = relationship("Organization", back_populates="raw_entities")
+    person = relationship("Person", back_populates="raw_entities")
+    updates = relationship("EntityUpdate", back_populates="raw_entity")
+
+class EntityUpdate(Base, TimestampMixin):
+    __tablename__ = 'entity_updates'
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    person_id = Column(UUID(as_uuid=True), ForeignKey('people.id'), nullable=True, index=True)
+    raw_entity_id = Column(Integer, ForeignKey('raw_entities.id'), nullable=False, index=True)
+    ingestion_job_id = Column(Integer, ForeignKey('ingestion_jobs.id'), nullable=True)
+    
+    update_reason = Column(String) # FILL_EMPTY, SOURCE_PRIORITY, MANUAL_OVERRIDE, AUTO_CREATE
+    field_name = Column(String)
+    old_value = Column(String)
+    new_value = Column(String)
+    update_action = Column(String)
+    update_status = Column(String)
+    source = Column(String)
+
+    organization = relationship("Organization", back_populates="updates")
+    person = relationship("Person", back_populates="updates")
+    raw_entity = relationship("RawEntity", back_populates="updates")
+    job = relationship("IngestionJob", back_populates="entity_updates")
