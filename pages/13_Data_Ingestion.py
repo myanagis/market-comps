@@ -177,7 +177,37 @@ with tab3:
                                         st.write(f"- {f.get('first_name', '')} {f.get('last_name', '')} ({f.get('title', 'Founder')}) — {f.get('email', '')}")
                                         
                         st.divider()
-                        st.caption("Raw Logs:")
+                        
+                        # Deep Scrape Debug Section
+                        if job.job_logs_json.get("mode") == "deep_scrape":
+                            with st.expander("🔍 Deep Scrape Debug Log", expanded=True):
+                                st.caption(f"Mode: **{job.job_logs_json.get('mode')}**")
+                                
+                                # Show Pass 1 stubs
+                                pass1_stubs = job.job_logs_json.get("pass1_stubs", [])
+                                st.write(f"**Pass 1 found {len(pass1_stubs)} stubs:**")
+                                for s in pass1_stubs:
+                                    st.write(f"- {s.get('name', '?')} → `{s.get('profile_path', 'NO PATH')}`")
+                                
+                                st.divider()
+                                
+                                # Show per-company debug
+                                debug_entries = job.job_logs_json.get("deep_scrape_debug", [])
+                                for d in debug_entries:
+                                    status_icon = "✅" if d.get("merged_keys") else ("⚠️" if d.get("error") else "➖")
+                                    with st.expander(f"{status_icon} {d.get('company', '?')}"):
+                                        st.write(f"**Profile URL:** `{d.get('profile_url', 'N/A')}`")
+                                        st.write(f"**Merged keys:** {d.get('merged_keys', [])}")
+                                        if d.get("error"):
+                                            st.error(f"Error: {d['error']}")
+                                        if d.get("llm_raw_response"):
+                                            st.caption("LLM Raw Response (Pass 2):")
+                                            st.json(d["llm_raw_response"])
+                                        if d.get("profile_text_preview"):
+                                            st.caption("Page Text Preview (first 2000 chars):")
+                                            st.code(d["profile_text_preview"], language=None)
+                        
+                        st.caption("LLM Usage:")
                         st.json(job.job_logs_json.get("llm_usage", {}))
                     else:
                         st.json(job.job_logs_json)

@@ -570,12 +570,23 @@ def _run_scrape_pipeline(
 
         # Pass 2: Visit each profile page for rich firmographics
         companies = []
+        deep_scrape_debug = []
         for i, stub in enumerate(stubs):
             if not isinstance(stub, dict):
                 continue
 
             profile_path = stub.get("profile_path", "")
             company_name = stub.get("name", "Unknown")
+
+            debug_entry = {
+                "company": company_name,
+                "profile_path": profile_path,
+                "profile_url": None,
+                "profile_text_preview": None,
+                "llm_raw_response": None,
+                "error": None,
+                "merged_keys": [],
+            }
 
             # Start with the directory-level data
             company = {
@@ -586,19 +597,28 @@ def _run_scrape_pipeline(
 
             if profile_path:
                 profile_url = urljoin(url, profile_path)
+                debug_entry["profile_url"] = profile_url
                 logger.info(f"[Scrape] Pass 2 ({i+1}/{len(stubs)}): visiting {profile_url}")
                 try:
                     profile_text = fetch_page_text(profile_url)
+                    debug_entry["profile_text_preview"] = profile_text[:2000]  # First 2000 chars for debugging
+                    
                     detail, usage_p2 = llm_extract_profile(profile_text, company_name)
+                    debug_entry["llm_raw_response"] = detail
                     all_usage.append({"pass": f"profile_{company_name}", **usage_p2})
 
                     # Merge detail into stub (detail wins for non-empty values)
                     for key in ["url", "description", "industry", "founded_year", "linkedin_url", "founders"]:
                         if detail.get(key):
                             company[key] = detail[key]
+                            debug_entry["merged_keys"].append(key)
                 except Exception as e:
+                    debug_entry["error"] = str(e)
                     logger.warning(f"[Scrape] Failed to deep-scrape {profile_url}: {e}")
+            else:
+                debug_entry["error"] = "No profile_path found in Pass 1"
 
+            deep_scrape_debug.append(debug_entry)
             companies.append(company)
 
     else:
@@ -628,7 +648,14 @@ def _run_scrape_pipeline(
                     is_active=True
                 ))
 
-    job_logs = {"llm_usage": all_usage, "extracted_companies": companies}
+    job_logs = {
+        "llm_usage": all_usage, 
+        "extracted_companies": companies,
+        "mode": "deep_scrape" if is_deep_scrape else "single_pass",
+    }
+    if is_deep_scrape:
+        job_logs["deep_scrape_debug"] = deep_scrape_debug
+        job_logs["pass1_stubs"] = stubs
     return records_created, job_logs
 
 
