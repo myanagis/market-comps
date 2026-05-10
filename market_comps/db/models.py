@@ -34,6 +34,7 @@ class Organization(Base, TimestampMixin):
     roles = relationship("PersonOrganizationRole", back_populates="organization")
     raw_entities = relationship("RawEntity", back_populates="organization")
     updates = relationship("EntityUpdate", back_populates="organization")
+    program_memberships = relationship("ProgramMembership", back_populates="company")
 
 
 class CompanyProfile(Base, TimestampMixin):
@@ -88,6 +89,24 @@ class ProgramProfile(Base, TimestampMixin):
     description = Column(String)
 
     parent_organization = relationship("Organization", back_populates="program_profiles")
+    memberships = relationship("ProgramMembership", back_populates="program")
+
+
+class ProgramMembership(Base, TimestampMixin):
+    __tablename__ = 'program_memberships'
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    program_id = Column(Integer, ForeignKey('program_profiles.id'), nullable=False)
+    
+    is_active = Column(Boolean, default=True)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    notes = Column(String)
+    metadata_json = Column(JSON)
+
+    company = relationship("Organization", back_populates="program_memberships")
+    program = relationship("ProgramProfile", back_populates="memberships")
 
 
 class Person(Base, TimestampMixin):
