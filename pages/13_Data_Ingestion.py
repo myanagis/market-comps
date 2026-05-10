@@ -97,10 +97,28 @@ with tab2:
     configs = db.query(IngestionConfig).all()
     if configs:
         for c in configs:
-            with st.expander(f"**{c.config_name}** ({c.ingestion_type})"):
-                st.write(f"Data Source ID: {c.data_source_id}")
-                st.write(f"Endpoint: {c.http_method} {c.endpoint_url}")
-                st.json(c.metadata_json or {})
+            c_meta = c.metadata_json or {}
+            deep_flag = "🔍 Deep" if c_meta.get("is_deep_scrape") else ""
+            with st.expander(f"**{c.config_name}** ({c.ingestion_type}) {deep_flag}"):
+                with st.form(f"edit_config_{c.id}"):
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    new_endpoint = col1.text_input("Endpoint", value=c.endpoint_url or "", key=f"ep_{c.id}")
+                    new_method = col2.selectbox("Method", ["GET", "POST"], index=0 if (c.http_method or "GET") == "GET" else 1, key=f"m_{c.id}")
+                    new_type = col3.selectbox("Type", ["SCRAPE", "API"], index=0 if c.ingestion_type == "SCRAPE" else 1, key=f"t_{c.id}")
+                    new_instr = st.text_area("LLM Instruction", value=c_meta.get("llm_instruction", ""), key=f"instr_{c.id}")
+                    new_deep = st.checkbox("Enable Deep Scrape", value=c_meta.get("is_deep_scrape", False), key=f"deep_{c.id}")
+                    
+                    if st.form_submit_button("💾 Save Changes"):
+                        c.endpoint_url = new_endpoint
+                        c.http_method = new_method
+                        c.ingestion_type = new_type
+                        new_meta = dict(c_meta)
+                        new_meta["llm_instruction"] = new_instr
+                        new_meta["is_deep_scrape"] = new_deep
+                        c.metadata_json = new_meta
+                        db.commit()
+                        st.success(f"Updated config: {c.config_name}")
+                        st.rerun()
     else:
         st.info("No configs yet.")
 
