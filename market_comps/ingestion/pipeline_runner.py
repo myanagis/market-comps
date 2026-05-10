@@ -94,7 +94,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
             for i, c in enumerate(companies_raw):
                 if not isinstance(c, dict):
                     continue
-                profile_path = c.get("profile_path", "")
+                profile_path = c.get("profile_path") or c.get("detail_page_path") or ""
                 if not profile_path:
                     deep_logs.append({"company": c.get("name"), "status": "no_profile_path"})
                     continue
