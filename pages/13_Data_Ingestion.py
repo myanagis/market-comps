@@ -166,6 +166,15 @@ with tab3:
                 "Error": j.error_message
             })
         st.dataframe(pd.DataFrame(job_data), use_container_width=True, hide_index=True)
+        
+        # Allow user to view full extract for a job
+        job_ids = [j.id for j in recent_jobs]
+        selected_job_id = st.selectbox("View full extract for Job ID:", options=["-- Select a Job --"] + job_ids)
+        if selected_job_id != "-- Select a Job --":
+            selected_job = next((j for j in recent_jobs if j.id == selected_job_id), None)
+            if selected_job and selected_job.job_logs_json:
+                st.write(f"**Full Extract Logs (Job {selected_job_id})**")
+                st.json(selected_job.job_logs_json)
             
     st.divider()
     st.subheader("Recent Raw Entities (Reconciliation Log)")
