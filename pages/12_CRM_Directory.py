@@ -24,11 +24,31 @@ def display_orgs(orgs):
     st.caption(f"Showing {len(orgs)} organizations")
     for org in orgs:
         with st.expander(f"**{org.name}**", expanded=False):
-            st.write(f"**Domain:** {org.primary_domain} | **City:** {org.city}")
+            # Basic info
+            cols = []
+            if org.primary_domain:
+                cols.append(f"**Domain:** {org.primary_domain}")
+            if org.website_url:
+                cols.append(f"**Website:** {org.website_url}")
+            if org.linkedin_url:
+                cols.append(f"**LinkedIn:** {org.linkedin_url}")
+            if org.city:
+                cols.append(f"**City:** {org.city}")
+            st.write(" | ".join(cols) if cols else "No details")
+            
+            if org.description:
+                st.write(f"_{org.description}_")
             
             if org.company_profile:
                 st.caption("COMPANY PROFILE")
-                st.write(f"- Industry: {org.company_profile.industry} | Stage: {org.company_profile.company_stage}")
+                profile_parts = []
+                if org.company_profile.industry:
+                    profile_parts.append(f"Industry: {org.company_profile.industry}")
+                if org.company_profile.company_stage:
+                    profile_parts.append(f"Stage: {org.company_profile.company_stage}")
+                if org.company_profile.founded_year:
+                    profile_parts.append(f"Founded: {org.company_profile.founded_year}")
+                st.write(f"- {' | '.join(profile_parts)}" if profile_parts else "- No profile details")
                 
             if org.investor_profile:
                 st.caption("INVESTOR PROFILE")
@@ -43,6 +63,32 @@ def display_orgs(orgs):
                 st.caption("PROGRAMS")
                 for prog in org.program_profiles:
                     st.write(f"- 🚀 **{prog.program_name}** ({prog.program_type})")
+
+            # Program Cohort Memberships
+            if org.program_memberships:
+                st.caption("PROGRAM MEMBERSHIPS")
+                for m in org.program_memberships:
+                    if m.cohort:
+                        st.write(f"- 🎯 **{m.cohort.program.program_name}** — {m.cohort.cohort_name}")
+                    else:
+                        st.write(f"- 🎯 (unlinked membership)")
+
+            # People / Roles
+            if org.roles:
+                st.caption("PEOPLE")
+                for role in org.roles:
+                    person = role.person
+                    if person:
+                        name = person.full_name or f"{person.first_name} {person.last_name}"
+                        parts = [f"**{name}**"]
+                        if role.title:
+                            parts.append(role.title)
+                        if person.linkedin_url:
+                            parts.append(f"[LinkedIn]({person.linkedin_url})")
+                        emails = [e.email for e in person.emails] if person.emails else []
+                        if emails:
+                            parts.append(f"📧 {', '.join(emails)}")
+                        st.write(f"- 👤 {' — '.join(parts)}")
 
             # Show audit trail
             audit = db.query(EntityAuditTrail).filter_by(
@@ -61,6 +107,8 @@ def get_org_query(org_type, search_text):
         joinedload(Organization.investor_profile),
         joinedload(Organization.fund_profiles),
         joinedload(Organization.program_profiles),
+        joinedload(Organization.program_memberships),
+        joinedload(Organization.roles),
     ).filter(Organization.organization_type == org_type)
     
     if search_text:
