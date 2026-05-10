@@ -186,9 +186,17 @@ with tab3:
                 elif u.person_id:
                     person_statuses.append(f"{u.update_action} (Person {u.person_id})")
                     
+            payload = e.raw_payload_json or {}
+            founders = payload.get("founders", [])
+            founder_names = [f"{f.get('first_name', '')} {f.get('last_name', '')}" for f in founders]
+            
             data.append({
                 "Job ID": e.ingestion_job_id,
                 "Raw Name": e.raw_name,
+                "Industry": payload.get("industry", "N/A"),
+                "Founded": payload.get("founded_year", "N/A"),
+                "Founders": ", ".join(founder_names) if founder_names else "N/A",
+                "Description": payload.get("description", "N/A"),
                 "Matched Org ID": e.matched_organization_id,
                 "Organization Action": org_status,
                 "Person Actions": ", ".join(person_statuses) if person_statuses else "N/A",
