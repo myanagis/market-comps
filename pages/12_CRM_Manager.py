@@ -108,14 +108,32 @@ if entity_type == "Company":
                 st.error("Name and Domain are required.")
             else:
                 try:
-                    org = Organization(name=name, normalized_name=name.lower(), primary_domain=domain, city=city, description=desc, organization_type="COMPANY")
-                    db.add(org)
+                    org = db.query(Organization).filter_by(primary_domain=domain).first()
+                    action_str = "updated" if org else "created"
+                    
+                    if org:
+                        org.name = name
+                        org.normalized_name = name.lower()
+                        org.city = city
+                        if desc: org.description = desc
+                        org.organization_type = "COMPANY"
+                    else:
+                        org = Organization(name=name, normalized_name=name.lower(), primary_domain=domain, city=city, description=desc, organization_type="COMPANY")
+                        db.add(org)
+                        
                     db.flush() # get ID
                     
-                    profile = CompanyProfile(organization_id=org.id, founded_year=founded, industry=industry, company_stage=stage)
-                    db.add(profile)
+                    profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+                    if profile:
+                        if founded: profile.founded_year = founded
+                        if industry: profile.industry = industry
+                        if stage: profile.company_stage = stage
+                    else:
+                        profile = CompanyProfile(organization_id=org.id, founded_year=founded, industry=industry, company_stage=stage)
+                        db.add(profile)
+                        
                     db.commit()
-                    st.success(f"Successfully created company: {name}!")
+                    st.success(f"Successfully {action_str} company: {name}!")
                 except Exception as e:
                     db.rollback()
                     st.error(f"Error saving to DB: {str(e)}")
@@ -140,14 +158,31 @@ elif entity_type == "Investor":
                 st.error("Name and Domain are required.")
             else:
                 try:
-                    org = Organization(name=name, normalized_name=name.lower(), primary_domain=domain, city=city, description=desc, organization_type="INVESTOR")
-                    db.add(org)
+                    org = db.query(Organization).filter_by(primary_domain=domain).first()
+                    action_str = "updated" if org else "created"
+                    
+                    if org:
+                        org.name = name
+                        org.normalized_name = name.lower()
+                        org.city = city
+                        if desc: org.description = desc
+                        org.organization_type = "INVESTOR"
+                    else:
+                        org = Organization(name=name, normalized_name=name.lower(), primary_domain=domain, city=city, description=desc, organization_type="INVESTOR")
+                        db.add(org)
+                        
                     db.flush()
                     
-                    profile = InvestorProfile(organization_id=org.id, investor_type=inv_type, preferred_stage=pref_stage)
-                    db.add(profile)
+                    profile = db.query(InvestorProfile).filter_by(organization_id=org.id).first()
+                    if profile:
+                        if inv_type: profile.investor_type = inv_type
+                        if pref_stage: profile.preferred_stage = pref_stage
+                    else:
+                        profile = InvestorProfile(organization_id=org.id, investor_type=inv_type, preferred_stage=pref_stage)
+                        db.add(profile)
+                        
                     db.commit()
-                    st.success(f"Successfully created investor: {name}!")
+                    st.success(f"Successfully {action_str} investor: {name}!")
                 except Exception as e:
                     db.rollback()
                     st.error(f"Error saving to DB: {str(e)}")
@@ -168,10 +203,20 @@ elif entity_type == "Person":
             else:
                 try:
                     full_name = f"{first_name} {last_name}"
-                    p = Person(first_name=first_name, last_name=last_name, full_name=full_name, linkedin_url=linkedin, city=city, bio=bio)
-                    db.add(p)
+                    p = db.query(Person).filter_by(first_name=first_name, last_name=last_name).first()
+                    action_str = "updated" if p else "created"
+                    
+                    if p:
+                        p.full_name = full_name
+                        if linkedin: p.linkedin_url = linkedin
+                        if city: p.city = city
+                        if bio: p.bio = bio
+                    else:
+                        p = Person(first_name=first_name, last_name=last_name, full_name=full_name, linkedin_url=linkedin, city=city, bio=bio)
+                        db.add(p)
+                        
                     db.commit()
-                    st.success(f"Successfully created person: {full_name}!")
+                    st.success(f"Successfully {action_str} person: {full_name}!")
                 except Exception as e:
                     db.rollback()
                     st.error(f"Error saving to DB: {str(e)}")
