@@ -78,10 +78,22 @@ def fetch_page_text(url: str) -> str:
 
 
 def strip_html(html: str) -> str:
-    """Remove script/style tags and return clean text."""
+    """Remove script/style tags, preserve link hrefs inline, and return clean text.
+    
+    Converts <a href="/companies/acme">Acme</a> into:
+        Acme [link: /companies/acme]
+    so the LLM can see navigable URLs even after HTML is stripped.
+    """
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style"]):
         tag.extract()
+    
+    # Inline <a> hrefs so they survive get_text()
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag["href"]
+        link_text = a_tag.get_text(strip=True)
+        a_tag.replace_with(f"{link_text} [link: {href}]")
+    
     return soup.get_text(separator="\n", strip=True)
 
 
