@@ -176,8 +176,12 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
 
 
 def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str, detail: dict):
-    """Merge deep-scraped profile detail into the matching ExtractedEntity's payload."""
-    from market_comps.db.models import ExtractedEntity
+    """Merge deep-scraped profile detail into the matching ExtractedEntity's payload.
+    
+    Also creates ExtractedEntity (PERSON) and ExtractedRelationship (FOUNDER_OF)
+    records for any founders discovered in the profile detail.
+    """
+    from market_comps.db.models import ExtractedEntity, ExtractedRelationship
 
     if not detail or not company_name:
         return
@@ -197,4 +201,41 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
             payload[key] = detail[key]
 
     entity.extracted_payload_json = payload
+    db.flush()
+
+    # Create PERSON entities + FOUNDER_OF relationships for newly discovered founders
+    founders = detail.get("founders", [])
+    for f in founders:
+        if not isinstance(f, dict):
+            continue
+        fname = f.get("first_name", "")
+        lname = f.get("last_name", "")
+        if not fname or not lname:
+            continue
+
+        person_entity = ExtractedEntity(
+            pipeline_run_id=run.id,
+            extracted_data_raw_id=entity.extracted_data_raw_id,
+            entity_type="PERSON",
+            raw_name=f"{fname} {lname}",
+            normalized_name=f"{fname} {lname}".lower(),
+            extracted_payload_json=f,
+            created_at=datetime.utcnow()
+        )
+        db.add(person_entity)
+        db.flush()
+
+        rel = ExtractedRelationship(
+            pipeline_run_id=run.id,
+            extracted_data_raw_id=entity.extracted_data_raw_id,
+            relationship_type="FOUNDER_OF",
+            source_extracted_entity_id=person_entity.id,
+            source_entity_type="PERSON",
+            target_extracted_entity_id=entity.id,
+            target_entity_type="ORGANIZATION",
+            relationship_payload_json={"title": f.get("title", "Founder")},
+            created_at=datetime.utcnow()
+        )
+        db.add(rel)
+
     db.flush()
