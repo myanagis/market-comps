@@ -92,13 +92,24 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                 model="google/gemini-2.5-flash"
             )
             
-            companies = parsed.get("companies", [])
+            if isinstance(parsed, list):
+                companies = parsed
+            elif isinstance(parsed, dict):
+                companies = parsed.get("companies", [])
+            else:
+                companies = []
+                
             for c in companies:
+                if not isinstance(c, dict):
+                    continue
+                    
+                name = c.get("name") or "Unknown"
+                
                 entity = RawEntity(
                     ingestion_job_id=job.id,
                     entity_type="ORGANIZATION",
-                    raw_name=c.get("name"),
-                    normalized_name=c.get("name", "").lower(),
+                    raw_name=name,
+                    normalized_name=name.lower(),
                     source_url=url, # Use the URL we scraped as the source
                     raw_payload_json=c,
                     detected_at=datetime.utcnow()
