@@ -17,3 +17,5 @@ pymupdf
 sqlalchemy
 alembic
 psycopg2-binary
+beautifulsoup4
+html2text

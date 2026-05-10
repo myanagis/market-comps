@@ -19,6 +19,7 @@ pg = st.navigation({
     "Apps": [
         st.Page("pages/11_CT_Business_Registry.py", title="CT Business Registry", icon="🏢"),
         st.Page("pages/12_CRM_Manager.py", title="CRM Manager", icon="🗄️"),
+        st.Page("pages/13_Data_Ingestion.py", title="Data Ingestion", icon="📡"),
     ],
     "Tools (Beta)":
     [
