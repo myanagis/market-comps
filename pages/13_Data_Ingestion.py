@@ -150,8 +150,22 @@ with tab3:
     st.subheader("Recent Jobs")
     recent_jobs = db.query(IngestionJob).order_by(IngestionJob.started_at.desc()).limit(10).all()
     if recent_jobs:
+        job_data = []
         for j in recent_jobs:
-            st.write(f"**Job {j.id}** ({j.job_status}) | Config: {j.ingestion_config_id} | Created {j.records_created} records | {j.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            job_data.append({
+                "Job ID": j.id,
+                "Config ID": j.ingestion_config_id,
+                "Status": j.job_status,
+                "Triggered By": j.triggered_by,
+                "Started At": j.started_at.strftime('%Y-%m-%d %H:%M:%S') if j.started_at else None,
+                "Completed At": j.completed_at.strftime('%Y-%m-%d %H:%M:%S') if j.completed_at else None,
+                "Processed": j.records_processed,
+                "Created": j.records_created,
+                "Updated": j.records_updated,
+                "Failed": j.records_failed,
+                "Error": j.error_message
+            })
+        st.dataframe(pd.DataFrame(job_data), use_container_width=True, hide_index=True)
             
     st.divider()
     st.subheader("Recent Raw Entities (Reconciliation Log)")
