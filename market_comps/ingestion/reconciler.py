@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from market_comps.db.models import (
-    Organization, CompanyProfile, Person, PersonOrganizationRole,
+    Organization, CompanyProfile, InvestorProfile, Person, PersonOrganizationRole,
     PersonEmail, ProgramMembership, ProgramCohort,
     ExtractedEntity, ExtractedRelationship,
     PipelineRun, EntityAuditTrail
@@ -67,8 +67,13 @@ def reconcile_organization(
     db: Session,
     extracted_entity: ExtractedEntity,
     run: PipelineRun,
+    org_type: str = "COMPANY",
 ) -> Organization:
-    """Find or create an Organization + CompanyProfile from an extracted entity.
+    """Find or create an Organization + profile from an extracted entity.
+
+    org_type determines the organization_type and which profile to create:
+        COMPANY → CompanyProfile
+        INVESTOR → InvestorProfile
 
     Returns the Organization.
     """
@@ -117,7 +122,7 @@ def reconcile_organization(
             website_url=company_url,
             description=payload.get("description"),
             linkedin_url=payload.get("linkedin_url"),
-            organization_type="COMPANY"
+            organization_type=org_type
         )
         db.add(org)
         db.flush()
@@ -126,15 +131,25 @@ def reconcile_organization(
 
     db.flush()
 
-    # Upsert CompanyProfile
-    profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
-    if not profile:
-        profile = CompanyProfile(organization_id=org.id)
-        db.add(profile)
-    if payload.get("industry") and not profile.industry:
-        profile.industry = payload["industry"]
-    if payload.get("founded_year") and not profile.founded_year:
-        profile.founded_year = payload["founded_year"]
+    # Upsert profile based on org_type
+    if org_type == "INVESTOR":
+        inv_profile = db.query(InvestorProfile).filter_by(organization_id=org.id).first()
+        if not inv_profile:
+            inv_profile = InvestorProfile(
+                organization_id=org.id,
+                investor_type=payload.get("investor_type"),
+                preferred_stage=payload.get("preferred_stage")
+            )
+            db.add(inv_profile)
+    else:
+        profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+        if not profile:
+            profile = CompanyProfile(organization_id=org.id)
+            db.add(profile)
+        if payload.get("industry") and not profile.industry:
+            profile.industry = payload["industry"]
+        if payload.get("founded_year") and not profile.founded_year:
+            profile.founded_year = payload["founded_year"]
 
     # Link extracted entity back to the matched org
     extracted_entity.matched_organization_id = org.id
@@ -294,13 +309,17 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     orgs_updated = 0
     people_created = 0
 
+    # Determine org_type from pipeline type
+    pipeline_type = pipeline.pipeline_type if pipeline else ""
+    org_type = "INVESTOR" if pipeline_type == "INVESTOR_PORTFOLIO_PAGE" else "COMPANY"
+
     # Step 1: Reconcile entities
     entities = db.query(ExtractedEntity).filter_by(pipeline_run_id=run.id).all()
     for entity in entities:
         if entity.entity_type == "ORGANIZATION":
-            org = reconcile_organization(db, entity, run)
+            org = reconcile_organization(db, entity, run, org_type=org_type)
             if org:
-                orgs_created += 1  # Simplified — includes updates too
+                orgs_created += 1
         elif entity.entity_type == "PERSON":
             person = reconcile_person(db, entity, run)
             if person:
