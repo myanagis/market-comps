@@ -207,6 +207,14 @@ with tab3:
                                             st.caption("Page Text Preview (first 2000 chars):")
                                             st.code(d["profile_text_preview"], language=None)
                         
+                        # Source content preview (the text the LLM received for Pass 1)
+                        with st.expander("📄 Source Content (Pass 1 input to LLM)"):
+                            if job.source_content:
+                                st.code(job.source_content[:5000], language=None)
+                                st.caption(f"Total length: {len(job.source_content)} characters (showing first 5000)")
+                            else:
+                                st.warning("No source_content saved for this job.")
+                        
                         st.caption("LLM Usage:")
                         st.json(job.job_logs_json.get("llm_usage", {}))
                     else:
