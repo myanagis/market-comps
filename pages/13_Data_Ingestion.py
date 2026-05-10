@@ -146,8 +146,24 @@ with tab3:
                     st.error(f"Job failed: {job.error_message}")
                     
     st.divider()
-    st.subheader("Recent Jobs")
-    recent_jobs = db.query(IngestionJob).order_by(IngestionJob.started_at.desc()).limit(10).all()
-    if recent_jobs:
-        for j in recent_jobs:
-            st.write(f"**Job {j.id}** ({j.job_status}) | Config: {j.ingestion_config_id} | Created {j.records_created} records | {j.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Recent Jobs")
+        recent_jobs = db.query(IngestionJob).order_by(IngestionJob.started_at.desc()).limit(10).all()
+        if recent_jobs:
+            for j in recent_jobs:
+                st.write(f"**Job {j.id}** ({j.job_status}) | Config: {j.ingestion_config_id} | Created {j.records_created} records | {j.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                
+    with col2:
+        st.subheader("Recent Raw Entities")
+        recent_entities = db.query(RawEntity).order_by(RawEntity.detected_at.desc()).limit(15).all()
+        if recent_entities:
+            for e in recent_entities:
+                with st.expander(f"**{e.raw_name}** (Job {e.ingestion_job_id})"):
+                    st.caption(f"Detected: {e.detected_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                    st.write(f"**Matched Org ID:** {e.matched_organization_id}")
+                    st.write(f"**Source URL:** {e.source_url}")
+                    st.json(e.raw_payload_json)
+        else:
+            st.info("No raw entities extracted yet.")
