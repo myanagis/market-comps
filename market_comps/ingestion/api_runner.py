@@ -53,9 +53,19 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
         
         if config.ingestion_type == "SCRAPE":
             from playwright.sync_api import sync_playwright
+            import os
             
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                try:
+                    browser = p.chromium.launch(headless=True)
+                except Exception as e:
+                    if "Executable doesn't exist" in str(e) or "playwright install" in str(e):
+                        logger.warning("Playwright browser not found. Installing chromium...")
+                        os.system("playwright install chromium")
+                        browser = p.chromium.launch(headless=True)
+                    else:
+                        raise e
+                        
                 page = browser.new_page()
                 page.goto(url, wait_until="networkidle")
                 
