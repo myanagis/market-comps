@@ -26,7 +26,8 @@ if search_query:
         joinedload(Organization.company_profile),
         joinedload(Organization.investor_profile),
         joinedload(Organization.fund_profiles),
-        joinedload(Organization.program_profiles)
+        joinedload(Organization.program_profiles),
+        joinedload(Organization.updates)
     ).filter(
         or_(
             Organization.name.ilike(query),
@@ -70,6 +71,11 @@ if search_query:
                     st.caption("PROGRAMS")
                     for prog in org.program_profiles:
                         st.write(f"- 🚀 **{prog.program_name}** ({prog.program_type})")
+
+                if org.updates:
+                    st.caption("RECENT UPDATES (Reconciliation Log)")
+                    for upd in sorted(org.updates, key=lambda x: x.created_at, reverse=True)[:10]:
+                        st.write(f"- [{upd.created_at.strftime('%Y-%m-%d %H:%M')}] **{upd.update_action}** via {upd.source} (Reason: {upd.update_reason})")
 
     if people:
         st.subheader(f"👤 People ({len(people)})")

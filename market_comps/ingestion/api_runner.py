@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 
 from sqlalchemy.orm import Session
 from market_comps.db.models import (
-    IngestionConfig, IngestionJob, RawEntity,
+    IngestionConfig, IngestionJob, RawEntity, EntityUpdate,
     Organization, CompanyProfile, Person, PersonOrganizationRole, 
     ProgramProfile, ProgramMembership
 )
@@ -140,9 +140,12 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                     # Fallback to normalized name
                     org = db.query(Organization).filter_by(normalized_name=name.lower()).first()
                 
+                is_new_org = False
                 if org:
-                    if c.get("description"): org.description = c.get("description")
+                    if c.get("description") and org.description != c.get("description"):
+                        org.description = c.get("description")
                 else:
+                    is_new_org = True
                     org = Organization(
                         name=name,
                         normalized_name=name.lower(),
@@ -172,6 +175,28 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                     detected_at=datetime.utcnow()
                 )
                 db.add(entity)
+                db.flush() # Ensure entity.id is available
+                
+                # RECONCILIATION 2.5: EntityUpdate logging
+                if is_new_org:
+                    db.add(EntityUpdate(
+                        organization_id=org.id,
+                        raw_entity_id=entity.id,
+                        ingestion_job_id=job.id,
+                        update_reason="AUTO_CREATE",
+                        update_action="CREATE",
+                        source=ds.source_name
+                    ))
+                else:
+                    # Log that it was matched
+                    db.add(EntityUpdate(
+                        organization_id=org.id,
+                        raw_entity_id=entity.id,
+                        ingestion_job_id=job.id,
+                        update_reason="SOURCE_PRIORITY",
+                        update_action="UPDATE",
+                        source=ds.source_name
+                    ))
                 
                 # RECONCILIATION 3: Founders -> Person + PersonOrganizationRole
                 founders = c.get("founders", [])
@@ -184,7 +209,9 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                     person = db.query(Person).filter_by(first_name=fname, last_name=lname).first()
                     full_name = f"{fname} {lname}"
                     
+                    is_new_person = False
                     if not person:
+                        is_new_person = True
                         person = Person(
                             first_name=fname,
                             last_name=lname,
@@ -198,6 +225,16 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                             
                     db.flush()
                     
+                    if is_new_person:
+                        db.add(EntityUpdate(
+                            person_id=person.id,
+                            raw_entity_id=entity.id,
+                            ingestion_job_id=job.id,
+                            update_reason="AUTO_CREATE",
+                            update_action="CREATE",
+                            source=ds.source_name
+                        ))
+                        
                     # Link founder to company
                     role = db.query(PersonOrganizationRole).filter_by(person_id=person.id, organization_id=org.id).first()
                     if not role:
