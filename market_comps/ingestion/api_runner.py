@@ -88,7 +88,8 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
             parsed, usage = llm.structured_output(
                 prompt=prompt,
                 json_schema=schema,
-                system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly."
+                system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
+                model="google/gemini-2.5-flash"
             )
             
             companies = parsed.get("companies", [])
