@@ -10,7 +10,6 @@ st.title("🗄️ CRM Manager")
 # Get database session
 try:
     db = next(get_db())
-    st.write(f"DEBUG: Active Database URL -> {db.bind.url}")
 except Exception as e:
     st.error(f"Database connection failed. Did you configure secrets.toml? Error: {e}")
     st.stop()
