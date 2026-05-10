@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 from market_comps.db.models import (
     IngestionConfig, IngestionJob, RawEntity, EntityUpdate,
     Organization, CompanyProfile, Person, PersonOrganizationRole,
-    PersonEmail, ProgramProfile, ProgramMembership
+    PersonEmail, ProgramProfile, ProgramCohort, ProgramMembership
 )
 from market_comps.llm_client import LLMClient
 
@@ -450,17 +450,18 @@ def reconcile_people(
 
 
 def reconcile_program_tags(db: Session, program_tags: list[str], org: Organization):
-    """Link an Organization to matching ProgramProfiles via ProgramMembership."""
+    """Link an Organization to matching ProgramCohorts via ProgramMembership."""
     for tag in program_tags:
-        prog = db.query(ProgramProfile).filter_by(program_name=tag).first()
-        if prog:
+        # Try matching against cohort names first
+        cohort = db.query(ProgramCohort).filter_by(cohort_name=tag).first()
+        if cohort:
             membership = db.query(ProgramMembership).filter_by(
-                company_organization_id=org.id, program_id=prog.id
+                company_organization_id=org.id, program_cohort_id=cohort.id
             ).first()
             if not membership:
                 db.add(ProgramMembership(
                     company_organization_id=org.id,
-                    program_id=prog.id,
+                    program_cohort_id=cohort.id,
                     is_active=True
                 ))
 
@@ -647,16 +648,16 @@ def _run_scrape_pipeline(
         org, _ = reconcile_company(db, c, job, ds.source_name, url)
         records_created += 1
         
-        # --- STEP 5b: Auto-link to a configured Program ---
-        link_program_id = meta.get("link_program_id")
-        if link_program_id:
+        # --- STEP 5b: Auto-link to a configured Program Cohort ---
+        link_cohort_id = meta.get("link_program_id")  # Now points to a cohort ID
+        if link_cohort_id:
             existing = db.query(ProgramMembership).filter_by(
-                company_organization_id=org.id, program_id=link_program_id
+                company_organization_id=org.id, program_cohort_id=link_cohort_id
             ).first()
             if not existing:
                 db.add(ProgramMembership(
                     company_organization_id=org.id,
-                    program_id=link_program_id,
+                    program_cohort_id=link_cohort_id,
                     is_active=True
                 ))
 

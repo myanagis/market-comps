@@ -89,7 +89,21 @@ class ProgramProfile(Base, TimestampMixin):
     description = Column(String)
 
     parent_organization = relationship("Organization", back_populates="program_profiles")
-    memberships = relationship("ProgramMembership", back_populates="program")
+    cohorts = relationship("ProgramCohort", back_populates="program")
+
+
+class ProgramCohort(Base, TimestampMixin):
+    __tablename__ = 'program_cohorts'
+
+    id = Column(Integer, primary_key=True, index=True)
+    program_id = Column(Integer, ForeignKey('program_profiles.id'), nullable=False)
+    cohort_name = Column(String, nullable=False)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    description = Column(String, nullable=True)
+
+    program = relationship("ProgramProfile", back_populates="cohorts")
+    memberships = relationship("ProgramMembership", back_populates="cohort")
 
 
 class ProgramMembership(Base, TimestampMixin):
@@ -97,7 +111,7 @@ class ProgramMembership(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     company_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
-    program_id = Column(Integer, ForeignKey('program_profiles.id'), nullable=False)
+    program_cohort_id = Column(Integer, ForeignKey('program_cohorts.id'), nullable=True)
     
     is_active = Column(Boolean, default=True)
     start_date = Column(DateTime, nullable=True)
@@ -106,7 +120,7 @@ class ProgramMembership(Base, TimestampMixin):
     metadata_json = Column(JSON)
 
     company = relationship("Organization", back_populates="program_memberships")
-    program = relationship("ProgramProfile", back_populates="memberships")
+    cohort = relationship("ProgramCohort", back_populates="memberships")
 
 
 class Person(Base, TimestampMixin):

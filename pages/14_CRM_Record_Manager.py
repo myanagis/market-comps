@@ -1,6 +1,6 @@
 import streamlit as st
 from market_comps.db.session import get_db
-from market_comps.db.models import Organization, CompanyProfile, InvestorProfile, Person, FundProfile, ProgramProfile
+from market_comps.db.models import Organization, CompanyProfile, InvestorProfile, Person, FundProfile, ProgramProfile, ProgramCohort
 
 st.set_page_config(page_title="CRM Record Manager", page_icon="📝", layout="wide")
 st.title("📝 CRM Record Manager")
@@ -14,7 +14,7 @@ except Exception as e:
     st.stop()
 
 # --- DATA ENTRY ---
-entity_type = st.selectbox("Record Type", ["Company", "Investor", "Person", "Fund", "Program"])
+entity_type = st.selectbox("Record Type", ["Company", "Investor", "Person", "Fund", "Program", "Cohort"])
 
 if entity_type == "Company":
     with st.form("company_form", clear_on_submit=True):
@@ -187,6 +187,37 @@ elif entity_type in ["Fund", "Program"]:
                         db.add(record)
                         db.commit()
                         st.success(f"Successfully created {entity_type}: {name}!")
+                    except Exception as e:
+                        db.rollback()
+                        st.error(f"Error saving to DB: {str(e)}")
+
+elif entity_type == "Cohort":
+    programs = db.query(ProgramProfile).all()
+    if not programs:
+        st.warning("You must create a Program first before creating a Cohort.")
+    else:
+        prog_options = {p.id: f"{p.parent_organization.name} — {p.program_name}" for p in programs}
+        with st.form("cohort_form", clear_on_submit=True):
+            program_id = st.selectbox("Parent Program *", options=list(prog_options.keys()), format_func=lambda x: prog_options[x])
+            
+            col1, col2 = st.columns(2)
+            cohort_name = col1.text_input("Cohort Name * (e.g. Cohort 6, Winter 2025)")
+            desc = st.text_area("Description")
+            
+            submitted = st.form_submit_button("Create Cohort")
+            if submitted:
+                if not cohort_name:
+                    st.error("Cohort Name is required.")
+                else:
+                    try:
+                        cohort = ProgramCohort(
+                            program_id=program_id,
+                            cohort_name=cohort_name,
+                            description=desc
+                        )
+                        db.add(cohort)
+                        db.commit()
+                        st.success(f"Successfully created cohort: {cohort_name}!")
                     except Exception as e:
                         db.rollback()
                         st.error(f"Error saving to DB: {str(e)}")

@@ -2,7 +2,7 @@ import streamlit as st
 import json
 from market_comps.db.session import get_db
 import pandas as pd
-from market_comps.db.models import DataSource, IngestionConfig, IngestionJob, RawEntity, EntityUpdate, ProgramProfile
+from market_comps.db.models import DataSource, IngestionConfig, IngestionJob, RawEntity, EntityUpdate, ProgramCohort
 from market_comps.ingestion.api_runner import run_ingestion_config
 
 st.set_page_config(page_title="Data Ingestion", page_icon="📡", layout="wide")
@@ -68,11 +68,11 @@ with tab2:
                 help="e.g. 'Extract all companies from this page, and tag with the program Speedrun Cohort 6'")
             is_deep_scrape = st.checkbox("Enable Deep Scrape (follows profile links for rich data)", help="Pass 1 extracts company profile URLs from the directory, Pass 2 visits each profile to extract firmographics.")
             
-            # Program linking
-            programs = db.query(ProgramProfile).all()
-            prog_opts = {0: "-- None --"}
-            prog_opts.update({p.id: p.program_name for p in programs})
-            link_program_id = st.selectbox("Link all extracted companies to Program", options=list(prog_opts.keys()), format_func=lambda x: prog_opts[x])
+            # Cohort linking
+            cohorts = db.query(ProgramCohort).all()
+            cohort_opts = {0: "-- None --"}
+            cohort_opts.update({ch.id: f"{ch.program.program_name} — {ch.cohort_name}" for ch in cohorts})
+            link_cohort_id = st.selectbox("Link all extracted companies to Cohort", options=list(cohort_opts.keys()), format_func=lambda x: cohort_opts[x])
             
             submitted = st.form_submit_button("Create Config")
             if submitted:
@@ -84,8 +84,8 @@ with tab2:
                         meta["llm_instruction"] = llm_instr
                     if is_deep_scrape:
                         meta["is_deep_scrape"] = True
-                    if link_program_id:
-                        meta["link_program_id"] = link_program_id
+                    if link_cohort_id:
+                        meta["link_program_id"] = link_cohort_id
                     
                     cfg = IngestionConfig(
                         data_source_id=source_id,
@@ -116,14 +116,14 @@ with tab2:
                     new_instr = st.text_area("LLM Instruction", value=c_meta.get("llm_instruction", ""), key=f"instr_{c.id}")
                     new_deep = st.checkbox("Enable Deep Scrape", value=c_meta.get("is_deep_scrape", False), key=f"deep_{c.id}")
                     
-                    # Program linking
-                    programs = db.query(ProgramProfile).all()
-                    prog_opts = {0: "-- None --"}
-                    prog_opts.update({p.id: p.program_name for p in programs})
-                    current_prog = c_meta.get("link_program_id", 0)
-                    prog_keys = list(prog_opts.keys())
-                    prog_index = prog_keys.index(current_prog) if current_prog in prog_keys else 0
-                    new_prog = st.selectbox("Link to Program", options=prog_keys, format_func=lambda x: prog_opts[x], index=prog_index, key=f"prog_{c.id}")
+                    # Cohort linking
+                    cohorts = db.query(ProgramCohort).all()
+                    cohort_opts = {0: "-- None --"}
+                    cohort_opts.update({ch.id: f"{ch.program.program_name} — {ch.cohort_name}" for ch in cohorts})
+                    current_cohort = c_meta.get("link_program_id", 0)
+                    cohort_keys = list(cohort_opts.keys())
+                    cohort_index = cohort_keys.index(current_cohort) if current_cohort in cohort_keys else 0
+                    new_cohort = st.selectbox("Link to Cohort", options=cohort_keys, format_func=lambda x: cohort_opts[x], index=cohort_index, key=f"cohort_{c.id}")
                     
                     if st.form_submit_button("💾 Save Changes"):
                         c.endpoint_url = new_endpoint
@@ -132,7 +132,7 @@ with tab2:
                         new_meta = dict(c_meta)
                         new_meta["llm_instruction"] = new_instr
                         new_meta["is_deep_scrape"] = new_deep
-                        new_meta["link_program_id"] = new_prog if new_prog else None
+                        new_meta["link_program_id"] = new_cohort if new_cohort else None
                         c.metadata_json = new_meta
                         db.commit()
                         st.success(f"Updated config: {c.config_name}")
