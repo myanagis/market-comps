@@ -66,6 +66,7 @@ with tab2:
             
             llm_instr = st.text_area("LLM Instruction (For SCRAPE type only)", 
                 help="e.g. 'Extract all companies from this page, and tag with the program Speedrun Cohort 6'")
+            is_deep_scrape = st.checkbox("Enable Deep Scrape (follows profile links for rich data)", help="Pass 1 extracts company profile URLs from the directory, Pass 2 visits each profile to extract firmographics.")
             
             submitted = st.form_submit_button("Create Config")
             if submitted:
@@ -75,6 +76,8 @@ with tab2:
                     meta = {}
                     if llm_instr:
                         meta["llm_instruction"] = llm_instr
+                    if is_deep_scrape:
+                        meta["is_deep_scrape"] = True
                     
                     cfg = IngestionConfig(
                         data_source_id=source_id,
