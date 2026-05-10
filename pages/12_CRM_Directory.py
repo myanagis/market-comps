@@ -1,6 +1,6 @@
 import streamlit as st
 from market_comps.db.session import get_db
-from market_comps.db.models import Organization, Person
+from market_comps.db.models import Organization, Person, EntityAuditTrail
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
 
@@ -44,10 +44,16 @@ def display_orgs(orgs):
                 for prog in org.program_profiles:
                     st.write(f"- 🚀 **{prog.program_name}** ({prog.program_type})")
 
-            if org.updates:
-                st.caption("RECENT UPDATES (Reconciliation Log)")
-                for upd in sorted(org.updates, key=lambda x: x.created_at, reverse=True)[:5]:
-                    st.write(f"- [{upd.created_at.strftime('%Y-%m-%d %H:%M')}] **{upd.update_action}** via {upd.source} (Reason: {upd.update_reason})")
+            # Show audit trail
+            audit = db.query(EntityAuditTrail).filter_by(
+                entity_type="ORGANIZATION", entity_id=str(org.id)
+            ).order_by(EntityAuditTrail.created_at.desc()).limit(5).all()
+            if audit:
+                st.caption("RECENT CHANGES (Audit Trail)")
+                for a in audit:
+                    field_str = f" ({a.field_name})" if a.field_name else ""
+                    value_str = f": {a.old_value} → {a.new_value}" if a.field_name else ""
+                    st.write(f"- [{a.created_at.strftime('%Y-%m-%d %H:%M')}] **{a.audit_action}**{field_str}{value_str} — {a.reason or ''}")
 
 def get_org_query(org_type, search_text):
     q = db.query(Organization).options(
@@ -55,7 +61,6 @@ def get_org_query(org_type, search_text):
         joinedload(Organization.investor_profile),
         joinedload(Organization.fund_profiles),
         joinedload(Organization.program_profiles),
-        joinedload(Organization.updates)
     ).filter(Organization.organization_type == org_type)
     
     if search_text:

@@ -1,0 +1,275 @@
+"""
+Extractor — LLM Entity Extraction
+===================================
+Uses OpenRouter LLM to extract structured entities and relationships from raw text.
+Writes to extracted_entities and extracted_relationships tables.
+No CRM reconciliation — that's the reconciler's job.
+
+Each pipeline_type has its own schema and prompt tuned for the expected page format.
+"""
+
+import logging
+from datetime import datetime
+
+from sqlalchemy.orm import Session
+
+from market_comps.db.models import (
+    PipelineRun, ExtractedDataRaw, ExtractedEntity, ExtractedRelationship
+)
+from market_comps.llm_client import LLMClient
+
+logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# LLM SCHEMAS — one per pipeline type
+# ==============================================================================
+
+PROGRAM_COMPANY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "companies": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "url": {"type": "string", "description": "Company's own website URL"},
+                    "description": {"type": "string"},
+                    "industry": {"type": "string"},
+                    "founded_year": {"type": "integer"},
+                    "linkedin_url": {"type": "string"},
+                    "profile_path": {"type": "string", "description": "Relative URL path to the company's detail page, e.g. /companies/acme"},
+                    "founders": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "first_name": {"type": "string"},
+                                "last_name": {"type": "string"},
+                                "title": {"type": "string"},
+                                "linkedin_url": {"type": "string"},
+                                "email": {"type": "string"}
+                            },
+                            "required": ["first_name", "last_name"]
+                        }
+                    }
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    "required": ["companies"]
+}
+
+PROFILE_DETAIL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "url": {"type": "string", "description": "The company's own website URL"},
+        "description": {"type": "string"},
+        "industry": {"type": "string"},
+        "founded_year": {"type": "integer"},
+        "linkedin_url": {"type": "string"},
+        "founders": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "first_name": {"type": "string"},
+                    "last_name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "linkedin_url": {"type": "string"},
+                    "email": {"type": "string"}
+                },
+                "required": ["first_name", "last_name"]
+            }
+        }
+    },
+    "required": ["name"]
+}
+
+SCHEMA_BY_TYPE = {
+    "PROGRAM_COMPANY_PAGE": PROGRAM_COMPANY_SCHEMA,
+    "INVESTOR_PORTFOLIO_PAGE": PROGRAM_COMPANY_SCHEMA,  # Same structure, different prompt
+    "API_COMPANY_SEARCH": PROGRAM_COMPANY_SCHEMA,
+}
+
+
+# ==============================================================================
+# EXTRACTION FUNCTIONS
+# ==============================================================================
+
+def extract_entities_from_text(
+    db: Session,
+    run: PipelineRun,
+    raw_data: ExtractedDataRaw,
+    pipeline_type: str,
+    config: dict
+) -> dict:
+    """Use the LLM to extract structured entities from raw text content.
+
+    Writes ExtractedEntity and ExtractedRelationship records to the DB.
+
+    Returns a dict with extraction stats and the raw LLM response.
+    """
+    text = raw_data.raw_content or ""
+    custom_instruction = config.get("llm_instruction", "")
+    schema = SCHEMA_BY_TYPE.get(pipeline_type, PROGRAM_COMPANY_SCHEMA)
+
+    # Build the prompt
+    prompt = _build_extraction_prompt(pipeline_type, custom_instruction)
+    prompt += f"\n\nTEXT:\n{text[:50000]}"
+
+    # Call the LLM
+    llm = LLMClient()
+    parsed, usage = llm.structured_output(
+        prompt=prompt,
+        json_schema=schema,
+        system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
+        model="google/gemini-2.5-flash"
+    )
+
+    # Normalize response
+    companies = _normalize_companies(parsed)
+
+    # Write ExtractedEntity + ExtractedRelationship records
+    entity_count = 0
+    relationship_count = 0
+
+    for c in companies:
+        if not isinstance(c, dict):
+            continue
+
+        # Create ORGANIZATION entity
+        org_entity = ExtractedEntity(
+            pipeline_run_id=run.id,
+            extracted_data_raw_id=raw_data.id,
+            entity_type="ORGANIZATION",
+            raw_name=c.get("name", "Unknown"),
+            normalized_name=(c.get("name") or "unknown").lower(),
+            extracted_payload_json=c,
+            created_at=datetime.utcnow()
+        )
+        db.add(org_entity)
+        db.flush()
+        entity_count += 1
+
+        # Create PERSON entities + FOUNDER_OF relationships
+        founders = c.get("founders", [])
+        for f in founders:
+            if not isinstance(f, dict):
+                continue
+            fname = f.get("first_name", "")
+            lname = f.get("last_name", "")
+            if not fname or not lname:
+                continue
+
+            person_entity = ExtractedEntity(
+                pipeline_run_id=run.id,
+                extracted_data_raw_id=raw_data.id,
+                entity_type="PERSON",
+                raw_name=f"{fname} {lname}",
+                normalized_name=f"{fname} {lname}".lower(),
+                extracted_payload_json=f,
+                created_at=datetime.utcnow()
+            )
+            db.add(person_entity)
+            db.flush()
+            entity_count += 1
+
+            # Create FOUNDER_OF relationship (person → org)
+            rel = ExtractedRelationship(
+                pipeline_run_id=run.id,
+                extracted_data_raw_id=raw_data.id,
+                relationship_type="FOUNDER_OF",
+                source_extracted_entity_id=person_entity.id,
+                source_entity_type="PERSON",
+                target_extracted_entity_id=org_entity.id,
+                target_entity_type="ORGANIZATION",
+                relationship_payload_json={"title": f.get("title", "Founder")},
+                created_at=datetime.utcnow()
+            )
+            db.add(rel)
+            relationship_count += 1
+
+    db.flush()
+
+    return {
+        "entities_extracted": entity_count,
+        "relationships_extracted": relationship_count,
+        "llm_usage": usage.model_dump(),
+        "companies_raw": companies
+    }
+
+
+def extract_profile_detail(
+    db: Session,
+    run: PipelineRun,
+    raw_data: ExtractedDataRaw,
+    company_name: str
+) -> dict:
+    """Deep scrape Pass 2: extract rich firmographics from a single profile page.
+
+    Returns the extracted detail dict and LLM usage.
+    """
+    text = raw_data.raw_content or ""
+
+    prompt = (
+        f"Extract detailed company information for '{company_name}' from this profile page. "
+        "Include the company's own website URL, industry, founded year, LinkedIn URL, "
+        "and all founders with their names, titles, LinkedIn URLs, and emails.\n"
+        f"\nTEXT:\n{text[:30000]}"
+    )
+
+    llm = LLMClient()
+    parsed, usage = llm.structured_output(
+        prompt=prompt,
+        json_schema=PROFILE_DETAIL_SCHEMA,
+        system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
+        model="google/gemini-2.5-flash"
+    )
+
+    detail = parsed if isinstance(parsed, dict) else {}
+    return {"detail": detail, "llm_usage": usage.model_dump()}
+
+
+# ==============================================================================
+# HELPERS
+# ==============================================================================
+
+def _build_extraction_prompt(pipeline_type: str, custom_instruction: str) -> str:
+    """Build a pipeline-type-specific extraction prompt."""
+    base_prompts = {
+        "PROGRAM_COMPANY_PAGE": (
+            "Extract all companies from this accelerator/program directory page. "
+            "For each company, extract its name, website URL, LinkedIn URL, description, "
+            "industry, founded year, and the relative link path to its detail page if available. "
+            "Also extract all founders/team members with their names, titles, LinkedIn URLs, and emails."
+        ),
+        "INVESTOR_PORTFOLIO_PAGE": (
+            "Extract all portfolio companies from this investor's portfolio page. "
+            "For each company, extract its name, website URL, LinkedIn URL, description, "
+            "industry, founded year, and any detail page link. "
+            "Also extract founders/team members with their names, titles, LinkedIn URLs, and emails."
+        ),
+        "API_COMPANY_SEARCH": (
+            "Extract all companies from the following data. "
+            "For each company, extract its name, website URL, LinkedIn URL, description, "
+            "industry, and founded year."
+        ),
+    }
+
+    prompt = base_prompts.get(pipeline_type, base_prompts["PROGRAM_COMPANY_PAGE"])
+    if custom_instruction:
+        prompt += f"\n\nADDITIONAL INSTRUCTIONS: {custom_instruction}"
+    return prompt
+
+
+def _normalize_companies(parsed) -> list[dict]:
+    """Safely extract a list of company dicts from LLM output."""
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        return parsed.get("companies", [])
+    return []

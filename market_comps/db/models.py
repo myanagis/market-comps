@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON, Float, Text
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -9,6 +9,11 @@ Base = declarative_base()
 class TimestampMixin:
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ==============================================================================
+# CORE CRM MODELS
+# ==============================================================================
 
 class Organization(Base, TimestampMixin):
     __tablename__ = 'organizations'
@@ -32,9 +37,8 @@ class Organization(Base, TimestampMixin):
     fund_profiles = relationship("FundProfile", back_populates="parent_organization")
     program_profiles = relationship("ProgramProfile", back_populates="parent_organization")
     roles = relationship("PersonOrganizationRole", back_populates="organization")
-    raw_entities = relationship("RawEntity", back_populates="organization")
-    updates = relationship("EntityUpdate", back_populates="organization")
     program_memberships = relationship("ProgramMembership", back_populates="company")
+    pipelines = relationship("Pipeline", back_populates="organization")
 
 
 class CompanyProfile(Base, TimestampMixin):
@@ -69,7 +73,7 @@ class FundProfile(Base, TimestampMixin):
     fund_name = Column(String, nullable=False)
     fund_type = Column(String)
     vintage_year = Column(Integer)
-    fund_size = Column(String) # E.g., "100M" or maybe store as numeric? The prompt didn't specify numeric, String is safe.
+    fund_size = Column(String)
     status = Column(String)
     description = Column(String)
 
@@ -139,8 +143,6 @@ class Person(Base, TimestampMixin):
 
     emails = relationship("PersonEmail", back_populates="person")
     roles = relationship("PersonOrganizationRole", back_populates="person")
-    raw_entities = relationship("RawEntity", back_populates="person")
-    updates = relationship("EntityUpdate", back_populates="person")
 
 
 class PersonEmail(Base, TimestampMixin):
@@ -179,103 +181,175 @@ class PersonOrganizationRole(Base, TimestampMixin):
     organization = relationship("Organization", back_populates="roles")
 
 
-class DataSource(Base, TimestampMixin):
-    __tablename__ = 'data_sources'
+# ==============================================================================
+# PIPELINE FRAMEWORK
+# ==============================================================================
+
+class Pipeline(Base, TimestampMixin):
+    __tablename__ = 'pipelines'
 
     id = Column(Integer, primary_key=True, index=True)
-    source_name = Column(String, nullable=False)
-    source_type = Column(String)
-    base_url = Column(String)
-    description = Column(String)
-    auth_type = Column(String)
-    is_active = Column(Boolean, default=True)
+    pipeline_name = Column(String, nullable=False)
+    pipeline_type = Column(String, nullable=False)
+    # Pipeline types:
+    #   PROGRAM_COMPANY_PAGE — extracts companies, people/emails, creates program memberships + people-company links
+    #   INVESTOR_PORTFOLIO_PAGE — extracts companies, creates investment relationships + people-company links
+    #   API_COMPANY_SEARCH — extracts companies from an API response
+    #   CSV_IMPORT — imports entities from a CSV file
+    #   INVESTOR_PEOPLE_PAGE — extracts people/emails from an investor's team page
 
-    configs = relationship("IngestionConfig", back_populates="data_source")
+    source_url = Column(String)
 
-class IngestionConfig(Base, TimestampMixin):
-    __tablename__ = 'ingestion_configs'
+    # Context links — what org/program/cohort/fund does this pipeline relate to?
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True)
+    program_id = Column(Integer, ForeignKey('program_profiles.id'), nullable=True)
+    program_cohort_id = Column(Integer, ForeignKey('program_cohorts.id'), nullable=True)
+    fund_id = Column(Integer, ForeignKey('fund_profiles.id'), nullable=True)
 
-    id = Column(Integer, primary_key=True, index=True)
-    data_source_id = Column(Integer, ForeignKey('data_sources.id'), nullable=False)
-    config_name = Column(String, nullable=False)
-    ingestion_type = Column(String) # API, SCRAPE, IMPORT
-    endpoint_url = Column(String)
-    http_method = Column(String)
-    query_params_json = Column(JSON)
-    headers_json = Column(JSON)
-    schedule_type = Column(String) # MANUAL, DAILY, WEEKLY, EVERY_OTHER_WEEK, MONTHLY
-    next_run_at = Column(DateTime)
-    last_run_at = Column(DateTime)
-    last_success_at = Column(DateTime)
+    schedule_type = Column(String) # MANUAL, DAILY, WEEKLY, MONTHLY
+    next_run_at = Column(DateTime, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime, nullable=True)
+
     is_active = Column(Boolean, default=True)
     owner_user_id = Column(String, nullable=True)
-    metadata_json = Column(JSON)
 
-    data_source = relationship("DataSource", back_populates="configs")
-    jobs = relationship("IngestionJob", back_populates="config")
+    config_json = Column(JSON) # deep_scrape, llm_instruction, headers, etc.
 
-class IngestionJob(Base, TimestampMixin):
-    __tablename__ = 'ingestion_jobs'
+    organization = relationship("Organization", back_populates="pipelines")
+    program = relationship("ProgramProfile")
+    program_cohort = relationship("ProgramCohort")
+    fund = relationship("FundProfile")
+    runs = relationship("PipelineRun", back_populates="pipeline", order_by="PipelineRun.started_at.desc()")
+
+
+class PipelineRun(Base):
+    __tablename__ = 'pipeline_runs'
 
     id = Column(Integer, primary_key=True, index=True)
-    ingestion_config_id = Column(Integer, ForeignKey('ingestion_configs.id'), nullable=False)
-    job_status = Column(String)
-    triggered_by = Column(String) # SCEDHULER, MANUAL, ETC.
+    pipeline_id = Column(Integer, ForeignKey('pipelines.id'), nullable=False)
+
+    run_status = Column(String) # RUNNING, SUCCESS, FAILED
+
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
+
     records_processed = Column(Integer, default=0)
     records_created = Column(Integer, default=0)
     records_updated = Column(Integer, default=0)
     records_failed = Column(Integer, default=0)
+
     error_message = Column(String)
-    source_content = Column(String) # Raw scraped text/HTML content
-    job_logs_json = Column(JSON)
-    metadata_json = Column(JSON)
+    logs_json = Column(JSON)
 
-    config = relationship("IngestionConfig", back_populates="jobs")
-    raw_entities = relationship("RawEntity", back_populates="job")
-    entity_updates = relationship("EntityUpdate", back_populates="job")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-class RawEntity(Base, TimestampMixin):
-    __tablename__ = 'raw_entities'
+    pipeline = relationship("Pipeline", back_populates="runs")
+    extracted_data = relationship("ExtractedDataRaw", back_populates="pipeline_run")
+    extracted_entities = relationship("ExtractedEntity", back_populates="pipeline_run")
+    extracted_relationships = relationship("ExtractedRelationship", back_populates="pipeline_run")
+
+
+class ExtractedDataRaw(Base):
+    __tablename__ = 'extracted_data_raw'
 
     id = Column(Integer, primary_key=True, index=True)
-    ingestion_job_id = Column(Integer, ForeignKey('ingestion_jobs.id'), nullable=False)
-    entity_type = Column(String) # ORGANIZATION, PERSON
-    
-    matched_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
-    matched_person_id = Column(UUID(as_uuid=True), ForeignKey('people.id'), nullable=True, index=True)
-    
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+
+    data_type = Column(String) # PAGE_TEXT, API_JSON, CSV_ROW, PROFILE_TEXT
+    source_url = Column(String)
+    raw_content = Column(Text)
+    content_hash = Column(String, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    pipeline_run = relationship("PipelineRun", back_populates="extracted_data")
+    extracted_entities = relationship("ExtractedEntity", back_populates="extracted_data_raw")
+    extracted_relationships = relationship("ExtractedRelationship", back_populates="extracted_data_raw")
+
+
+class ExtractedEntity(Base):
+    __tablename__ = 'extracted_entities'
+
+    id = Column(Integer, primary_key=True, index=True)
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+    extracted_data_raw_id = Column(Integer, ForeignKey('extracted_data_raw.id'), nullable=True)
+
+    entity_type = Column(String) # ORGANIZATION, PERSON, PROGRAM_COHORT
     raw_name = Column(String)
     normalized_name = Column(String, index=True)
-    source_url = Column(String)
-    source_identifier = Column(String)
-    raw_payload_json = Column(JSON)
-    detected_at = Column(DateTime)
 
-    job = relationship("IngestionJob", back_populates="raw_entities")
-    organization = relationship("Organization", back_populates="raw_entities")
-    person = relationship("Person", back_populates="raw_entities")
-    updates = relationship("EntityUpdate", back_populates="raw_entity")
+    extracted_payload_json = Column(JSON)
 
-class EntityUpdate(Base, TimestampMixin):
-    __tablename__ = 'entity_updates'
+    matched_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    matched_person_id = Column(UUID(as_uuid=True), ForeignKey('people.id'), nullable=True, index=True)
+
+    extraction_confidence = Column(Float, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    pipeline_run = relationship("PipelineRun", back_populates="extracted_entities")
+    extracted_data_raw = relationship("ExtractedDataRaw", back_populates="extracted_entities")
+    matched_organization = relationship("Organization")
+    matched_person = relationship("Person")
+
+
+class ExtractedRelationship(Base):
+    __tablename__ = 'extracted_relationships'
 
     id = Column(Integer, primary_key=True, index=True)
-    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
-    person_id = Column(UUID(as_uuid=True), ForeignKey('people.id'), nullable=True, index=True)
-    raw_entity_id = Column(Integer, ForeignKey('raw_entities.id'), nullable=False, index=True)
-    ingestion_job_id = Column(Integer, ForeignKey('ingestion_jobs.id'), nullable=True)
-    
-    update_reason = Column(String) # FILL_EMPTY, SOURCE_PRIORITY, MANUAL_OVERRIDE, AUTO_CREATE
-    field_name = Column(String)
-    old_value = Column(String)
-    new_value = Column(String)
-    update_action = Column(String)
-    update_status = Column(String)
-    source = Column(String)
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+    extracted_data_raw_id = Column(Integer, ForeignKey('extracted_data_raw.id'), nullable=True)
 
-    organization = relationship("Organization", back_populates="updates")
-    person = relationship("Person", back_populates="updates")
-    raw_entity = relationship("RawEntity", back_populates="updates")
-    job = relationship("IngestionJob", back_populates="entity_updates")
+    relationship_type = Column(String) # FOUNDER_OF, EMPLOYEE_OF, MEMBER_OF_COHORT, INVESTED_IN
+
+    source_extracted_entity_id = Column(Integer, ForeignKey('extracted_entities.id'), nullable=True)
+    source_entity_type = Column(String, nullable=True) # ORGANIZATION, PERSON
+    source_entity_id = Column(String, nullable=True) # Polymorphic — int or UUID as string
+
+    target_extracted_entity_id = Column(Integer, ForeignKey('extracted_entities.id'), nullable=True)
+    target_entity_type = Column(String, nullable=True)
+    target_entity_id = Column(String, nullable=True)
+
+    relationship_payload_json = Column(JSON)
+    extraction_confidence = Column(Float, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    pipeline_run = relationship("PipelineRun", back_populates="extracted_relationships")
+    extracted_data_raw = relationship("ExtractedDataRaw", back_populates="extracted_relationships")
+    source_extracted_entity = relationship("ExtractedEntity", foreign_keys=[source_extracted_entity_id])
+    target_extracted_entity = relationship("ExtractedEntity", foreign_keys=[target_extracted_entity_id])
+
+
+# ==============================================================================
+# AUDIT TRAIL
+# ==============================================================================
+
+class EntityAuditTrail(Base):
+    __tablename__ = 'entity_audit_trail'
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    entity_type = Column(String, nullable=False) # ORGANIZATION, PERSON, COMPANY_PROFILE, etc.
+    entity_id = Column(String, nullable=False, index=True) # Polymorphic — int or UUID as string
+
+    audit_action = Column(String, nullable=False) # CREATE, UPDATE, DELETE
+
+    field_name = Column(String, nullable=True)
+    old_value = Column(String, nullable=True)
+    new_value = Column(String, nullable=True)
+
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=True)
+    extracted_entity_id = Column(Integer, ForeignKey('extracted_entities.id'), nullable=True)
+    extracted_relationship_id = Column(Integer, ForeignKey('extracted_relationships.id'), nullable=True)
+
+    changed_by_user_id = Column(String, nullable=True)
+    reason = Column(String, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    pipeline_run = relationship("PipelineRun")
+    extracted_entity = relationship("ExtractedEntity")
+    extracted_relationship = relationship("ExtractedRelationship")

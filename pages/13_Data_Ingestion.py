@@ -2,11 +2,14 @@ import streamlit as st
 import json
 from market_comps.db.session import get_db
 import pandas as pd
-from market_comps.db.models import DataSource, IngestionConfig, IngestionJob, RawEntity, EntityUpdate, ProgramCohort
-from market_comps.ingestion.api_runner import run_ingestion_config
+from market_comps.db.models import (
+    Pipeline, PipelineRun, ExtractedDataRaw, ExtractedEntity, ExtractedRelationship,
+    Organization, ProgramProfile, ProgramCohort, FundProfile
+)
+from market_comps.ingestion.pipeline_runner import run_pipeline
 
 st.set_page_config(page_title="Data Ingestion", page_icon="📡", layout="wide")
-st.title("📡 Data Ingestion & Scrape Jobs")
+st.title("📡 Data Ingestion Pipelines")
 
 try:
     db = next(get_db())
@@ -14,283 +17,225 @@ except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
 
-tab1, tab2, tab3 = st.tabs(["Data Sources", "Ingestion Configs", "Run Manual Job"])
+PIPELINE_TYPES = [
+    "PROGRAM_COMPANY_PAGE",
+    "INVESTOR_PORTFOLIO_PAGE",
+    "API_COMPANY_SEARCH",
+    "CSV_IMPORT",
+    "INVESTOR_PEOPLE_PAGE",
+]
 
-# --- TAB 1: DATA SOURCES ---
+tab1, tab2, tab3, tab4 = st.tabs(["Pipelines", "Run Pipeline", "Pipeline Runs", "Extracted Data"])
+
+# --- TAB 1: PIPELINES ---
 with tab1:
-    st.subheader("Add Data Source")
-    with st.form("new_source_form", clear_on_submit=True):
+    st.subheader("Create Pipeline")
+    with st.form("new_pipeline_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        name = col1.text_input("Source Name (e.g. A16Z Speedrun, Crunchbase API) *")
-        base_url = col2.text_input("Base URL (e.g. https://a16z.com)")
-        desc = st.text_area("Description")
+        pipeline_name = col1.text_input("Pipeline Name *")
+        pipeline_type = col2.selectbox("Pipeline Type", PIPELINE_TYPES)
+        source_url = st.text_input("Source URL *")
         
-        submitted = st.form_submit_button("Create Data Source")
-        if submitted:
-            if not name:
-                st.error("Name is required.")
+        # Context links
+        st.caption("Optional: Link this pipeline to an existing CRM record")
+        col3, col4 = st.columns(2)
+        
+        orgs = db.query(Organization).order_by(Organization.name).all()
+        org_opts = {0: "-- None --"}
+        org_opts.update({o.id: o.name for o in orgs})
+        org_id = col3.selectbox("Organization", options=list(org_opts.keys()), format_func=lambda x: org_opts[x])
+        
+        cohorts = db.query(ProgramCohort).all()
+        cohort_opts = {0: "-- None --"}
+        cohort_opts.update({ch.id: f"{ch.program.program_name} — {ch.cohort_name}" for ch in cohorts})
+        cohort_id = col4.selectbox("Program Cohort", options=list(cohort_opts.keys()), format_func=lambda x: cohort_opts[x])
+        
+        # Config
+        llm_instr = st.text_area("LLM Instruction (optional)", help="Custom instructions for the LLM extraction step")
+        deep_scrape = st.checkbox("Enable Deep Scrape", help="Visit each company's profile page for rich data")
+        
+        if st.form_submit_button("Create Pipeline"):
+            if not pipeline_name or not source_url:
+                st.error("Pipeline Name and Source URL are required.")
             else:
-                ds = DataSource(source_name=name, base_url=base_url, description=desc)
-                db.add(ds)
+                config = {}
+                if llm_instr:
+                    config["llm_instruction"] = llm_instr
+                if deep_scrape:
+                    config["deep_scrape"] = True
+                    
+                p = Pipeline(
+                    pipeline_name=pipeline_name,
+                    pipeline_type=pipeline_type,
+                    source_url=source_url,
+                    organization_id=org_id if org_id else None,
+                    program_cohort_id=cohort_id if cohort_id else None,
+                    schedule_type="MANUAL",
+                    is_active=True,
+                    config_json=config
+                )
+                db.add(p)
                 db.commit()
-                st.success(f"Created Data Source: {name}")
+                st.success(f"Created pipeline: {pipeline_name}")
                 st.rerun()
-                
+    
     st.divider()
-    st.subheader("Existing Data Sources")
-    sources = db.query(DataSource).all()
-    if sources:
-        for ds in sources:
-            with st.expander(f"**{ds.source_name}** ({ds.base_url})", expanded=False):
-                st.write(f"ID: {ds.id}")
-                st.write(f"Description: {ds.description}")
-    else:
-        st.info("No data sources configured yet.")
-
-# --- TAB 2: INGESTION CONFIGS ---
-with tab2:
-    st.subheader("Add Ingestion Config")
-    sources = db.query(DataSource).all()
-    if not sources:
-        st.warning("Create a Data Source first.")
-    else:
-        source_opts = {s.id: s.source_name for s in sources}
-        with st.form("new_config_form", clear_on_submit=True):
-            source_id = st.selectbox("Data Source", options=list(source_opts.keys()), format_func=lambda x: source_opts[x])
+    st.subheader("Existing Pipelines")
+    pipelines = db.query(Pipeline).order_by(Pipeline.created_at.desc()).all()
+    if pipelines:
+        for p in pipelines:
+            cfg = p.config_json or {}
+            deep_flag = "🔍" if cfg.get("deep_scrape") else ""
+            cohort_label = f" → {p.program_cohort.program.program_name} / {p.program_cohort.cohort_name}" if p.program_cohort else ""
             
-            col1, col2, col3 = st.columns([2, 1, 1])
-            config_name = col1.text_input("Config Name (e.g. Fetch Speedrun Cohort 6) *")
-            endpoint = col1.text_input("Endpoint URL / Path (e.g. /games-speedrun/)")
-            ingestion_type = col2.selectbox("Type", ["SCRAPE", "API"])
-            method = col3.selectbox("HTTP Method", ["GET", "POST"])
-            
-            llm_instr = st.text_area("LLM Instruction (For SCRAPE type only)", 
-                help="e.g. 'Extract all companies from this page, and tag with the program Speedrun Cohort 6'")
-            is_deep_scrape = st.checkbox("Enable Deep Scrape (follows profile links for rich data)", help="Pass 1 extracts company profile URLs from the directory, Pass 2 visits each profile to extract firmographics.")
-            
-            # Cohort linking
-            cohorts = db.query(ProgramCohort).all()
-            cohort_opts = {0: "-- None --"}
-            cohort_opts.update({ch.id: f"{ch.program.program_name} — {ch.cohort_name}" for ch in cohorts})
-            link_cohort_id = st.selectbox("Link all extracted companies to Cohort", options=list(cohort_opts.keys()), format_func=lambda x: cohort_opts[x])
-            
-            submitted = st.form_submit_button("Create Config")
-            if submitted:
-                if not config_name:
-                    st.error("Config Name is required.")
-                else:
-                    meta = {}
-                    if llm_instr:
-                        meta["llm_instruction"] = llm_instr
-                    if is_deep_scrape:
-                        meta["is_deep_scrape"] = True
-                    if link_cohort_id:
-                        meta["link_program_id"] = link_cohort_id
+            with st.expander(f"{deep_flag} **{p.pipeline_name}** ({p.pipeline_type}){cohort_label}"):
+                with st.form(f"edit_pipe_{p.id}"):
+                    col1, col2 = st.columns(2)
+                    new_name = col1.text_input("Name", value=p.pipeline_name, key=f"name_{p.id}")
+                    new_type = col2.selectbox("Type", PIPELINE_TYPES, index=PIPELINE_TYPES.index(p.pipeline_type) if p.pipeline_type in PIPELINE_TYPES else 0, key=f"type_{p.id}")
+                    new_url = st.text_input("Source URL", value=p.source_url or "", key=f"url_{p.id}")
                     
-                    cfg = IngestionConfig(
-                        data_source_id=source_id,
-                        config_name=config_name,
-                        ingestion_type=ingestion_type,
-                        endpoint_url=endpoint,
-                        http_method=method,
-                        metadata_json=meta
-                    )
-                    db.add(cfg)
-                    db.commit()
-                    st.success(f"Created Config: {config_name}")
-                    st.rerun()
+                    new_instr = st.text_area("LLM Instruction", value=cfg.get("llm_instruction", ""), key=f"instr_{p.id}")
+                    new_deep = st.checkbox("Deep Scrape", value=cfg.get("deep_scrape", False), key=f"deep_{p.id}")
                     
-    st.divider()
-    st.subheader("Existing Configs")
-    configs = db.query(IngestionConfig).all()
-    if configs:
-        for c in configs:
-            c_meta = c.metadata_json or {}
-            deep_flag = "🔍 Deep" if c_meta.get("is_deep_scrape") else ""
-            with st.expander(f"**{c.config_name}** ({c.ingestion_type}) {deep_flag}"):
-                with st.form(f"edit_config_{c.id}"):
-                    col1, col2, col3 = st.columns([2, 1, 1])
-                    new_endpoint = col1.text_input("Endpoint", value=c.endpoint_url or "", key=f"ep_{c.id}")
-                    new_method = col2.selectbox("Method", ["GET", "POST"], index=0 if (c.http_method or "GET") == "GET" else 1, key=f"m_{c.id}")
-                    new_type = col3.selectbox("Type", ["SCRAPE", "API"], index=0 if c.ingestion_type == "SCRAPE" else 1, key=f"t_{c.id}")
-                    new_instr = st.text_area("LLM Instruction", value=c_meta.get("llm_instruction", ""), key=f"instr_{c.id}")
-                    new_deep = st.checkbox("Enable Deep Scrape", value=c_meta.get("is_deep_scrape", False), key=f"deep_{c.id}")
+                    # Cohort selector
+                    cohort_opts_edit = {0: "-- None --"}
+                    cohort_opts_edit.update({ch.id: f"{ch.program.program_name} — {ch.cohort_name}" for ch in cohorts})
+                    current_cohort = p.program_cohort_id or 0
+                    cohort_keys = list(cohort_opts_edit.keys())
+                    cohort_idx = cohort_keys.index(current_cohort) if current_cohort in cohort_keys else 0
+                    new_cohort = st.selectbox("Cohort", options=cohort_keys, format_func=lambda x: cohort_opts_edit[x], index=cohort_idx, key=f"cohort_{p.id}")
                     
-                    # Cohort linking
-                    cohorts = db.query(ProgramCohort).all()
-                    cohort_opts = {0: "-- None --"}
-                    cohort_opts.update({ch.id: f"{ch.program.program_name} — {ch.cohort_name}" for ch in cohorts})
-                    current_cohort = c_meta.get("link_program_id", 0)
-                    cohort_keys = list(cohort_opts.keys())
-                    cohort_index = cohort_keys.index(current_cohort) if current_cohort in cohort_keys else 0
-                    new_cohort = st.selectbox("Link to Cohort", options=cohort_keys, format_func=lambda x: cohort_opts[x], index=cohort_index, key=f"cohort_{c.id}")
-                    
-                    if st.form_submit_button("💾 Save Changes"):
-                        c.endpoint_url = new_endpoint
-                        c.http_method = new_method
-                        c.ingestion_type = new_type
-                        new_meta = dict(c_meta)
-                        new_meta["llm_instruction"] = new_instr
-                        new_meta["is_deep_scrape"] = new_deep
-                        new_meta["link_program_id"] = new_cohort if new_cohort else None
-                        c.metadata_json = new_meta
+                    if st.form_submit_button("💾 Save"):
+                        p.pipeline_name = new_name
+                        p.pipeline_type = new_type
+                        p.source_url = new_url
+                        p.program_cohort_id = new_cohort if new_cohort else None
+                        new_cfg = dict(cfg)
+                        new_cfg["llm_instruction"] = new_instr
+                        new_cfg["deep_scrape"] = new_deep
+                        p.config_json = new_cfg
                         db.commit()
-                        st.success(f"Updated config: {c.config_name}")
+                        st.success(f"Updated: {new_name}")
                         st.rerun()
     else:
-        st.info("No configs yet.")
+        st.info("No pipelines yet.")
 
-# --- TAB 3: RUN MANUAL JOB ---
-with tab3:
-    st.subheader("Run Ingestion Job")
-    configs = db.query(IngestionConfig).all()
-    if not configs:
-        st.warning("Create an Ingestion Config first.")
+
+# --- TAB 2: RUN PIPELINE ---
+with tab2:
+    st.subheader("Run Pipeline")
+    pipelines = db.query(Pipeline).filter_by(is_active=True).all()
+    if not pipelines:
+        st.warning("Create a pipeline first.")
     else:
-        cfg_opts = {c.id: f"{c.data_source.source_name} - {c.config_name} ({c.ingestion_type})" for c in configs}
-        selected_cfg = st.selectbox("Select Config to Run", options=list(cfg_opts.keys()), format_func=lambda x: cfg_opts[x])
+        pipe_opts = {p.id: f"{p.pipeline_name} ({p.pipeline_type})" for p in pipelines}
+        selected_id = st.selectbox("Select Pipeline", options=list(pipe_opts.keys()), format_func=lambda x: pipe_opts[x])
         
-        if st.button("▶️ Run Job", type="primary"):
-            with st.spinner("Executing API / Scrape Job..."):
-                job = run_ingestion_config(db, selected_cfg, triggered_by="MANUAL")
+        if st.button("▶️ Run Pipeline", type="primary"):
+            with st.spinner("Running pipeline..."):
+                run = run_pipeline(db, selected_id)
                 
-                if job.job_status == "SUCCESS":
-                    st.success(f"Job completed successfully! Extracted {job.records_processed} records.")
+                if run.run_status == "SUCCESS":
+                    st.success(f"Pipeline completed! Processed {run.records_processed} entities, created {run.records_created} records.")
                     
-                    st.subheader("Job Logs / Extracted Entities")
+                    # Show extracted entities
+                    entities = db.query(ExtractedEntity).filter_by(pipeline_run_id=run.id).all()
+                    if entities:
+                        st.subheader("Extracted Entities")
+                        for e in entities:
+                            payload = e.extracted_payload_json or {}
+                            icon = "🏢" if e.entity_type == "ORGANIZATION" else "👤"
+                            with st.expander(f"{icon} {e.raw_name} ({e.entity_type})"):
+                                st.json(payload)
                     
-                    if job.job_logs_json and "extracted_companies" in job.job_logs_json:
-                        companies = job.job_logs_json["extracted_companies"]
-                        for c in companies:
-                            status = c.get("__reconciliation_status__", "UNKNOWN")
-                            icon = "🆕" if status == "CREATED_ORG" else ("🔄" if status == "UPDATED_ORG" else "⏺️")
-                            
-                            with st.expander(f"{icon} **{c.get('name', 'Unknown')}** ({status})"):
-                                st.write(f"**URL:** {c.get('url', '')} | **LinkedIn:** {c.get('linkedin_url', '')}")
-                                st.write(f"**Industry:** {c.get('industry', 'N/A')} | **Founded:** {c.get('founded_year', 'N/A')}")
-                                st.write(f"**Description:** {c.get('description', '')}")
-                                
-                                founders = c.get("founders", [])
-                                if founders:
-                                    st.write("**Founders:**")
-                                    for f in founders:
-                                        st.write(f"- {f.get('first_name', '')} {f.get('last_name', '')} ({f.get('title', 'Founder')}) — {f.get('email', '')}")
-                                        
-                        st.divider()
-                        
-                        # Deep Scrape Debug Section
-                        if job.job_logs_json.get("mode") == "deep_scrape":
-                            with st.expander("🔍 Deep Scrape Debug Log", expanded=True):
-                                st.caption(f"Mode: **{job.job_logs_json.get('mode')}**")
-                                
-                                # Show Pass 1 stubs
-                                pass1_stubs = job.job_logs_json.get("pass1_stubs", [])
-                                st.write(f"**Pass 1 found {len(pass1_stubs)} stubs:**")
-                                for s in pass1_stubs:
-                                    st.write(f"- {s.get('name', '?')} → `{s.get('profile_path', 'NO PATH')}`")
-                                
-                                st.divider()
-                                
-                                # Show per-company debug
-                                debug_entries = job.job_logs_json.get("deep_scrape_debug", [])
-                                for d in debug_entries:
-                                    status_icon = "✅" if d.get("merged_keys") else ("⚠️" if d.get("error") else "➖")
-                                    with st.expander(f"{status_icon} {d.get('company', '?')}"):
-                                        st.write(f"**Profile URL:** `{d.get('profile_url', 'N/A')}`")
-                                        st.write(f"**Merged keys:** {d.get('merged_keys', [])}")
-                                        if d.get("error"):
-                                            st.error(f"Error: {d['error']}")
-                                        if d.get("llm_raw_response"):
-                                            st.caption("LLM Raw Response (Pass 2):")
-                                            st.json(d["llm_raw_response"])
-                                        if d.get("profile_text_preview"):
-                                            st.caption("Page Text Preview (first 2000 chars):")
-                                            st.code(d["profile_text_preview"], language=None)
-                        
-                        # Source content preview (the text the LLM received for Pass 1)
-                        with st.expander("📄 Source Content (Pass 1 input to LLM)"):
-                            if job.source_content:
-                                st.code(job.source_content[:5000], language=None)
-                                st.caption(f"Total length: {len(job.source_content)} characters (showing first 5000)")
-                            else:
-                                st.warning("No source_content saved for this job.")
-                        
-                        st.caption("LLM Usage:")
-                        st.json(job.job_logs_json.get("llm_usage", {}))
-                    else:
-                        st.json(job.job_logs_json)
-                    
+                    # Show logs
+                    if run.logs_json:
+                        with st.expander("📋 Pipeline Logs"):
+                            st.json(run.logs_json)
                 else:
-                    st.error(f"Job failed: {job.error_message}")
-                    
-    st.divider()
-    st.subheader("Recent Jobs")
-    recent_jobs = db.query(IngestionJob).order_by(IngestionJob.started_at.desc()).limit(10).all()
-    if recent_jobs:
-        job_data = []
-        for j in recent_jobs:
-            job_data.append({
-                "Job ID": j.id,
-                "Config ID": j.ingestion_config_id,
-                "Status": j.job_status,
-                "Triggered By": j.triggered_by,
-                "Started At": j.started_at.strftime('%Y-%m-%d %H:%M:%S') if j.started_at else None,
-                "Completed At": j.completed_at.strftime('%Y-%m-%d %H:%M:%S') if j.completed_at else None,
-                "Processed": j.records_processed,
-                "Created": j.records_created,
-                "Updated": j.records_updated,
-                "Failed": j.records_failed,
-                "Error": j.error_message
+                    st.error(f"Pipeline failed: {run.error_message}")
+
+
+# --- TAB 3: PIPELINE RUNS ---
+with tab3:
+    st.subheader("Recent Pipeline Runs")
+    runs = db.query(PipelineRun).order_by(PipelineRun.started_at.desc()).limit(20).all()
+    if runs:
+        run_data = []
+        for r in runs:
+            run_data.append({
+                "Run ID": r.id,
+                "Pipeline": r.pipeline.pipeline_name if r.pipeline else "?",
+                "Type": r.pipeline.pipeline_type if r.pipeline else "?",
+                "Status": r.run_status,
+                "Started": r.started_at,
+                "Completed": r.completed_at,
+                "Processed": r.records_processed,
+                "Created": r.records_created,
+                "Error": r.error_message or ""
             })
-        st.dataframe(pd.DataFrame(job_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(run_data), use_container_width=True, hide_index=True)
         
-        # Allow user to view full extract for a job
-        job_ids = [j.id for j in recent_jobs]
-        selected_job_id = st.selectbox("View full extract for Job ID:", options=["-- Select a Job --"] + job_ids)
-        if selected_job_id != "-- Select a Job --":
-            selected_job = next((j for j in recent_jobs if j.id == selected_job_id), None)
-            if selected_job and selected_job.job_logs_json:
-                st.write(f"**Full Extract Logs (Job {selected_job_id})**")
-                st.json(selected_job.job_logs_json)
-            
-    st.divider()
-    st.subheader("Recent Raw Entities (Reconciliation Log)")
-    recent_entities = db.query(RawEntity).order_by(RawEntity.detected_at.desc()).limit(50).all()
-    
-    if recent_entities:
-        data = []
-        for e in recent_entities:
-            # Check what actions the reconciliation engine took for this entity
-            updates = db.query(EntityUpdate).filter(EntityUpdate.raw_entity_id == e.id).all()
-            
-            org_status = "N/A"
-            person_statuses = []
-            
-            for u in updates:
-                if u.organization_id:
-                    org_status = f"{u.update_action} (Org {u.organization_id})"
-                elif u.person_id:
-                    person_statuses.append(f"{u.update_action} (Person {u.person_id})")
+        # Drill into a specific run
+        run_ids = [r.id for r in runs]
+        selected_run_id = st.selectbox("View run details", run_ids)
+        if selected_run_id:
+            selected_run = db.query(PipelineRun).filter_by(id=selected_run_id).first()
+            if selected_run and selected_run.logs_json:
+                with st.expander("📋 Run Logs", expanded=True):
+                    st.json(selected_run.logs_json)
                     
-            payload = e.raw_payload_json or {}
-            founders = payload.get("founders", [])
-            founder_names = [f"{f.get('first_name', '')} {f.get('last_name', '')}" for f in founders]
-            
-            data.append({
-                "Job ID": e.ingestion_job_id,
-                "Raw Name": e.raw_name,
-                "Industry": payload.get("industry", "N/A"),
-                "Founded": payload.get("founded_year", "N/A"),
-                "Founders": ", ".join(founder_names) if founder_names else "N/A",
-                "Description": payload.get("description", "N/A"),
-                "Matched Org ID": e.matched_organization_id,
-                "Organization Action": org_status,
-                "Person Actions": ", ".join(person_statuses) if person_statuses else "N/A",
-                "Detected At": e.detected_at.strftime('%Y-%m-%d %H:%M'),
-                "Source URL": e.source_url
-            })
-            
-        df = pd.DataFrame(data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+            # Show source content
+            raw_data = db.query(ExtractedDataRaw).filter_by(pipeline_run_id=selected_run_id).all()
+            if raw_data:
+                with st.expander(f"📄 Source Content ({len(raw_data)} pages)"):
+                    for rd in raw_data:
+                        st.caption(f"**{rd.data_type}** — {rd.source_url}")
+                        st.code((rd.raw_content or "")[:3000], language=None)
     else:
-        st.info("No raw entities extracted yet.")
+        st.info("No runs yet.")
+
+
+# --- TAB 4: EXTRACTED DATA ---
+with tab4:
+    st.subheader("Recent Extracted Entities")
+    entities = db.query(ExtractedEntity).order_by(ExtractedEntity.created_at.desc()).limit(50).all()
+    if entities:
+        entity_data = []
+        for e in entities:
+            payload = e.extracted_payload_json or {}
+            entity_data.append({
+                "Entity ID": e.id,
+                "Run ID": e.pipeline_run_id,
+                "Type": e.entity_type,
+                "Name": e.raw_name,
+                "Industry": payload.get("industry", ""),
+                "URL": payload.get("url", ""),
+                "LinkedIn": payload.get("linkedin_url", ""),
+                "Matched Org ID": e.matched_organization_id,
+                "Matched Person ID": str(e.matched_person_id) if e.matched_person_id else "",
+            })
+        st.dataframe(pd.DataFrame(entity_data), use_container_width=True, hide_index=True)
+    else:
+        st.info("No extracted entities yet.")
+    
+    st.divider()
+    st.subheader("Recent Extracted Relationships")
+    rels = db.query(ExtractedRelationship).order_by(ExtractedRelationship.created_at.desc()).limit(50).all()
+    if rels:
+        rel_data = []
+        for r in rels:
+            src_name = r.source_extracted_entity.raw_name if r.source_extracted_entity else "?"
+            tgt_name = r.target_extracted_entity.raw_name if r.target_extracted_entity else "?"
+            rel_data.append({
+                "Rel ID": r.id,
+                "Run ID": r.pipeline_run_id,
+                "Type": r.relationship_type,
+                "Source": src_name,
+                "Target": tgt_name,
+                "Payload": json.dumps(r.relationship_payload_json) if r.relationship_payload_json else "",
+            })
+        st.dataframe(pd.DataFrame(rel_data), use_container_width=True, hide_index=True)
+    else:
+        st.info("No extracted relationships yet.")
