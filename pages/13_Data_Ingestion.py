@@ -118,7 +118,29 @@ with tab3:
                     st.success(f"Job completed successfully! Extracted {job.records_processed} records.")
                     
                     st.subheader("Job Logs / Extracted Entities")
-                    st.json(job.job_logs_json)
+                    
+                    if job.job_logs_json and "extracted_companies" in job.job_logs_json:
+                        companies = job.job_logs_json["extracted_companies"]
+                        for c in companies:
+                            status = c.get("__reconciliation_status__", "UNKNOWN")
+                            icon = "🆕" if status == "CREATED_ORG" else ("🔄" if status == "UPDATED_ORG" else "⏺️")
+                            
+                            with st.expander(f"{icon} **{c.get('name', 'Unknown')}** ({status})"):
+                                st.write(f"**URL:** {c.get('url', '')} | **LinkedIn:** {c.get('linkedin_url', '')}")
+                                st.write(f"**Industry:** {c.get('industry', 'N/A')} | **Founded:** {c.get('founded_year', 'N/A')}")
+                                st.write(f"**Description:** {c.get('description', '')}")
+                                
+                                founders = c.get("founders", [])
+                                if founders:
+                                    st.write("**Founders:**")
+                                    for f in founders:
+                                        st.write(f"- {f.get('first_name', '')} {f.get('last_name', '')} ({f.get('title', 'Founder')}) — {f.get('email', '')}")
+                                        
+                        st.divider()
+                        st.caption("Raw Logs:")
+                        st.json(job.job_logs_json.get("llm_usage", {}))
+                    else:
+                        st.json(job.job_logs_json)
                     
                 else:
                     st.error(f"Job failed: {job.error_message}")

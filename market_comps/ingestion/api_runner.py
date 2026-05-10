@@ -52,8 +52,22 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
         records_created = 0
         
         if config.ingestion_type == "SCRAPE":
+            from playwright.sync_api import sync_playwright
+            
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto(url, wait_until="networkidle")
+                
+                # Scroll to bottom to trigger lazy loading
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(2000)
+                
+                html_content = page.content()
+                browser.close()
+                
             # Strip HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(html_content, "html.parser")
             for script in soup(["script", "style"]):
                 script.extract()
             text_content = soup.get_text(separator="\n", strip=True)
@@ -72,6 +86,9 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                                 "name": {"type": "string"},
                                 "url": {"type": "string"},
                                 "description": {"type": "string"},
+                                "industry": {"type": "string"},
+                                "founded_year": {"type": "integer"},
+                                "linkedin_url": {"type": "string"},
                                 "founders": {
                                     "type": "array",
                                     "items": {
@@ -79,7 +96,9 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                                         "properties": {
                                             "first_name": {"type": "string"},
                                             "last_name": {"type": "string"},
-                                            "linkedin_url": {"type": "string"}
+                                            "linkedin_url": {"type": "string"},
+                                            "title": {"type": "string"},
+                                            "email": {"type": "string"}
                                         },
                                         "required": ["first_name", "last_name"]
                                     }
@@ -144,6 +163,8 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                 if org:
                     if c.get("description") and org.description != c.get("description"):
                         org.description = c.get("description")
+                    if c.get("linkedin_url") and not org.linkedin_url:
+                        org.linkedin_url = c.get("linkedin_url")
                 else:
                     is_new_org = True
                     org = Organization(
@@ -152,6 +173,7 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                         primary_domain=domain if domain else None,
                         website_url=company_url,
                         description=c.get("description"),
+                        linkedin_url=c.get("linkedin_url"),
                         organization_type="COMPANY"
                     )
                     db.add(org)
@@ -162,6 +184,11 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                 if not profile:
                     profile = CompanyProfile(organization_id=org.id)
                     db.add(profile)
+                    
+                if c.get("industry") and not profile.industry:
+                    profile.industry = c.get("industry")
+                if c.get("founded_year") and not profile.founded_year:
+                    profile.founded_year = c.get("founded_year")
                 
                 # RECONCILIATION 2: RawEntity mapping
                 entity = RawEntity(
@@ -237,14 +264,31 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                         
                     # Link founder to company
                     role = db.query(PersonOrganizationRole).filter_by(person_id=person.id, organization_id=org.id).first()
+                    title = f.get("title") or "Founder"
                     if not role:
                         role = PersonOrganizationRole(
                             person_id=person.id,
                             organization_id=org.id,
-                            title="Founder",
+                            title=title,
                             is_current=True
                         )
                         db.add(role)
+                    else:
+                        role.title = title
+                        
+                    # Save Email if found
+                    email_val = f.get("email")
+                    if email_val:
+                        from market_comps.db.models import PersonEmail
+                        existing_email = db.query(PersonEmail).filter_by(email=email_val).first()
+                        if not existing_email:
+                            em = PersonEmail(
+                                person_id=person.id,
+                                email=email_val,
+                                organization_id=org.id,
+                                is_primary=True
+                            )
+                            db.add(em)
                         
                 # RECONCILIATION 4: Program Tags -> ProgramMembership
                 program_tags = c.get("program_tags", [])
@@ -260,6 +304,10 @@ def run_ingestion_config(db: Session, config_id: int, triggered_by: str = "MANUA
                                 is_active=True
                             )
                             db.add(membership)
+                            
+                # Track what happened for UI
+                c["__reconciliation_status__"] = "CREATED_ORG" if is_new_org else "UPDATED_ORG"
+                c["__organization_id__"] = org.id
                             
                 records_created += 1
                 
