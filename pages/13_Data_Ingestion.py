@@ -1,7 +1,8 @@
 import streamlit as st
 import json
 from market_comps.db.session import get_db
-from market_comps.db.models import DataSource, IngestionConfig, IngestionJob, RawEntity
+import pandas as pd
+from market_comps.db.models import DataSource, IngestionConfig, IngestionJob, RawEntity, EntityUpdate
 from market_comps.ingestion.api_runner import run_ingestion_config
 
 st.set_page_config(page_title="Data Ingestion", page_icon="📡", layout="wide")
@@ -146,24 +147,42 @@ with tab3:
                     st.error(f"Job failed: {job.error_message}")
                     
     st.divider()
-    col1, col2 = st.columns(2)
+    st.subheader("Recent Jobs")
+    recent_jobs = db.query(IngestionJob).order_by(IngestionJob.started_at.desc()).limit(10).all()
+    if recent_jobs:
+        for j in recent_jobs:
+            st.write(f"**Job {j.id}** ({j.job_status}) | Config: {j.ingestion_config_id} | Created {j.records_created} records | {j.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+    st.divider()
+    st.subheader("Recent Raw Entities (Reconciliation Log)")
+    recent_entities = db.query(RawEntity).order_by(RawEntity.detected_at.desc()).limit(50).all()
     
-    with col1:
-        st.subheader("Recent Jobs")
-        recent_jobs = db.query(IngestionJob).order_by(IngestionJob.started_at.desc()).limit(10).all()
-        if recent_jobs:
-            for j in recent_jobs:
-                st.write(f"**Job {j.id}** ({j.job_status}) | Config: {j.ingestion_config_id} | Created {j.records_created} records | {j.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                
-    with col2:
-        st.subheader("Recent Raw Entities")
-        recent_entities = db.query(RawEntity).order_by(RawEntity.detected_at.desc()).limit(15).all()
-        if recent_entities:
-            for e in recent_entities:
-                with st.expander(f"**{e.raw_name}** (Job {e.ingestion_job_id})"):
-                    st.caption(f"Detected: {e.detected_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                    st.write(f"**Matched Org ID:** {e.matched_organization_id}")
-                    st.write(f"**Source URL:** {e.source_url}")
-                    st.json(e.raw_payload_json)
-        else:
-            st.info("No raw entities extracted yet.")
+    if recent_entities:
+        data = []
+        for e in recent_entities:
+            # Check what actions the reconciliation engine took for this entity
+            updates = db.query(EntityUpdate).filter(EntityUpdate.raw_entity_id == e.id).all()
+            
+            org_status = "N/A"
+            person_statuses = []
+            
+            for u in updates:
+                if u.organization_id:
+                    org_status = f"{u.update_action} (Org {u.organization_id})"
+                elif u.person_id:
+                    person_statuses.append(f"{u.update_action} (Person {u.person_id})")
+                    
+            data.append({
+                "Job ID": e.ingestion_job_id,
+                "Raw Name": e.raw_name,
+                "Matched Org ID": e.matched_organization_id,
+                "Organization Action": org_status,
+                "Person Actions": ", ".join(person_statuses) if person_statuses else "N/A",
+                "Detected At": e.detected_at.strftime('%Y-%m-%d %H:%M'),
+                "Source URL": e.source_url
+            })
+            
+        df = pd.DataFrame(data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No raw entities extracted yet.")
