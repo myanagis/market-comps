@@ -181,7 +181,12 @@ def llm_extract_companies(text: str, custom_instruction: str = "") -> tuple[list
         "required": ["companies"]
     }
 
-    prompt = "Extract companies from the following text.\n"
+    prompt = (
+        "Extract all companies from the following text. "
+        "For each company, extract the company's own website URL and LinkedIn URL if available. "
+        "Also extract industry, founded year, founders (with their names, titles, LinkedIn URLs, and emails), "
+        "and any program or cohort tags mentioned.\n"
+    )
     if custom_instruction:
         prompt += f"INSTRUCTIONS: {custom_instruction}\n"
     prompt += f"\nTEXT:\n{text[:50000]}"
@@ -607,8 +612,21 @@ def _run_scrape_pipeline(
     for c in companies:
         if not isinstance(c, dict):
             continue
-        reconcile_company(db, c, job, ds.source_name, url)
+        org, _ = reconcile_company(db, c, job, ds.source_name, url)
         records_created += 1
+        
+        # --- STEP 5b: Auto-link to a configured Program ---
+        link_program_id = meta.get("link_program_id")
+        if link_program_id:
+            existing = db.query(ProgramMembership).filter_by(
+                company_organization_id=org.id, program_id=link_program_id
+            ).first()
+            if not existing:
+                db.add(ProgramMembership(
+                    company_organization_id=org.id,
+                    program_id=link_program_id,
+                    is_active=True
+                ))
 
     job_logs = {"llm_usage": all_usage, "extracted_companies": companies}
     return records_created, job_logs
