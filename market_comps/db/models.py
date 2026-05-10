@@ -214,6 +214,7 @@ class IngestionJob(Base, TimestampMixin):
     records_updated = Column(Integer, default=0)
     records_failed = Column(Integer, default=0)
     error_message = Column(String)
+    source_content = Column(String) # Raw scraped text/HTML content
     job_logs_json = Column(JSON)
     metadata_json = Column(JSON)
 
