@@ -1,9 +1,14 @@
 import streamlit as st
 from market_comps.db.session import get_db
-from market_comps.db.models import Organization, Person, EntityAuditTrail
+from market_comps.db.models import (
+    Organization, Person, CompanyProfile, InvestorProfile, 
+    FundProfile, ProgramProfile, ProgramMembership, PersonOrganizationRole,
+    PersonEmail, EntityAuditTrail
+)
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
 import pandas as pd
+import uuid
 
 st.set_page_config(page_title="CRM Directory", page_icon="🗂️", layout="wide")
 st.title("🗂️ CRM Directory")
@@ -14,6 +19,94 @@ try:
 except Exception as e:
     st.error(f"Database connection failed. Did you configure secrets.toml? Error: {e}")
     st.stop()
+
+def display_full_record_details(record_type, record_id):
+    """Helper to display full record details inline."""
+    if record_type == "ORGANIZATION":
+        org = db.query(Organization).options(
+            joinedload(Organization.company_profile),
+            joinedload(Organization.investor_profile),
+            joinedload(Organization.fund_profiles),
+            joinedload(Organization.program_profiles),
+            joinedload(Organization.program_memberships).joinedload(ProgramMembership.cohort),
+            joinedload(Organization.roles).joinedload(PersonOrganizationRole.person)
+        ).filter(Organization.id == int(record_id)).first()
+
+        if not org:
+            st.error(f"Organization with ID {record_id} not found.")
+            return
+
+        with st.container(border=True):
+            st.subheader(f"🏢 {org.name}")
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url}")
+                st.write(f"**LinkedIn:** {org.linkedin_url}")
+                st.write(f"**Location:** {org.city}, {org.state}, {org.country}")
+                if org.description:
+                    st.info(org.description)
+
+                if org.company_profile:
+                    st.write(f"**Industry:** {org.company_profile.industry} | **Stage:** {org.company_profile.company_stage}")
+
+            with col2:
+                if org.program_memberships:
+                    st.write("**Programs:**")
+                    for m in org.program_memberships:
+                        if m.cohort:
+                            st.write(f"- 🎯 {m.cohort.program.program_name} ({m.cohort.cohort_name})")
+
+            # People
+            if org.roles:
+                st.write("**People & Roles:**")
+                for role in org.roles:
+                    p = role.person
+                    if p:
+                        name = p.full_name or f"{p.first_name} {p.last_name}"
+                        st.write(f"- 👤 **{name}** — {role.title or 'No Title'} {'([LinkedIn](' + p.linkedin_url + '))' if p.linkedin_url else ''}")
+            
+            # Audit Trail (Expandable)
+            with st.expander("Audit Trail"):
+                audit = db.query(EntityAuditTrail).filter_by(
+                    entity_type="ORGANIZATION", entity_id=str(org.id)
+                ).order_by(EntityAuditTrail.created_at.desc()).limit(10).all()
+                if audit:
+                    audit_data = []
+                    for a in audit:
+                        audit_data.append({
+                            "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
+                            "Action": a.audit_action,
+                            "Field": a.field_name or "",
+                            "Old": a.old_value or "",
+                            "New": a.new_value or ""
+                        })
+                    st.dataframe(pd.DataFrame(audit_data), use_container_width=True, hide_index=True)
+
+    elif record_type == "PERSON":
+        person = db.query(Person).options(
+            joinedload(Person.emails),
+            joinedload(Person.roles).joinedload(PersonOrganizationRole.organization)
+        ).filter(Person.id == (uuid.UUID(record_id) if isinstance(record_id, str) else record_id)).first()
+
+        if not person:
+            st.error(f"Person with ID {record_id} not found.")
+            return
+
+        with st.container(border=True):
+            st.subheader(f"👤 {person.full_name or person.first_name + ' ' + person.last_name}")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.write(f"**LinkedIn:** {person.linkedin_url}")
+                st.write(f"**Location:** {person.city}, {person.state}")
+                if person.bio:
+                    st.info(person.bio)
+            with col2:
+                if person.roles:
+                    st.write("**Roles:**")
+                    for role in person.roles:
+                        if role.organization:
+                            st.write(f"- 🏢 **{role.organization.name}** — {role.title or 'No Title'}")
 
 def get_org_df(org_type, search_text):
     q = db.query(Organization).options(
@@ -57,14 +150,14 @@ def render_directory_table(df, key, record_type="ORGANIZATION"):
         st.info("No records found.")
         return
     
-    st.write("👆 *Select a row to view full details.*")
+    st.write("👆 *Select one or more rows to view details below.*")
     
-    # Use native Streamlit selection
+    # Use native Streamlit selection with multi-row
     event = st.dataframe(
         df,
         key=key,
         on_select="rerun",
-        selection_mode="single-row",
+        selection_mode="multi-row",
         hide_index=True,
         use_container_width=True,
         column_config={
@@ -78,17 +171,11 @@ def render_directory_table(df, key, record_type="ORGANIZATION"):
     rows = selection.get("rows", [])
     
     if rows:
-        selected_index = rows[0]
-        selected_row = df.iloc[selected_index]
-        selected_id = selected_row["ID"]
-        selected_name = selected_row.get("Name", "Selected Record")
-        
-        if st.button(f"🔍 View Full Details for {selected_name}", key=f"view_{key}", type="primary"):
-            st.query_params["type"] = record_type
-            st.query_params["id"] = str(selected_id)
-            st.switch_page("pages/15_Record_Detail.py")
-    else:
-        st.button("🔍 Select a record above to view details", key=f"view_{key}_disabled", disabled=True)
+        st.divider()
+        st.header(f"🔍 Details for {len(rows)} selected record(s)")
+        for row_idx in rows:
+            selected_row = df.iloc[row_idx]
+            display_full_record_details(record_type, selected_row["ID"])
 
 tab_companies, tab_investors, tab_people = st.tabs(["🏢 Companies", "🏦 Investors", "👤 People"])
 
