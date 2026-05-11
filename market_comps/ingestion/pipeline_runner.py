@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 
 from sqlalchemy.orm import Session
 
-from market_comps.db.models import Pipeline, PipelineRun, ExtractedDataRaw
+from market_comps.db.models import Pipeline, PipelineRun, ExtractedDataRaw, ExtractedEntity, ExtractedRelationship
 from market_comps.ingestion.scraper import fetch_page_text
 from market_comps.ingestion.extractor import extract_entities_from_text, extract_profile_detail
 from market_comps.ingestion.reconciler import reconcile_all
@@ -181,7 +181,6 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
     Also creates ExtractedEntity (PERSON) and ExtractedRelationship (FOUNDER_OF)
     records for any founders discovered in the profile detail.
     """
-    from market_comps.db.models import ExtractedEntity, ExtractedRelationship
 
     if not detail or not company_name:
         return
@@ -196,15 +195,35 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
         return
 
     payload = dict(entity.extracted_payload_json or {})
-    for key in ["url", "description", "industry", "founded_year", "linkedin_url", "founders"]:
-        if detail.get(key):
-            payload[key] = detail[key]
+    
+    # Map common LLM variations to our schema keys
+    key_map = {
+        "company_website": "url",
+        "website": "url",
+        "linkedin": "linkedin_url",
+        "linkedin_url": "linkedin_url",
+        "description": "description",
+        "industry": "industry",
+        "founded_year": "founded_year",
+        "founders": "founders"
+    }
+    
+    for src_key, target_key in key_map.items():
+        if detail.get(src_key):
+            payload[target_key] = detail[src_key]
 
     entity.extracted_payload_json = payload
     db.flush()
+    logger.info(f"[Pipeline] Merged profile detail into {company_name}. Payload keys: {list(payload.keys())}")
+    logger.info(f"[Pipeline] Detail object keys: {list(detail.keys())}")
+    if "founders" in detail:
+        logger.info(f"[Pipeline] Found {len(detail['founders'])} founders in detail for {company_name}")
+    else:
+        logger.info(f"[Pipeline] NO founders key in detail for {company_name}")
 
     # Create PERSON entities + FOUNDER_OF relationships for newly discovered founders
-    founders = detail.get("founders", [])
+    # The 'founders' key is now safely in 'payload' after the mapping above
+    founders = payload.get("founders", [])
     for f in founders:
         if not isinstance(f, dict):
             continue
@@ -236,6 +255,7 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
         )
         db.add(person_entity)
         db.flush()
+        logger.info(f"[Pipeline] Created ExtractedEntity (PERSON): {fname} {lname} for {company_name}")
 
         rel = ExtractedRelationship(
             pipeline_run_id=run.id,

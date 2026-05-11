@@ -23,6 +23,7 @@ pg = st.navigation({
         st.Page("pages/12_CRM_Directory.py", title="CRM Directory", icon="🗂️"),
         st.Page("pages/13_Data_Ingestion.py", title="Data Ingestion", icon="📡"),
         st.Page("pages/14_CRM_Record_Manager.py", title="CRM Record Manager", icon="📝"),
+        st.Page("pages/15_Record_Detail.py", title="Record Details", icon="📝"),
     ],
     "Tools (Beta)":
     [

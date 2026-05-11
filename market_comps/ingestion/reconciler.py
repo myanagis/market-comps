@@ -79,7 +79,10 @@ def reconcile_organization(
     """
     payload = extracted_entity.extracted_payload_json or {}
     name = payload.get("name") or extracted_entity.raw_name or "Unknown"
-    company_url = payload.get("url", "")
+    
+    # Resolve company URL (support multiple common keys)
+    company_url = payload.get("url") or payload.get("website") or payload.get("company_website") or ""
+    linkedin_url = payload.get("linkedin_url") or payload.get("linkedin") or ""
 
     # Resolve domain for matching
     domain = ""
@@ -103,16 +106,16 @@ def reconcile_organization(
                       field_name="description", old_value=org.description, new_value=payload["description"],
                       pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
             org.description = payload["description"]
-        if payload.get("linkedin_url") and not org.linkedin_url:
+        if linkedin_url and not org.linkedin_url:
             log_audit(db, "ORGANIZATION", org.id, "UPDATE",
-                      field_name="linkedin_url", new_value=payload["linkedin_url"],
+                      field_name="linkedin_url", new_value=linkedin_url,
                       pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
-            org.linkedin_url = payload["linkedin_url"]
-        if payload.get("url") and not org.website_url:
+            org.linkedin_url = linkedin_url
+        if company_url and not org.website_url:
             log_audit(db, "ORGANIZATION", org.id, "UPDATE",
-                      field_name="website_url", new_value=payload["url"],
+                      field_name="website_url", new_value=company_url,
                       pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
-            org.website_url = payload["url"]
+            org.website_url = company_url
     else:
         is_new = True
         org = Organization(
@@ -121,7 +124,7 @@ def reconcile_organization(
             primary_domain=domain or None,
             website_url=company_url,
             description=payload.get("description"),
-            linkedin_url=payload.get("linkedin_url"),
+            linkedin_url=linkedin_url,
             organization_type=org_type
         )
         db.add(org)
@@ -315,12 +318,15 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
 
     # Step 1: Reconcile entities
     entities = db.query(ExtractedEntity).filter_by(pipeline_run_id=run.id).all()
+    logger.info(f"[Reconciler] Found {len(entities)} entities to reconcile for run {run.id}")
+    
     for entity in entities:
         if entity.entity_type == "ORGANIZATION":
             org = reconcile_organization(db, entity, run, org_type=org_type)
             if org:
                 orgs_created += 1
         elif entity.entity_type == "PERSON":
+            logger.info(f"[Reconciler] Reconciling person: {entity.raw_name}")
             person = reconcile_person(db, entity, run)
             if person:
                 people_created += 1
@@ -329,6 +335,7 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
 
     # Step 2: Reconcile relationships
     relationships = db.query(ExtractedRelationship).filter_by(pipeline_run_id=run.id).all()
+    logger.info(f"[Reconciler] Found {len(relationships)} relationships to reconcile for run {run.id}")
     for rel in relationships:
         reconcile_relationship(db, rel, run)
 
