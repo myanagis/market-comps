@@ -45,13 +45,13 @@ PROGRAM_COMPANY_SCHEMA = {
                         "items": {
                             "type": "object",
                             "properties": {
+                                "name": {"type": "string", "description": "Full name if first/last not separated"},
                                 "first_name": {"type": "string"},
                                 "last_name": {"type": "string"},
                                 "title": {"type": "string"},
                                 "linkedin_url": {"type": "string"},
                                 "email": {"type": "string"}
-                            },
-                            "required": ["first_name", "last_name"]
+                            }
                         }
                     }
                 },
@@ -76,13 +76,13 @@ PROFILE_DETAIL_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
+                    "name": {"type": "string", "description": "Full name if first/last not separated"},
                     "first_name": {"type": "string"},
                     "last_name": {"type": "string"},
                     "title": {"type": "string"},
                     "linkedin_url": {"type": "string"},
                     "email": {"type": "string"}
-                },
-                "required": ["first_name", "last_name"]
+                }
             }
         }
     },
@@ -162,7 +162,16 @@ def extract_entities_from_text(
                 continue
             fname = f.get("first_name", "")
             lname = f.get("last_name", "")
-            if not fname or not lname:
+            if not fname and not lname:
+                full = f.get("name", "").strip()
+                if not full:
+                    continue
+                parts = full.split(None, 1)
+                fname = parts[0]
+                lname = parts[1] if len(parts) > 1 else ""
+                f["first_name"] = fname
+                f["last_name"] = lname
+            if not fname:
                 continue
 
             person_entity = ExtractedEntity(

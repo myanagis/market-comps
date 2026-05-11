@@ -208,9 +208,21 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
     for f in founders:
         if not isinstance(f, dict):
             continue
+        
+        # Handle both "name" (single field) and "first_name"/"last_name" (split) formats
         fname = f.get("first_name", "")
         lname = f.get("last_name", "")
-        if not fname or not lname:
+        if not fname and not lname:
+            full = f.get("name", "").strip()
+            if not full:
+                continue
+            parts = full.split(None, 1)
+            fname = parts[0]
+            lname = parts[1] if len(parts) > 1 else ""
+            # Normalize the payload so reconciler gets clean data
+            f["first_name"] = fname
+            f["last_name"] = lname
+        if not fname:
             continue
 
         person_entity = ExtractedEntity(
