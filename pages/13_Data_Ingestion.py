@@ -205,14 +205,18 @@ with tab4:
         entity_data = []
         for e in entities:
             payload = e.extracted_payload_json or {}
+            industry_val = payload.get("industry", "")
+            if isinstance(industry_val, list):
+                industry_val = ", ".join(industry_val)
+                
             entity_data.append({
                 "Entity ID": e.id,
                 "Run ID": e.pipeline_run_id,
                 "Type": e.entity_type,
                 "Name": e.raw_name,
-                "Industry": payload.get("industry", ""),
-                "URL": payload.get("url", ""),
-                "LinkedIn": payload.get("linkedin_url", ""),
+                "Industry": str(industry_val),
+                "URL": str(payload.get("url", "")),
+                "LinkedIn": str(payload.get("linkedin_url", "")),
                 "Matched Org ID": e.matched_organization_id,
                 "Matched Person ID": str(e.matched_person_id) if e.matched_person_id else "",
             })
