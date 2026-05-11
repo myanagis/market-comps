@@ -59,7 +59,8 @@ def render_aggrid(df, key, record_type="ORGANIZATION"):
         return
     
     gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_selection('single', use_checkbox=True)
+    # Enable single row selection - clicking anywhere in the row works
+    gb.configure_selection(selection_mode='single', use_checkbox=True)
     gb.configure_side_bar()
     gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, aggFunc='sum', editable=False)
     
@@ -67,6 +68,8 @@ def render_aggrid(df, key, record_type="ORGANIZATION"):
     gb.configure_column("ID", hide=True)
     
     grid_options = gb.build()
+    
+    st.write("👆 *Click a row to select it, then click 'View Details' below.*")
     
     grid_response = AgGrid(
         df,
@@ -78,20 +81,31 @@ def render_aggrid(df, key, record_type="ORGANIZATION"):
     )
     
     selected_rows = grid_response['selected_rows']
-    if selected_rows is not None and not selected_rows.empty:
-        # st-aggrid 1.2.1+ returns a dataframe or list of dicts. 
-        # In newer versions it's a dataframe.
-        if isinstance(selected_rows, pd.DataFrame):
+    
+    # Selection logic handling different st-aggrid versions
+    has_selection = False
+    selected_id = None
+    selected_name = ""
+    
+    if selected_rows is not None:
+        if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
             row = selected_rows.iloc[0]
-            rid = row["ID"]
-        else:
+            selected_id = row["ID"]
+            selected_name = row.get("Name", "Selected Record")
+            has_selection = True
+        elif isinstance(selected_rows, list) and len(selected_rows) > 0:
             row = selected_rows[0]
-            rid = row["ID"]
-            
-        if st.button(f"View Details for {row.get('Name', 'Selected Record')}", key=f"view_{key}"):
+            selected_id = row.get("ID")
+            selected_name = row.get("Name", "Selected Record")
+            has_selection = True
+
+    if has_selection:
+        if st.button(f"🔍 View Full Details for {selected_name}", key=f"view_{key}", type="primary"):
             st.query_params["type"] = record_type
-            st.query_params["id"] = str(rid)
+            st.query_params["id"] = str(selected_id)
             st.switch_page("pages/15_Record_Detail.py")
+    else:
+        st.button("🔍 Select a record to view details", key=f"view_{key}_disabled", disabled=True)
 
 tab_companies, tab_investors, tab_people = st.tabs(["🏢 Companies", "🏦 Investors", "👤 People"])
 
