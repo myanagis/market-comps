@@ -4,7 +4,6 @@ from market_comps.db.models import Organization, Person, EntityAuditTrail
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, ColumnsAutoSizeMode
 
 st.set_page_config(page_title="CRM Directory", page_icon="🗂️", layout="wide")
 st.title("🗂️ CRM Directory")
@@ -53,59 +52,43 @@ def get_org_df(org_type, search_text):
     
     return pd.DataFrame(data)
 
-def render_aggrid(df, key, record_type="ORGANIZATION"):
+def render_directory_table(df, key, record_type="ORGANIZATION"):
     if df.empty:
         st.info("No records found.")
         return
     
-    gb = GridOptionsBuilder.from_dataframe(df)
-    # Enable single row selection - clicking anywhere in the row works
-    gb.configure_selection(selection_mode='single', use_checkbox=True)
-    gb.configure_side_bar()
-    gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, aggFunc='sum', editable=False)
+    st.write("👆 *Select a row to view full details.*")
     
-    # Hide ID
-    gb.configure_column("ID", hide=True)
-    
-    grid_options = gb.build()
-    
-    st.write("👆 *Click a row to select it, then click 'View Details' below.*")
-    
-    grid_response = AgGrid(
+    # Use native Streamlit selection
+    event = st.dataframe(
         df,
-        gridOptions=grid_options,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-        theme='streamlit',
-        key=key
+        key=key,
+        on_select="rerun",
+        selection_mode="single_row",
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "ID": None, # Hide ID
+            "Website": st.column_config.LinkColumn("Website"),
+            "Created": st.column_config.DateColumn("Created")
+        }
     )
     
-    selected_rows = grid_response['selected_rows']
+    selection = event.get("selection", {})
+    rows = selection.get("rows", [])
     
-    # Selection logic handling different st-aggrid versions
-    has_selection = False
-    selected_id = None
-    selected_name = ""
-    
-    if selected_rows is not None:
-        if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-            row = selected_rows.iloc[0]
-            selected_id = row["ID"]
-            selected_name = row.get("Name", "Selected Record")
-            has_selection = True
-        elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-            row = selected_rows[0]
-            selected_id = row.get("ID")
-            selected_name = row.get("Name", "Selected Record")
-            has_selection = True
-
-    if has_selection:
+    if rows:
+        selected_index = rows[0]
+        selected_row = df.iloc[selected_index]
+        selected_id = selected_row["ID"]
+        selected_name = selected_row.get("Name", "Selected Record")
+        
         if st.button(f"🔍 View Full Details for {selected_name}", key=f"view_{key}", type="primary"):
             st.query_params["type"] = record_type
             st.query_params["id"] = str(selected_id)
             st.switch_page("pages/15_Record_Detail.py")
     else:
-        st.button("🔍 Select a record to view details", key=f"view_{key}_disabled", disabled=True)
+        st.button("🔍 Select a record above to view details", key=f"view_{key}_disabled", disabled=True)
 
 tab_companies, tab_investors, tab_people = st.tabs(["🏢 Companies", "🏦 Investors", "👤 People"])
 
@@ -113,13 +96,13 @@ tab_companies, tab_investors, tab_people = st.tabs(["🏢 Companies", "🏦 Inve
 with tab_companies:
     c_search = st.text_input("Search Companies...", placeholder="e.g. Acme Corp", key="search_companies")
     df_companies = get_org_df("COMPANY", c_search)
-    render_aggrid(df_companies, "grid_companies", "ORGANIZATION")
+    render_directory_table(df_companies, "grid_companies", "ORGANIZATION")
 
 # --- INVESTORS TAB ---
 with tab_investors:
     i_search = st.text_input("Search Investors...", placeholder="e.g. Sequoia", key="search_investors")
     df_investors = get_org_df("INVESTOR", i_search)
-    render_aggrid(df_investors, "grid_investors", "ORGANIZATION")
+    render_directory_table(df_investors, "grid_investors", "ORGANIZATION")
 
 # --- PEOPLE TAB ---
 with tab_people:
@@ -148,5 +131,5 @@ with tab_people:
             "Created": p.created_at.strftime("%Y-%m-%d") if p.created_at else ""
         })
     df_people = pd.DataFrame(data)
-    render_aggrid(df_people, "grid_people", "PERSON")
+    render_directory_table(df_people, "grid_people", "PERSON")
 
