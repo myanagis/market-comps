@@ -64,7 +64,7 @@ def render_directory_table(df, key, record_type="ORGANIZATION"):
         df,
         key=key,
         on_select="rerun",
-        selection_mode="single_row",
+        selection_mode="single-row",
         hide_index=True,
         use_container_width=True,
         column_config={
