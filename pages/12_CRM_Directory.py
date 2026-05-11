@@ -3,6 +3,8 @@ from market_comps.db.session import get_db
 from market_comps.db.models import Organization, Person, EntityAuditTrail
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
+import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, ColumnsAutoSizeMode
 
 st.set_page_config(page_title="CRM Directory", page_icon="🗂️", layout="wide")
 st.title("🗂️ CRM Directory")
@@ -14,101 +16,10 @@ except Exception as e:
     st.error(f"Database connection failed. Did you configure secrets.toml? Error: {e}")
     st.stop()
 
-tab_companies, tab_investors, tab_people = st.tabs(["🏢 Companies", "🏦 Investors", "👤 People"])
-
-def display_orgs(orgs):
-    if not orgs:
-        st.info("No matching organizations found.")
-        return
-        
-    st.caption(f"Showing {len(orgs)} organizations")
-    for org in orgs:
-        with st.expander(f"**{org.name}**", expanded=False):
-            # Basic info
-            cols = []
-            if org.primary_domain:
-                cols.append(f"**Domain:** {org.primary_domain}")
-            if org.website_url:
-                cols.append(f"**Website:** {org.website_url}")
-            if org.linkedin_url:
-                cols.append(f"**LinkedIn:** {org.linkedin_url}")
-            if org.city:
-                cols.append(f"**City:** {org.city}")
-            st.write(" | ".join(cols) if cols else "No details")
-            
-            if org.description:
-                st.write(f"_{org.description}_")
-            
-            if org.company_profile:
-                st.caption("COMPANY PROFILE")
-                profile_parts = []
-                if org.company_profile.industry:
-                    profile_parts.append(f"Industry: {org.company_profile.industry}")
-                if org.company_profile.company_stage:
-                    profile_parts.append(f"Stage: {org.company_profile.company_stage}")
-                if org.company_profile.founded_year:
-                    profile_parts.append(f"Founded: {org.company_profile.founded_year}")
-                st.write(f"- {' | '.join(profile_parts)}" if profile_parts else "- No profile details")
-                
-            if org.investor_profile:
-                st.caption("INVESTOR PROFILE")
-                st.write(f"- Type: {org.investor_profile.investor_type} | Preferred Stage: {org.investor_profile.preferred_stage}")
-            
-            if org.fund_profiles:
-                st.caption("FUNDS")
-                for fund in org.fund_profiles:
-                    st.write(f"- 💰 **{fund.fund_name}** ({fund.vintage_year}) — {fund.fund_size}")
-            
-            if org.program_profiles:
-                st.caption("PROGRAMS")
-                for prog in org.program_profiles:
-                    st.write(f"- 🚀 **{prog.program_name}** ({prog.program_type})")
-
-            # Program Cohort Memberships
-            if org.program_memberships:
-                st.caption("PROGRAM MEMBERSHIPS")
-                for m in org.program_memberships:
-                    if m.cohort:
-                        st.write(f"- 🎯 **{m.cohort.program.program_name}** — {m.cohort.cohort_name}")
-                    else:
-                        st.write(f"- 🎯 (unlinked membership)")
-
-            # People / Roles
-            if org.roles:
-                st.caption("PEOPLE")
-                for role in org.roles:
-                    person = role.person
-                    if person:
-                        name = person.full_name or f"{person.first_name} {person.last_name}"
-                        parts = [f"**{name}**"]
-                        if role.title:
-                            parts.append(role.title)
-                        if person.linkedin_url:
-                            parts.append(f"[LinkedIn]({person.linkedin_url})")
-                        emails = [e.email for e in person.emails] if person.emails else []
-                        if emails:
-                            parts.append(f"📧 {', '.join(emails)}")
-                        st.write(f"- 👤 {' — '.join(parts)}")
-
-            # Show audit trail
-            audit = db.query(EntityAuditTrail).filter_by(
-                entity_type="ORGANIZATION", entity_id=str(org.id)
-            ).order_by(EntityAuditTrail.created_at.desc()).limit(5).all()
-            if audit:
-                st.caption("RECENT CHANGES (Audit Trail)")
-                for a in audit:
-                    field_str = f" ({a.field_name})" if a.field_name else ""
-                    value_str = f": {a.old_value} → {a.new_value}" if a.field_name else ""
-                    st.write(f"- [{a.created_at.strftime('%Y-%m-%d %H:%M')}] **{a.audit_action}**{field_str}{value_str} — {a.reason or ''}")
-
-def get_org_query(org_type, search_text):
+def get_org_df(org_type, search_text):
     q = db.query(Organization).options(
         joinedload(Organization.company_profile),
         joinedload(Organization.investor_profile),
-        joinedload(Organization.fund_profiles),
-        joinedload(Organization.program_profiles),
-        joinedload(Organization.program_memberships),
-        joinedload(Organization.roles),
     ).filter(Organization.organization_type == org_type)
     
     if search_text:
@@ -120,19 +31,81 @@ def get_org_query(org_type, search_text):
                 Organization.primary_domain.ilike(search_filter)
             )
         )
-    return q.order_by(Organization.created_at.desc()).limit(50).all()
+    orgs = q.order_by(Organization.created_at.desc()).limit(200).all()
+    
+    data = []
+    for o in orgs:
+        row = {
+            "ID": o.id,
+            "Name": o.name,
+            "Domain": o.primary_domain,
+            "Website": o.website_url,
+            "City": o.city,
+            "Status": o.status,
+            "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
+        }
+        if o.company_profile:
+            row["Industry"] = o.company_profile.industry
+            row["Stage"] = o.company_profile.company_stage
+        if o.investor_profile:
+            row["Inv Type"] = o.investor_profile.investor_type
+        data.append(row)
+    
+    return pd.DataFrame(data)
+
+def render_aggrid(df, key, record_type="ORGANIZATION"):
+    if df.empty:
+        st.info("No records found.")
+        return
+    
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_selection('single', use_checkbox=True)
+    gb.configure_side_bar()
+    gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, aggFunc='sum', editable=False)
+    
+    # Hide ID
+    gb.configure_column("ID", hide=True)
+    
+    grid_options = gb.build()
+    
+    grid_response = AgGrid(
+        df,
+        gridOptions=grid_options,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+        theme='streamlit',
+        key=key
+    )
+    
+    selected_rows = grid_response['selected_rows']
+    if selected_rows is not None and not selected_rows.empty:
+        # st-aggrid 1.2.1+ returns a dataframe or list of dicts. 
+        # In newer versions it's a dataframe.
+        if isinstance(selected_rows, pd.DataFrame):
+            row = selected_rows.iloc[0]
+            rid = row["ID"]
+        else:
+            row = selected_rows[0]
+            rid = row["ID"]
+            
+        if st.button(f"View Details for {row.get('Name', 'Selected Record')}", key=f"view_{key}"):
+            st.query_params["type"] = record_type
+            st.query_params["id"] = str(rid)
+            st.switch_page("pages/15_Record_Detail.py")
+
+tab_companies, tab_investors, tab_people = st.tabs(["🏢 Companies", "🏦 Investors", "👤 People"])
 
 # --- COMPANIES TAB ---
 with tab_companies:
     c_search = st.text_input("Search Companies...", placeholder="e.g. Acme Corp", key="search_companies")
-    orgs = get_org_query("COMPANY", c_search)
-    display_orgs(orgs)
+    df_companies = get_org_df("COMPANY", c_search)
+    render_aggrid(df_companies, "grid_companies", "ORGANIZATION")
 
 # --- INVESTORS TAB ---
 with tab_investors:
     i_search = st.text_input("Search Investors...", placeholder="e.g. Sequoia", key="search_investors")
-    orgs = get_org_query("INVESTOR", i_search)
-    display_orgs(orgs)
+    df_investors = get_org_df("INVESTOR", i_search)
+    render_aggrid(df_investors, "grid_investors", "ORGANIZATION")
 
 # --- PEOPLE TAB ---
 with tab_people:
@@ -148,15 +121,18 @@ with tab_people:
                 Person.last_name.ilike(search_filter)
             )
         )
-    people = q.order_by(Person.created_at.desc()).limit(50).all()
+    people = q.order_by(Person.created_at.desc()).limit(200).all()
     
-    if not people:
-        st.info("No matching people found.")
-    else:
-        st.caption(f"Showing {len(people)} people")
-        for p in people:
-            with st.expander(f"**{p.full_name or p.first_name + ' ' + p.last_name}**", expanded=False):
-                st.write(f"**LinkedIn:** {p.linkedin_url}")
-                st.write(f"**Location:** {p.city}, {p.state}")
-                if p.bio:
-                    st.write(f"**Bio:** {p.bio}")
+    data = []
+    for p in people:
+        data.append({
+            "ID": p.id,
+            "Name": p.full_name or f"{p.first_name} {p.last_name}",
+            "LinkedIn": p.linkedin_url,
+            "City": p.city,
+            "State": p.state,
+            "Created": p.created_at.strftime("%Y-%m-%d") if p.created_at else ""
+        })
+    df_people = pd.DataFrame(data)
+    render_aggrid(df_people, "grid_people", "PERSON")
+
