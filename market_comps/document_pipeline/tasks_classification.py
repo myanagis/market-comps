@@ -14,11 +14,11 @@ You are a legal and financial document analyst.
 Examine the document provided and identify what type of document it is.
 
 Respond with ONLY valid JSON in exactly this format:
-{
+{{
   "document_type": "<one of: term_sheet | safe_note | convertible_note | loi | presentation | other>",
   "confidence": "<high | medium | low>",
   "rationale": "<one sentence explaining your classification>"
-}
+}}
 
 Classification rules:
 - term_sheet: A priced equity financing term sheet (Series A, Seed, etc.)
