@@ -80,6 +80,7 @@ INSTRUCTIONS:
 5. If there is a discrepancy between the TEXT EXTRACTION and VLM EXTRACTION that you cannot confidently resolve, add a clearly marked section at the bottom of your markdown output exactly named `### ⚠️ Manual Resolution Required`.
    - Format these discrepancies as a concise Markdown table with columns: `Metric`, `VLM Value`, `Native Text Value`.
    - Do NOT flag minor formatting or capitalization differences (e.g. "10 years" vs "10 Years", or "$5m" vs "$5M"). Only flag actual differences in numbers, units, or core meaning.
+   - CRITICAL: If there are NO unresolvable discrepancies, DO NOT include this section at all. Do not output the heading and do not state that there are no discrepancies.
 6. Output ONLY the final markdown. Do not include your reasoning or introductory text.
 """
     
