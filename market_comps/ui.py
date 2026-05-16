@@ -5,9 +5,18 @@ Shared Streamlit UI components.
 from __future__ import annotations
 
 from typing import Callable
+import re
 import streamlit as st
 
-
+def safe_markdown(text: str) -> str:
+    """
+    Escapes stray dollar signs in text to prevent Streamlit from 
+    interpreting them as LaTeX equations, which breaks markdown rendering.
+    """
+    if not text:
+        return ""
+    # Only escape unescaped dollar signs
+    return re.sub(r'(?<!\\)\$', r'\$', text)
 def create_chorus_progress_status(
     status_label: str,
     models: list[str],

@@ -257,7 +257,8 @@ if results:
     
     with tab1:
         st.markdown("### Synthesis")
-        st.info(results["synthesis"])
+        from market_comps.ui import safe_markdown
+        st.info(safe_markdown(results["synthesis"]))
 
         su = results.get("synth_usage")
         synth_time = results.get("synth_time_s", 0.0)
@@ -309,14 +310,14 @@ if results:
                                         # Try to find the actual quote text vs metadata tags
                                         text_val = item.get("quote", item.get("text", item.get("content", "")))
                                         if not text_val:
-                                            st.markdown(f"- {item}")
+                                            st.markdown(f"- {safe_markdown(str(item))}")
                                         else:
                                             # Format extra metadata cleanly (tags, confidence, etc)
                                             extras = [f"{k}: {v}" for k, v in item.items() if k not in ["quote", "text", "content"]]
                                             extras_str = f" _({', '.join(extras)})_" if extras else ""
-                                            st.markdown(f"- \"{text_val}\"{extras_str}")
+                                            st.markdown(f"- \"{safe_markdown(text_val)}\"{extras_str}")
                                     else:
-                                        st.markdown(f"- {item}")
+                                        st.markdown(f"- {safe_markdown(str(item))}")
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.json(data)

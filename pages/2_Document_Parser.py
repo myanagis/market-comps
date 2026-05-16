@@ -147,10 +147,13 @@ else:
             ch.setLevel(logging.INFO)
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
             ch.setFormatter(formatter)
-            prefect_logger = logging.getLogger("prefect")
-            app_logger = logging.getLogger("market_comps")
-            prefect_logger.addHandler(ch)
-            app_logger.addHandler(ch)
+            
+            # Capture all relevant loggers
+            loggers_to_capture = ["prefect", "prefect.TaskRun", "prefect.FlowRun", "market_comps"]
+            for lname in loggers_to_capture:
+                l = logging.getLogger(lname)
+                l.setLevel(logging.INFO)
+                l.addHandler(ch)
             
             with st.spinner(f"Extracting and analyzing via {extraction_method}..."):
                 result = process_document_pipeline(
@@ -161,8 +164,8 @@ else:
                     generate_summary=generate_summary
                 )
             
-            prefect_logger.removeHandler(ch)
-            app_logger.removeHandler(ch)
+            for lname in loggers_to_capture:
+                logging.getLogger(lname).removeHandler(ch)
             
             st.session_state["pdf_logs"] = log_capture_string.getvalue()
             st.session_state["pdf_result"] = result
@@ -256,7 +259,8 @@ if result is not None:
 
     with tab1:
         if raw_text:
-            st.markdown(raw_text)
+            from market_comps.ui import safe_markdown
+            st.markdown(safe_markdown(raw_text))
         else:
             st.info("No raw text captured. Re-run the parser to populate this field.")
 
