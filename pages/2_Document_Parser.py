@@ -231,8 +231,11 @@ if result is not None:
     st.caption(caption)
 
 
-    # ── Term extraction results ────────────────────────────────────────────
-    if result.terms:
+    tab1, tab2 = st.tabs(["📊 Extraction Results", "📝 Document Transcription"])
+
+    with tab1:
+        # ── Term extraction results ────────────────────────────────────────────
+        if result.terms:
         st.markdown('<div class="section-header">📊 Extracted Terms</div>', unsafe_allow_html=True)
 
         # Summary table first
@@ -293,13 +296,20 @@ if result is not None:
                     else:
                         st.markdown('<span style="color:#475569; font-size:0.85rem;">No relevant text found.</span>', unsafe_allow_html=True)
 
-    # ── Summary results ────────────────────────────────────────────────────
-    elif result.summary:
-        st.markdown('<div class="section-header">📝 Document Summary</div>', unsafe_allow_html=True)
-        st.markdown(result.summary)
+        # ── Summary results ────────────────────────────────────────────────────
+        elif result.summary:
+            st.markdown('<div class="section-header">📝 Document Summary</div>', unsafe_allow_html=True)
+            st.markdown(result.summary)
 
-    # ── Troubleshooting: raw extracted text ───────────────────────────────
-    with st.expander("🔍 Troubleshooting — Raw Extracted Text", expanded=False):
+    with tab2:
+        st.markdown('<div class="section-header">Raw Transcribed Text</div>', unsafe_allow_html=True)
+        raw_text = getattr(result, "raw_extracted_text", None)
+        if raw_text:
+            st.markdown(raw_text)
+        else:
+            st.info("No raw text captured. Re-run the parser to populate this field.")
+
+        with st.expander("🔍 Debug Info", expanded=False):
         # Debug metadata
         import dataclasses, json as _json
         debug_info = {
@@ -310,12 +320,6 @@ if result is not None:
             "document_type": result.document_type,
         }
         st.json(debug_info)
-        st.divider()
-        raw_text = getattr(result, "raw_extracted_text", None)
-        if raw_text:
-            st.code(raw_text, language=None)
-        else:
-            st.caption("No raw text captured. Re-run the parser to populate this field.")
 
 
 # ── How It Works ──────────────────────────────────────────────────────────────
