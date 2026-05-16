@@ -98,6 +98,8 @@ INSTRUCTIONS:
         
     return final_content, total_usage
 
+import json
+
 @flow(name="transcribe_document")
 def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str) -> Tuple[str, LLMUsage]:
     """
@@ -105,7 +107,12 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
     'ocr', 'text', 'vlm', or 'vlm_plus_text'.
     Returns (markdown_text, LLMUsage)
     """
-    logger.info(f"Transcribe Document Task starting: filename='{filename}', method='{method}', model='{model}'")
+    logger.info(json.dumps({
+        "event": "transcribe_document_start",
+        "filename": filename,
+        "method": method,
+        "model": model
+    }))
     instructions = _load_instructions()
     
     if method == "ocr":
@@ -115,7 +122,10 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
     elif method == "vlm":
         res, usage = extract_text_with_vlm(pdf_bytes, model, instructions)
     elif method == "vlm_plus_text":
-        logger.info("Running VLM_PLUS_TEXT hybrid extraction... (This will run native text extraction, then VLM extraction, and cross-reference them)")
+        logger.info(json.dumps({
+            "event": "transcribe_document_hybrid_start",
+            "message": "Running VLM_PLUS_TEXT hybrid extraction... (This will run native text extraction, then VLM extraction, and cross-reference them)"
+        }))
         # Run text extraction
         text_content, text_usage = extract_text_with_native(pdf_bytes, filename, model, instructions)
         # Run VLM extraction
@@ -125,5 +135,10 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
     else:
         raise ValueError(f"Unknown method: {method}")
         
-    logger.info(f"Transcription complete. Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
+    logger.info(json.dumps({
+        "event": "transcribe_document_complete",
+        "status": "success",
+        "tokens": usage.total_tokens,
+        "cost_usd": round(usage.estimated_cost_usd, 5)
+    }))
     return res, usage

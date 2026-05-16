@@ -110,7 +110,13 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
         llm_usage=LLMUsage()
     )
 
-    logger.info(f"Extract Data Task starting: filename='{filename}', doc_type='{doc_type}', model='{model}', generate_summary={generate_summary}")
+    logger.info(json.dumps({
+        "event": "extract_data_start",
+        "filename": filename,
+        "doc_type": doc_type,
+        "model": model,
+        "generate_summary": generate_summary
+    }))
     
     usage = LLMUsage()
     if doc_type in TERM_SHEET_TYPES:
@@ -145,9 +151,19 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
                         possible_snippets=t.get("possible_snippets", [])
                     )
                 )
-            logger.info(f"Extraction successful: parsed {len(result.terms)} terms. Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
+            logger.info(json.dumps({
+                "event": "extract_data_complete",
+                "status": "success",
+                "terms_extracted": len(result.terms),
+                "tokens": usage.total_tokens,
+                "cost_usd": round(usage.estimated_cost_usd, 5)
+            }))
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse extraction JSON.")
+            logger.error(json.dumps({
+                "event": "extract_data_error",
+                "error": "Failed to parse extraction JSON.",
+                "details": str(e)
+            }))
             result.errors.append(f"Failed to parse term extraction: {e}")
             
     elif generate_summary:
@@ -155,9 +171,17 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
         prompt = _SUMMARIZE_PROMPT.format(document_text=document_text)
         summary, usage = client.simple_text(prompt, temperature=0.0)
         result.summary = summary
-        logger.info(f"Summary generated. Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
+        logger.info(json.dumps({
+            "event": "extract_data_summary_complete",
+            "status": "success",
+            "tokens": usage.total_tokens,
+            "cost_usd": round(usage.estimated_cost_usd, 5)
+        }))
     else:
         result.summary = "Summary generation skipped to save tokens."
-        logger.info("Summary generation skipped to save tokens.")
+        logger.info(json.dumps({
+            "event": "extract_data_skipped",
+            "reason": "generate_summary is False"
+        }))
 
     return result, usage

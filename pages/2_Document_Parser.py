@@ -55,7 +55,7 @@ st.markdown("""
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <h1>📄 Document Parser</h1>
-<p>Upload a PDF or PPTX to extract key terms (term sheets), generate a summary, or transcribe visually.</p>
+<p>This parses a document using both a vision LLM and OCR, then cross-checks them. It also tries to parse and capture charts, images, and formatting.</p>
 """, unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -124,12 +124,12 @@ else:
 
     with st.expander("⚙️ Advanced Options", expanded=False):
         model = st.selectbox(
-            "LLM Model (Prices shown: $input / $output per 1M tokens)",
+            "LLM Model (Prices shown: \$input / \$output per 1M tokens)",
             MODEL_OPTIONS,
             index=MODEL_OPTIONS.index(DEFAULT_LLM_MODEL) if DEFAULT_LLM_MODEL in MODEL_OPTIONS else 0,
             format_func=format_model,
         )
-        generate_summary = st.checkbox("Generate Summary for non-term-sheet documents", value=False, help="Uncheck to save tokens if you only need the raw transcription.")
+        generate_summary = st.checkbox("Generate Summary for documents", value=False, help="Uncheck to save tokens if you only need the raw transcription.")
 
     parse_clicked = st.button("🔍 Parse Document", type="primary")
 
@@ -348,9 +348,14 @@ if result is not None:
         st.markdown('<div class="section-header">Pipeline Logs</div>', unsafe_allow_html=True)
         logs = st.session_state.get("pdf_logs", "")
         if logs:
-            st.code(logs, language="text")
+            st.code(logs, language="json")
         else:
             st.info("No logs captured.")
+            
+        if getattr(result, "raw_extracted_text", None):
+            st.markdown('<div class="section-header" style="margin-top: 2rem;">Raw Markdown Source</div>', unsafe_allow_html=True)
+            with st.expander("View Raw Markdown Code", expanded=False):
+                st.code(result.raw_extracted_text, language="markdown")
 
     st.markdown("<hr style='border:1px solid #334155; margin: 2rem 0;'/>", unsafe_allow_html=True)
 

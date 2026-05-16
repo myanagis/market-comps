@@ -38,7 +38,11 @@ def classify_document(document_text: str, model: str) -> tuple[Dict[str, Any], L
     Classify a document into a predefined type using an LLM.
     Returns the JSON classification and LLMUsage.
     """
-    logger.info(f"Classifying document (text length: {len(document_text)} chars, model: {model})")
+    logger.info(json.dumps({
+        "event": "classify_document_start",
+        "text_length": len(document_text),
+        "model": model
+    }))
     client = LLMClient(model=model)
     prompt = _CLASSIFY_PROMPT.format(document_text=document_text)
     
@@ -51,12 +55,21 @@ def classify_document(document_text: str, model: str) -> tuple[Dict[str, Any], L
     try:
         classification = json.loads(clean_text)
     except json.JSONDecodeError:
-        logger.warning("Failed to parse classification JSON. Defaulting to 'other'.")
+        logger.warning(json.dumps({
+            "event": "classify_document_error",
+            "error": "Failed to parse classification JSON. Defaulting to 'other'."
+        }))
         classification = {
             "document_type": "other",
             "confidence": "low",
             "rationale": "Failed to parse JSON response."
         }
         
-    logger.info(f"Classification complete: {classification.get('document_type')} (confidence: {classification.get('confidence')}). Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
+    logger.info(json.dumps({
+        "event": "classify_document_complete",
+        "document_type": classification.get('document_type'),
+        "confidence": classification.get('confidence'),
+        "tokens": usage.total_tokens,
+        "cost_usd": round(usage.estimated_cost_usd, 5)
+    }))
     return classification, usage
