@@ -77,7 +77,9 @@ INSTRUCTIONS:
 2. Use the VLM version for the overall structure, tables, and graphs.
 3. STRICTLY cross-reference every number, financial metric, and scientific unit against the TEXT EXTRACTION. 
 4. If the VLM hallucinated a number, replace it with the correct number from the TEXT EXTRACTION.
-5. If there is a discrepancy between the TEXT EXTRACTION and VLM EXTRACTION that you cannot confidently resolve, add a clearly marked section at the bottom of your markdown output (e.g. `### ⚠️ Manual Resolution Required`) listing the conflicting values so the user can manually verify them.
+5. If there is a discrepancy between the TEXT EXTRACTION and VLM EXTRACTION that you cannot confidently resolve, add a clearly marked section at the bottom of your markdown output exactly named `### ⚠️ Manual Resolution Required`.
+   - Format these discrepancies as a concise Markdown table with columns: `Metric`, `VLM Value`, `Native Text Value`.
+   - Do NOT flag minor formatting or capitalization differences (e.g. "10 years" vs "10 Years", or "$5m" vs "$5M"). Only flag actual differences in numbers, units, or core meaning.
 6. Output ONLY the final markdown. Do not include your reasoning or introductory text.
 """
     
