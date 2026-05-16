@@ -21,3 +21,4 @@ beautifulsoup4
 html2text
 playwright
 streamlit-aggrid
+streamlit-paste-button

@@ -11,6 +11,8 @@ from market_comps.config import settings, MODEL_OPTIONS
 from market_comps.pdf_parser import TermExtractor
 from market_comps.pdf_parser.models import ParserResult
 from market_comps.pdf_parser.pdf_client import PDF_ENGINE_PRICING
+from streamlit_paste_button import paste_image_button
+import io
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -94,23 +96,48 @@ ENGINE_OPTIONS = {
 }
 
 # ── Upload ────────────────────────────────────────────────────────────────────
-uploaded_file = st.file_uploader(
-    "Upload a PDF or PPTX",
-    type=["pdf", "pptx"],
-    label_visibility="collapsed",
-)
+col1, col2 = st.columns([2, 1])
+with col1:
+    uploaded_file = st.file_uploader(
+        "Upload a PDF, PPTX, or Image",
+        type=["pdf", "pptx", "png", "jpg", "jpeg"],
+        label_visibility="collapsed",
+    )
 
-if uploaded_file is None:
+with col2:
+    st.markdown("<div style='margin-top: 5px; margin-bottom: 5px; color: #888;'>Or paste an image:</div>", unsafe_allow_html=True)
+    paste_result = paste_image_button(
+        label="📋 Paste Image",
+        background_color="#FF4B4B",
+        hover_background_color="#FF0000",
+        errors='ignore'
+    )
+
+file_bytes = None
+filename = ""
+file_size_kb = 0
+
+if uploaded_file is not None:
+    file_bytes = uploaded_file.read()
+    filename = uploaded_file.name
+    file_size_kb = uploaded_file.size / 1024
+elif paste_result.image_data is not None:
+    img_byte_arr = io.BytesIO()
+    paste_result.image_data.save(img_byte_arr, format='PNG')
+    file_bytes = img_byte_arr.getvalue()
+    filename = "pasted_image.png"
+    file_size_kb = len(file_bytes) / 1024
+
+if file_bytes is None:
     st.markdown("""
     <div class="info-box">
-        👆 Upload a <b>PDF or PPTX file</b> above to get started — term sheets, SAFE notes,
+        👆 Upload a <b>PDF, PPTX, or Image</b> or paste an image above to get started — term sheets, SAFE notes,
         convertible notes, or any other document.
     </div>
     """, unsafe_allow_html=True)
     st.session_state["pdf_result"] = None
 else:
-    file_size_kb = uploaded_file.size / 1024
-    st.caption(f"📎 **{uploaded_file.name}** — {file_size_kb:.1f} KB")
+    st.caption(f"📎 **{filename}** — {file_size_kb:.1f} KB")
 
     action = st.radio(
         "Action",
