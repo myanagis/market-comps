@@ -89,7 +89,7 @@ Write 3-6 paragraphs. Be factual and neutral.
 """
 
 @task(name="extract_data")
-def extract_data(document_text: str, classification: Dict[str, Any], model: str) -> Tuple[ParserResult, LLMUsage]:
+def extract_data(document_text: str, classification: Dict[str, Any], model: str, filename: str) -> Tuple[ParserResult, LLMUsage]:
     """
     Extract structured data or a summary depending on the document classification.
     """
@@ -97,6 +97,7 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str)
     client = LLMClient(model=model)
     
     result = ParserResult(
+        filename=filename,
         document_type=doc_type,
         doc_type_confidence=classification.get("confidence", "low"),
         doc_type_rationale=classification.get("rationale", ""),

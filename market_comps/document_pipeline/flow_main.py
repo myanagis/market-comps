@@ -35,7 +35,8 @@ def process_document_pipeline(file_bytes: bytes, filename: str, extraction_metho
     result, extract_usage = extract_data(
         document_text=transcription_text, 
         classification=classification, 
-        model=model
+        model=model,
+        filename=filename
     )
     
     # Consolidate usage and metadata
