@@ -8,7 +8,7 @@ from market_comps.pdf_parser.models import ParserResult
 logger = logging.getLogger(__name__)
 
 @flow(name="process_document_pipeline")
-def process_document_pipeline(file_bytes: bytes, filename: str, extraction_method: str, model: str) -> ParserResult:
+def process_document_pipeline(file_bytes: bytes, filename: str, extraction_method: str, model: str, generate_summary: bool = False) -> ParserResult:
     """
     Main Prefect flow that orchestrates the document parsing process:
     1. Transcribe
@@ -36,7 +36,8 @@ def process_document_pipeline(file_bytes: bytes, filename: str, extraction_metho
         document_text=transcription_text, 
         classification=classification, 
         model=model,
-        filename=filename
+        filename=filename,
+        generate_summary=generate_summary
     )
     
     # Consolidate usage and metadata

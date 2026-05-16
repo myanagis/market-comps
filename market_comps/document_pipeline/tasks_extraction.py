@@ -89,7 +89,7 @@ Write 3-6 paragraphs. Be factual and neutral.
 """
 
 @task(name="extract_data")
-def extract_data(document_text: str, classification: Dict[str, Any], model: str, filename: str) -> Tuple[ParserResult, LLMUsage]:
+def extract_data(document_text: str, classification: Dict[str, Any], model: str, filename: str, generate_summary: bool = False) -> Tuple[ParserResult, LLMUsage]:
     """
     Extract structured data or a summary depending on the document classification.
     """
@@ -110,6 +110,7 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
         llm_usage=LLMUsage()
     )
 
+    usage = LLMUsage()
     if doc_type in TERM_SHEET_TYPES:
         prompt = _EXTRACT_PROMPT.format(
             document_text=document_text,
@@ -146,10 +147,12 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
             logger.error("Failed to parse extraction JSON.")
             result.errors.append(f"Failed to parse term extraction: {e}")
             
-    else:
+    elif generate_summary:
         # Standard summary
         prompt = _SUMMARIZE_PROMPT.format(document_text=document_text)
         summary, usage = client.simple_text(prompt, temperature=0.0)
         result.summary = summary
+    else:
+        result.summary = "Summary generation skipped to save tokens."
 
     return result, usage

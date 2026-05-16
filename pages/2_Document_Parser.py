@@ -129,6 +129,7 @@ else:
             index=MODEL_OPTIONS.index(DEFAULT_LLM_MODEL) if DEFAULT_LLM_MODEL in MODEL_OPTIONS else 0,
             format_func=format_model,
         )
+        generate_summary = st.checkbox("Generate Summary for non-term-sheet documents", value=False, help="Uncheck to save tokens if you only need the raw transcription.")
 
     parse_clicked = st.button("🔍 Parse Document", type="primary")
 
@@ -140,15 +141,30 @@ else:
 
         try:
             from market_comps.document_pipeline.flow_main import process_document_pipeline
+            import logging, io
+            log_capture_string = io.StringIO()
+            ch = logging.StreamHandler(log_capture_string)
+            ch.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+            ch.setFormatter(formatter)
+            prefect_logger = logging.getLogger("prefect")
+            app_logger = logging.getLogger("market_comps")
+            prefect_logger.addHandler(ch)
+            app_logger.addHandler(ch)
             
             with st.spinner(f"Extracting and analyzing via {extraction_method}..."):
                 result = process_document_pipeline(
                     file_bytes=file_bytes, 
                     filename=filename, 
                     extraction_method=extraction_method, 
-                    model=model
+                    model=model,
+                    generate_summary=generate_summary
                 )
             
+            prefect_logger.removeHandler(ch)
+            app_logger.removeHandler(ch)
+            
+            st.session_state["pdf_logs"] = log_capture_string.getvalue()
             st.session_state["pdf_result"] = result
             progress.empty()
 
@@ -230,10 +246,34 @@ if result is not None:
         caption += " · PDF parsing cost included in Total Cost"
     st.caption(caption)
 
+    st.markdown("<hr style='border:1px solid #334155; margin: 2rem 0;'/>", unsafe_allow_html=True)
+    
+    raw_text = getattr(result, "raw_extracted_text", None)
+    if raw_text and "⚠️ Manual Resolution Required" in raw_text:
+        st.warning("⚠️ **Manual Resolution Required:** The intelligent cross-checker found discrepancies between the Native Text and VLM extractions that could not be confidently resolved. Please review the flagged items at the bottom of the Document Transcription tab.")
 
-    tab1, tab2 = st.tabs(["📊 Extraction Results", "📝 Document Transcription"])
+    tab1, tab2, tab3 = st.tabs(["📝 Document Transcription", "📊 Extraction Results", "📋 Pipeline Logs"])
 
     with tab1:
+        st.markdown('<div class="section-header">Raw Transcribed Text</div>', unsafe_allow_html=True)
+        if raw_text:
+            st.markdown(raw_text)
+        else:
+            st.info("No raw text captured. Re-run the parser to populate this field.")
+
+        with st.expander("🔍 Debug Info", expanded=False):
+            # Debug metadata
+            import dataclasses, json as _json
+            debug_info = {
+                "pdf_engine": getattr(result, "pdf_engine", "?"),
+                "pdf_pages": getattr(result, "pdf_pages", "NOT SET"),
+                "pdf_parsing_cost_usd": getattr(result, "pdf_parsing_cost_usd", "NOT SET"),
+                "llm_estimated_cost_usd": result.llm_usage.estimated_cost_usd,
+                "document_type": result.document_type,
+            }
+            st.json(debug_info)
+
+    with tab2:
         # ── Term extraction results ────────────────────────────────────────────
         if result.terms:
             st.markdown('<div class="section-header">📊 Extracted Terms</div>', unsafe_allow_html=True)
@@ -301,25 +341,15 @@ if result is not None:
             st.markdown('<div class="section-header">📝 Document Summary</div>', unsafe_allow_html=True)
             st.markdown(result.summary)
 
-    with tab2:
-        st.markdown('<div class="section-header">Raw Transcribed Text</div>', unsafe_allow_html=True)
-        raw_text = getattr(result, "raw_extracted_text", None)
-        if raw_text:
-            st.markdown(raw_text)
+    with tab3:
+        st.markdown('<div class="section-header">Pipeline Logs</div>', unsafe_allow_html=True)
+        logs = st.session_state.get("pdf_logs", "")
+        if logs:
+            st.code(logs, language="text")
         else:
-            st.info("No raw text captured. Re-run the parser to populate this field.")
+            st.info("No logs captured.")
 
-        with st.expander("🔍 Debug Info", expanded=False):
-            # Debug metadata
-            import dataclasses, json as _json
-            debug_info = {
-                "pdf_engine": getattr(result, "pdf_engine", "?"),
-                "pdf_pages": getattr(result, "pdf_pages", "NOT SET"),
-                "pdf_parsing_cost_usd": getattr(result, "pdf_parsing_cost_usd", "NOT SET"),
-                "llm_estimated_cost_usd": result.llm_usage.estimated_cost_usd,
-                "document_type": result.document_type,
-            }
-            st.json(debug_info)
+    st.markdown("<hr style='border:1px solid #334155; margin: 2rem 0;'/>", unsafe_allow_html=True)
 
 
 # ── How It Works ──────────────────────────────────────────────────────────────
