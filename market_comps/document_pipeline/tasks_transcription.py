@@ -77,7 +77,8 @@ INSTRUCTIONS:
 2. Use the VLM version for the overall structure, tables, and graphs.
 3. STRICTLY cross-reference every number, financial metric, and scientific unit against the TEXT EXTRACTION. 
 4. If the VLM hallucinated a number, replace it with the correct number from the TEXT EXTRACTION.
-5. Output ONLY the final markdown. Do not include your reasoning or introductory text.
+5. If there is a discrepancy between the TEXT EXTRACTION and VLM EXTRACTION that you cannot confidently resolve, add a clearly marked section at the bottom of your markdown output (e.g. `### ⚠️ Manual Resolution Required`) listing the conflicting values so the user can manually verify them.
+6. Output ONLY the final markdown. Do not include your reasoning or introductory text.
 """
     
     client = LLMClient(model=model)
