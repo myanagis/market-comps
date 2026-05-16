@@ -92,27 +92,7 @@ settings = Settings()
 DEFAULT_LLM_MODEL: str = settings.default_model
 
 # Centralised model list — import from here in all pages to maintain a single source of truth
-MODEL_OPTIONS: list[str] = [
-    "anthropic/claude-3.7-sonnet",
-    "anthropic/claude-3.5-sonnet",
-    "anthropic/claude-3.5-haiku",
-    "anthropic/claude-3-haiku",
-    "cohere/command-r-plus-08-2024",
-    "deepseek/deepseek-r1",
-    "deepseek/deepseek-chat",
-    "google/gemini-2.5-pro",
-    "google/gemini-2.5-flash",
-    "google/gemini-2.5-flash-lite",
-    "google/gemini-2.0-flash-001",
-    "meta-llama/llama-3.3-70b-instruct",
-    "mistralai/mistral-large-2411",
-    "mistralai/mixtral-8x7b-instruct",
-    "openai/gpt-4o",
-    "openai/gpt-4o-mini",
-    "perplexity/llama-3.1-sonar-huge-128k-online",
-    "x-ai/grok-4",
-    "x-ai/grok-4-fast",
-]
+MODEL_OPTIONS: list[str] = list(settings.MODEL_PRICING.keys())
 
 DEFAULT_MODELS: list[str] = [
     "deepseek/deepseek-chat",            
