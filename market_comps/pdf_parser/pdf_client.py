@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import mimetypes
 from typing import Any, Optional
 
 import requests
@@ -104,8 +105,12 @@ class PDFClient:
         """
         if pdf_bytes is not None:
             b64 = base64.b64encode(pdf_bytes).decode("utf-8")
-            self._cached_data_url = f"data:application/pdf;base64,{b64}"
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                mime_type = "application/pdf"
+            self._cached_data_url = f"data:{mime_type};base64,{b64}"
             self._cached_filename = filename
+            self._is_image = mime_type.startswith("image/")
 
         messages = self._build_messages(
             prompt=prompt,
@@ -120,8 +125,8 @@ class PDFClient:
             "temperature": temperature,
         }
 
-        # Add file-parser plugin on the first call (when we're actually uploading)
-        if pdf_bytes is not None and self.pdf_engine != "native":
+        # Add file-parser plugin on the first call (when we're actually uploading a PDF)
+        if pdf_bytes is not None and getattr(self, "_is_image", False) is False and self.pdf_engine != "native":
             payload["plugins"] = [
                 {"id": "file-parser", "pdf": {"engine": self.pdf_engine}}
             ]
@@ -184,17 +189,21 @@ class PDFClient:
             # 1. Original user message WITH the file
             # 2. Assistant message WITH the annotations
             # 3. New user message with the actual prompt
+            file_obj = {
+                "type": "image_url",
+                "image_url": {"url": self._cached_data_url}
+            } if getattr(self, "_is_image", False) else {
+                "type": "file",
+                "file": {
+                    "filename": self._cached_filename,
+                    "file_data": self._cached_data_url,
+                },
+            }
             messages.append({
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Please analyse this document."},
-                    {
-                        "type": "file",
-                        "file": {
-                            "filename": self._cached_filename,
-                            "file_data": self._cached_data_url,
-                        },
-                    },
+                    file_obj,
                 ],
             })
             messages.append({
@@ -207,13 +216,21 @@ class PDFClient:
             # First call — include the file directly
             user_content: list[dict] = [{"type": "text", "text": prompt}]
             if self._cached_data_url:
-                user_content.append({
-                    "type": "file",
-                    "file": {
-                        "filename": self._cached_filename,
-                        "file_data": self._cached_data_url,
-                    },
-                })
+                if getattr(self, "_is_image", False):
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": self._cached_data_url
+                        }
+                    })
+                else:
+                    user_content.append({
+                        "type": "file",
+                        "file": {
+                            "filename": self._cached_filename,
+                            "file_data": self._cached_data_url,
+                        },
+                    })
             messages.append({"role": "user", "content": user_content})
 
         return messages
