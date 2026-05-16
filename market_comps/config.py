@@ -46,7 +46,7 @@ class Settings:
     )
     default_model: str = field(
         default_factory=lambda: _get_secret(
-            "DEFAULT_MODEL", "google/gemini-2.5-flash-lite-preview-06-17"
+            "DEFAULT_MODEL", "google/gemini-2.5-flash"
         )
     )
 
@@ -87,6 +87,9 @@ class Settings:
 
 # Singleton — import this anywhere
 settings = Settings()
+
+# Global default LLM Model
+DEFAULT_LLM_MODEL: str = settings.default_model
 
 # Centralised model list — import from here in all pages to maintain a single source of truth
 MODEL_OPTIONS: list[str] = [

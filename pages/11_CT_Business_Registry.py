@@ -10,7 +10,7 @@ import requests
 import streamlit as st
 from pydantic import BaseModel, Field
 
-from market_comps.config import MODEL_OPTIONS, settings
+from market_comps.config import MODEL_OPTIONS, settings, DEFAULT_LLM_MODEL
 from market_comps.llm_client import LLMClient
 from market_comps.models import LLMUsage
 from market_comps.connections.ct_registry import CTBusinessRegistryClient
@@ -200,7 +200,7 @@ with st.expander("Settings (NAICS & LLM Options)", expanded=False):
     selected_model = st.selectbox(
         "Model",
         options=MODEL_OPTIONS,
-        index=MODEL_OPTIONS.index("google/gemini-2.5-flash") if "google/gemini-2.5-flash" in MODEL_OPTIONS else 0,
+        index=MODEL_OPTIONS.index(DEFAULT_LLM_MODEL) if DEFAULT_LLM_MODEL in MODEL_OPTIONS else 0,
         format_func=format_model,
     )
     

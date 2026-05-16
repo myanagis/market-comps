@@ -15,7 +15,7 @@ from pptx import Presentation
 from market_comps.pdf_parser.pdf_client import PDFClient
 
 from market_comps.ui import inject_global_style
-from market_comps.config import MODEL_OPTIONS
+from market_comps.config import MODEL_OPTIONS, DEFAULT_LLM_MODEL
 from market_comps.schema_framework.engine import run_schema_extraction, synthesize_evidence
 from market_comps.config import settings
 
@@ -57,13 +57,11 @@ with st.expander("⚙️ Configuration", expanded=True):
     with col1:
         # Defaulting to a cheaper model (e.g. gpt-4o-mini or gemini-flash)
         default_idx = 0
-        if "google/gemini-2.5-flash-lite" in MODEL_OPTIONS:
-            default_idx = MODEL_OPTIONS.index("google/gemini-2.5-flash-lite")
-        elif "openai/gpt-4o-mini" in MODEL_OPTIONS:
-            default_idx = MODEL_OPTIONS.index("openai/gpt-4o-mini")
+        if DEFAULT_LLM_MODEL in MODEL_OPTIONS:
+            default_idx = MODEL_OPTIONS.index(DEFAULT_LLM_MODEL)
         
         selected_model = st.selectbox(
-            "Extraction & Synthesis Model",
+            "Extraction Engine",
             options=MODEL_OPTIONS,
             index=default_idx,
             format_func=format_model,

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from market_comps.config import settings, MODEL_OPTIONS
+from market_comps.config import settings, MODEL_OPTIONS, DEFAULT_LLM_MODEL
 from market_comps.pdf_parser.models import ParserResult
 from streamlit_paste_button import paste_image_button
 import io
@@ -126,7 +126,7 @@ else:
         model = st.selectbox(
             "LLM Model (Prices shown: $input / $output per 1M tokens)",
             MODEL_OPTIONS,
-            index=MODEL_OPTIONS.index("gemini-2.5-flash") if "gemini-2.5-flash" in MODEL_OPTIONS else 0,
+            index=MODEL_OPTIONS.index(DEFAULT_LLM_MODEL) if DEFAULT_LLM_MODEL in MODEL_OPTIONS else 0,
             format_func=format_model,
         )
 

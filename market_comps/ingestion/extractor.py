@@ -122,12 +122,13 @@ def extract_entities_from_text(
     prompt += f"\n\nTEXT:\n{text[:50000]}"
 
     # Call the LLM
+    from market_comps.config import DEFAULT_LLM_MODEL
     llm = LLMClient()
     parsed, usage = llm.structured_output(
         prompt=prompt,
         json_schema=schema,
         system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
-        model="google/gemini-2.5-flash"
+        model=DEFAULT_LLM_MODEL
     )
 
     # Normalize response
@@ -232,11 +233,12 @@ def extract_profile_detail(
     )
 
     llm = LLMClient()
+    from market_comps.config import DEFAULT_LLM_MODEL
     parsed, usage = llm.structured_output(
         prompt=prompt,
         json_schema=PROFILE_DETAIL_SCHEMA,
         system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
-        model="google/gemini-2.5-flash"
+        model=DEFAULT_LLM_MODEL
     )
 
     detail = parsed if isinstance(parsed, dict) else {}
