@@ -183,8 +183,6 @@ else:
 
     # ── Run pipeline ──────────────────────────────────────────────────────────
     if parse_clicked:
-        file_bytes = uploaded_file.read()
-        filename = uploaded_file.name
 
         # --- PPTX Flow ---
         if filename.lower().endswith(".pptx"):
