@@ -236,65 +236,65 @@ if result is not None:
     with tab1:
         # ── Term extraction results ────────────────────────────────────────────
         if result.terms:
-        st.markdown('<div class="section-header">📊 Extracted Terms</div>', unsafe_allow_html=True)
-
-        # Summary table first
-        import pandas as pd
-        rows = []
-        for term in result.terms:
-            conf_label = "N/A" if term.confidence == "not_found" else term.confidence
-            first_quote = ""
-            if term.supporting_quotes:
-                q = _as_quote(term.supporting_quotes[0])
-                first_quote = f'"{q.text[:120]}"'
-                if q.page:
-                    first_quote += f" (p.{q.page})"
-            elif term.possible_snippets:
-                first_quote = "~" + term.possible_snippets[0][:100]
-            rows.append({
-                "Field": term.name,
-                "Value": term.value or "—",
-                "Confidence": conf_label,
-                "Supporting Quote": first_quote,
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-        # Detailed expandable rows below
-        st.markdown('<div class="section-header">📋 Details</div>', unsafe_allow_html=True)
-        for term in result.terms:
-            conf_label = "N/A" if term.confidence == "not_found" else term.confidence
-            conf_icon = {"high": "✅", "low": "⚠️", "not_found": "—"}.get(term.confidence, "—")
-            value_display = term.value if term.value else "—"
-
-            with st.expander(f"{conf_icon} **{term.name}** — {value_display}", expanded=(term.confidence == "high")):
-                cols = st.columns([1, 2])
-                with cols[0]:
-                    st.markdown(f"**Confidence:** {conf_label}")
-                    st.markdown(f"**Value:** {value_display}")
-
-                with cols[1]:
-                    if term.supporting_quotes:
-                        st.markdown("**Supporting quotes:**")
-                        for q_raw in term.supporting_quotes:
-                            q = _as_quote(q_raw)
-                            page_badge = f' <span style="color:#64748b; font-size:0.72rem;">p.{q.page}</span>' if q.page else ""
-                            preview = q.text[:160] + ("…" if len(q.text) > 160 else "")
-                            escaped = q.text.replace('"', '&quot;').replace("'", "&#39;")
-                            st.markdown(
-                                f'<span class="quote-chip" title="{escaped}">"{preview}"{page_badge}</span>',
-                                unsafe_allow_html=True,
-                            )
-                    elif term.possible_snippets:
-                        st.markdown("**Nearby snippets (uncertain):**")
-                        for s in term.possible_snippets:
-                            escaped = s.replace('"', '&quot;').replace("'", "&#39;")
-                            preview = s[:160] + ("…" if len(s) > 160 else "")
-                            st.markdown(
-                                f'<span class="snippet-chip" title="{escaped}">{preview}</span>',
-                                unsafe_allow_html=True,
-                            )
-                    else:
-                        st.markdown('<span style="color:#475569; font-size:0.85rem;">No relevant text found.</span>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">📊 Extracted Terms</div>', unsafe_allow_html=True)
+    
+            # Summary table first
+            import pandas as pd
+            rows = []
+            for term in result.terms:
+                conf_label = "N/A" if term.confidence == "not_found" else term.confidence
+                first_quote = ""
+                if term.supporting_quotes:
+                    q = _as_quote(term.supporting_quotes[0])
+                    first_quote = f'"{q.text[:120]}"'
+                    if q.page:
+                        first_quote += f" (p.{q.page})"
+                elif term.possible_snippets:
+                    first_quote = "~" + term.possible_snippets[0][:100]
+                rows.append({
+                    "Field": term.name,
+                    "Value": term.value or "—",
+                    "Confidence": conf_label,
+                    "Supporting Quote": first_quote,
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    
+            # Detailed expandable rows below
+            st.markdown('<div class="section-header">📋 Details</div>', unsafe_allow_html=True)
+            for term in result.terms:
+                conf_label = "N/A" if term.confidence == "not_found" else term.confidence
+                conf_icon = {"high": "✅", "low": "⚠️", "not_found": "—"}.get(term.confidence, "—")
+                value_display = term.value if term.value else "—"
+    
+                with st.expander(f"{conf_icon} **{term.name}** — {value_display}", expanded=(term.confidence == "high")):
+                    cols = st.columns([1, 2])
+                    with cols[0]:
+                        st.markdown(f"**Confidence:** {conf_label}")
+                        st.markdown(f"**Value:** {value_display}")
+    
+                    with cols[1]:
+                        if term.supporting_quotes:
+                            st.markdown("**Supporting quotes:**")
+                            for q_raw in term.supporting_quotes:
+                                q = _as_quote(q_raw)
+                                page_badge = f' <span style="color:#64748b; font-size:0.72rem;">p.{q.page}</span>' if q.page else ""
+                                preview = q.text[:160] + ("…" if len(q.text) > 160 else "")
+                                escaped = q.text.replace('"', '&quot;').replace("'", "&#39;")
+                                st.markdown(
+                                    f'<span class="quote-chip" title="{escaped}">"{preview}"{page_badge}</span>',
+                                    unsafe_allow_html=True,
+                                )
+                        elif term.possible_snippets:
+                            st.markdown("**Nearby snippets (uncertain):**")
+                            for s in term.possible_snippets:
+                                escaped = s.replace('"', '&quot;').replace("'", "&#39;")
+                                preview = s[:160] + ("…" if len(s) > 160 else "")
+                                st.markdown(
+                                    f'<span class="snippet-chip" title="{escaped}">{preview}</span>',
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            st.markdown('<span style="color:#475569; font-size:0.85rem;">No relevant text found.</span>', unsafe_allow_html=True)
 
         # ── Summary results ────────────────────────────────────────────────────
         elif result.summary:
@@ -310,16 +310,16 @@ if result is not None:
             st.info("No raw text captured. Re-run the parser to populate this field.")
 
         with st.expander("🔍 Debug Info", expanded=False):
-        # Debug metadata
-        import dataclasses, json as _json
-        debug_info = {
-            "pdf_engine": getattr(result, "pdf_engine", "?"),
-            "pdf_pages": getattr(result, "pdf_pages", "NOT SET"),
-            "pdf_parsing_cost_usd": getattr(result, "pdf_parsing_cost_usd", "NOT SET"),
-            "llm_estimated_cost_usd": result.llm_usage.estimated_cost_usd,
-            "document_type": result.document_type,
-        }
-        st.json(debug_info)
+            # Debug metadata
+            import dataclasses, json as _json
+            debug_info = {
+                "pdf_engine": getattr(result, "pdf_engine", "?"),
+                "pdf_pages": getattr(result, "pdf_pages", "NOT SET"),
+                "pdf_parsing_cost_usd": getattr(result, "pdf_parsing_cost_usd", "NOT SET"),
+                "llm_estimated_cost_usd": result.llm_usage.estimated_cost_usd,
+                "document_type": result.document_type,
+            }
+            st.json(debug_info)
 
 
 # ── How It Works ──────────────────────────────────────────────────────────────
