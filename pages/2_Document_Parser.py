@@ -255,7 +255,6 @@ if result is not None:
     tab1, tab2, tab3 = st.tabs(["📝 Document Transcription", "📊 Extraction Results", "📋 Pipeline Logs"])
 
     with tab1:
-        st.markdown('<div class="section-header">Raw Transcribed Text</div>', unsafe_allow_html=True)
         if raw_text:
             st.markdown(raw_text)
         else:
