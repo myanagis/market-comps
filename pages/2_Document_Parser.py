@@ -8,9 +8,7 @@ from __future__ import annotations
 import streamlit as st
 
 from market_comps.config import settings, MODEL_OPTIONS
-from market_comps.pdf_parser import TermExtractor
 from market_comps.pdf_parser.models import ParserResult
-from market_comps.pdf_parser.pdf_client import PDF_ENGINE_PRICING
 from streamlit_paste_button import paste_image_button
 import io
 
@@ -27,9 +25,9 @@ from market_comps.ui import inject_global_style
 
 inject_global_style()
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+/* Custom doc-type badges (rest of CSS moved to global or removed) */
 .doc-type-badge {
     display: inline-block;
     padding: 0.35rem 0.8rem;
@@ -51,30 +49,6 @@ st.markdown("""
     padding: 0.6rem 0.8rem; font-size: 0.78rem; color: #93c5fd; margin-top: 0.8rem;
 }
 .usage-badge b { color: #bfdbfe; }
-
-.info-box {
-    background: #1e293b; border-left: 4px solid #34d399;
-    border-radius: 0 8px 8px 0; padding: 0.8rem 1rem;
-    color: #94a3b8; font-size: 0.9rem;
-}
-
-/* Quote chips */
-.quote-chip {
-    display: block;
-    background: #0f172a; border: 1px solid #1e3a5f;
-    border-radius: 6px; padding: 0.3rem 0.6rem;
-    font-size: 0.78rem; color: #7dd3fc;
-    font-style: italic; margin-top: 0.25rem;
-    white-space: pre-wrap; word-break: break-word;
-}
-.snippet-chip {
-    display: block;
-    background: #1c1917; border: 1px solid #44403c;
-    border-radius: 6px; padding: 0.3rem 0.6rem;
-    font-size: 0.78rem; color: #a8a29e;
-    font-style: italic; margin-top: 0.25rem;
-    white-space: pre-wrap; word-break: break-word;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -129,21 +103,19 @@ elif paste_result.image_data is not None:
     file_size_kb = len(file_bytes) / 1024
 
 if file_bytes is None:
-    st.markdown("""
-    <div class="info-box">
-        👆 Upload a <b>PDF, PPTX, or Image</b> or paste an image above to get started — term sheets, SAFE notes,
-        convertible notes, or any other document.
-    </div>
-    """, unsafe_allow_html=True)
+    st.info("👆 Upload a **PDF, PPTX, or Image** or paste an image above to get started — term sheets, SAFE notes, convertible notes, pitch decks, or any other document.")
     st.session_state["pdf_result"] = None
 else:
     st.caption(f"📎 **{filename}** — {file_size_kb:.1f} KB")
 
-    action = st.radio(
-        "Action",
-        ["Extract Term Sheet (Structured)", "Transcribe Pitch Deck (High-Fidelity)"],
-        horizontal=True
-    )
+    METHOD_OPTIONS = {
+        "OCR (Mistral)": "ocr",
+        "Text Reader (Native)": "text",
+        "VLM (Image-based)": "vlm",
+        "Hybrid (VLM + Text cross-check)": "vlm_plus_text"
+    }
+    method_label = st.selectbox("Extraction Method", list(METHOD_OPTIONS.keys()), index=3)
+    extraction_method = METHOD_OPTIONS[method_label]
 
     # Advanced Options
     def format_model(m: str) -> str:
@@ -151,115 +123,39 @@ else:
         return f"{m} (${in_price:.2f} / ${out_price:.2f})"
 
     with st.expander("⚙️ Advanced Options", expanded=False):
-        _ao1, _ao2 = st.columns([3, 1])
-        with _ao1:
-            model = st.selectbox(
-                "LLM Model (Prices shown: $input / $output per 1M tokens)",
-                MODEL_OPTIONS,
-                index=MODEL_OPTIONS.index(settings.default_model)
-                if settings.default_model in MODEL_OPTIONS else 0,
-                format_func=format_model,
-            )
-        with _ao2:
-            if action == "Extract Term Sheet (Structured)":
-                ENGINE_OPTIONS = {
-                    "PDF Text (Free)": "pdf-text",
-                    "Mistral OCR ($2 / 1k pages)": "mistral-ocr",
-                    "Native (input tokens)": "native",
-                }
-                engine_label = st.selectbox("PDF Engine", list(ENGINE_OPTIONS.keys()), index=0)
-                engine = ENGINE_OPTIONS[engine_label]
-            else:
-                METHOD_OPTIONS = {
-                    "OCR (Mistral)": "ocr",
-                    "Text Reader (Native)": "text",
-                    "VLM (Image-based)": "vlm",
-                    "Hybrid (VLM + Text cross-check)": "vlm_plus_text"
-                }
-                method_label = st.selectbox("Extraction Method", list(METHOD_OPTIONS.keys()), index=3)
-                method = METHOD_OPTIONS[method_label]
+        model = st.selectbox(
+            "LLM Model (Prices shown: $input / $output per 1M tokens)",
+            MODEL_OPTIONS,
+            index=MODEL_OPTIONS.index("gemini-2.5-flash") if "gemini-2.5-flash" in MODEL_OPTIONS else 0,
+            format_func=format_model,
+        )
 
     parse_clicked = st.button("🔍 Parse Document", type="primary")
 
     # ── Run pipeline ──────────────────────────────────────────────────────────
     if parse_clicked:
+        progress = st.empty()
+        with progress.container():
+            st.info("🔄 Running intelligent document processing pipeline...")
 
-        # --- PPTX Flow ---
-        if filename.lower().endswith(".pptx"):
-            with st.spinner("🔄 Extracting text from presentation..."):
-                import io
-                from pptx import Presentation
-                
-                prs = Presentation(io.BytesIO(file_bytes))
-                text_runs = []
-                for slide_num, slide in enumerate(prs.slides):
-                    slide_text = []
-                    for shape in slide.shapes:
-                        if hasattr(shape, "text") and shape.text.strip():
-                            slide_text.append(shape.text.strip())
-                    if slide_text:
-                        text_runs.append(f"--- Slide {slide_num + 1} ---\n" + "\n".join(slide_text))
-                
-                extracted_text = "\n\n".join(text_runs)
-                
-                class PPTXResult:
-                    def __init__(self):
-                        self.document_type = "presentation"
-                        self.doc_type_confidence = "high"
-                        self.doc_type_rationale = "Directly extracted from PPTX file."
-                        from market_comps.models import LLMUsage
-                        self.llm_usage = LLMUsage()
-                        self.model_used = "N/A"
-                        self.pdf_engine = "python-pptx"
-                        self.summary = extracted_text
-                        self.raw_extracted_text = extracted_text
-                        self.terms = []
-                        self.errors = []
-                        
-                st.session_state["pdf_result"] = PPTXResult()
+        try:
+            from market_comps.document_pipeline.flow_main import process_document_pipeline
+            
+            with st.spinner(f"Extracting and analyzing via {extraction_method}..."):
+                result = process_document_pipeline(
+                    file_bytes=file_bytes, 
+                    filename=filename, 
+                    extraction_method=extraction_method, 
+                    model=model
+                )
+            
+            st.session_state["pdf_result"] = result
+            progress.empty()
 
-        # --- PDF Flow ---
-        else:
-            progress = st.empty()
-    
-            with progress.container():
-                st.info("🔄 **Step 0** — Processing document…")
-    
-            try:
-                if action == "Transcribe Pitch Deck (High-Fidelity)":
-                    from market_comps.pdf_parser.document_processor import process_document
-                    
-                    with st.spinner(f"Transcribing via {method}..."):
-                        content, usage = process_document(file_bytes, filename, method, model)
-                        
-                        class TranscriptionResult:
-                            def __init__(self):
-                                self.document_type = "presentation"
-                                self.doc_type_confidence = "high"
-                                self.doc_type_rationale = f"Transcribed via {method}"
-                                self.llm_usage = usage
-                                self.model_used = model
-                                self.pdf_engine = method
-                                self.summary = content
-                                self.raw_extracted_text = content
-                                self.terms = []
-                                self.errors = []
-                        
-                        st.session_state["pdf_result"] = TranscriptionResult()
-                        progress.empty()
-
-                else:
-                    extractor = TermExtractor(model=model, pdf_engine=engine)
-                    with st.spinner(""):
-                        result = extractor.run(pdf_bytes=file_bytes, filename=filename)
-        
-                    st.session_state["pdf_result"] = result
-                    progress.empty()
-    
-            except Exception as exc:
-                progress.empty()
-                st.error(f"❌ Parser error: {exc}")
-                st.session_state["pdf_result"] = None
+        except Exception as exc:
+            progress.empty()
+            st.error(f"❌ Parser error: {exc}")
+            st.session_state["pdf_result"] = None
 
 # ── Results ───────────────────────────────────────────────────────────────────
 result = st.session_state.get("pdf_result")
@@ -425,32 +321,15 @@ if result is not None:
 # ── How It Works ──────────────────────────────────────────────────────────────
 with st.expander("🤖 How this page works", expanded=False):
     st.markdown("""
-**PDF Parser** extracts key legal and financial terms from uploaded documents using a two-step LLM pipeline:
+**Intelligent Document Pipeline** automatically extracts key terms and summaries from uploaded documents using a robust **Prefect** orchestration pipeline:
 
-1. **PDF Parsing** — The document is sent to OpenRouter's file-parser plugin (supports `mistral-ocr‑2503`
-   and `gemini-2.5-flash` engines) which converts the PDF into structured text with page annotations.
+1. **Transcription** — The document is ingested using your chosen method (OCR, VLM, Native, or a Hybrid approach) to produce high-fidelity Markdown text. 
+   *(Hybrid mode uses native text for exact numbers and a Vision model to preserve formatting).*
+2. **Classification** — The transcribed text is sent to an LLM to categorize the document (e.g., Term Sheet, SAFE, Pitch Deck, Letter of Intent).
+3. **Data Extraction** — Based on the document class, the pipeline loads a dynamic schema and extracts specific structured fields (like Valuation or Liquidation Preference for Term Sheets) or creates an executive summary (for standard documents).
 
-2. **Term Extraction** — A second LLM call reads the extracted text and populates up to 21 structured fields
-   (dates, parties, valuations, rights, provisions, etc.) with verbatim quotes and page-number references.
-
-3. **Summarization** — A third call creates a plain-English executive summary.
-
-Anti-hallucination rules are applied at each step: the model must quote verbatim from the document and
-default to "not found" when information is absent. A troubleshooting section shows the raw extracted text
-for verification.
+Anti-hallucination rules ensure that extracted values are cited verbatim with page references where possible.
 """)
-    
-    st.markdown("#### LLM Prompts Used")
-    from market_comps.pdf_parser.term_extractor import _CLASSIFY_PROMPT, _EXTRACT_PROMPT, _SUMMARIZE_PROMPT
-    
-    st.markdown("**1. Document Classification**")
-    st.code(_CLASSIFY_PROMPT, language="text")
-    
-    st.markdown("**2. Term Extraction (for Term Sheets & SAFEs)**")
-    st.code(_EXTRACT_PROMPT, language="text")
-    
-    st.markdown("**3. Summarization (for other document types)**")
-    st.code(_SUMMARIZE_PROMPT, language="text")
 
 
 
