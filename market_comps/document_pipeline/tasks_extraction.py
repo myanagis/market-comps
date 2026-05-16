@@ -110,6 +110,8 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
         llm_usage=LLMUsage()
     )
 
+    logger.info(f"Extract Data Task starting: filename='{filename}', doc_type='{doc_type}', model='{model}', generate_summary={generate_summary}")
+    
     usage = LLMUsage()
     if doc_type in TERM_SHEET_TYPES:
         prompt = _EXTRACT_PROMPT.format(
@@ -143,6 +145,7 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
                         possible_snippets=t.get("possible_snippets", [])
                     )
                 )
+            logger.info(f"Extraction successful: parsed {len(result.terms)} terms. Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
         except json.JSONDecodeError as e:
             logger.error("Failed to parse extraction JSON.")
             result.errors.append(f"Failed to parse term extraction: {e}")
@@ -152,7 +155,9 @@ def extract_data(document_text: str, classification: Dict[str, Any], model: str,
         prompt = _SUMMARIZE_PROMPT.format(document_text=document_text)
         summary, usage = client.simple_text(prompt, temperature=0.0)
         result.summary = summary
+        logger.info(f"Summary generated. Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
     else:
         result.summary = "Summary generation skipped to save tokens."
+        logger.info("Summary generation skipped to save tokens.")
 
     return result, usage

@@ -38,6 +38,7 @@ def classify_document(document_text: str, model: str) -> tuple[Dict[str, Any], L
     Classify a document into a predefined type using an LLM.
     Returns the JSON classification and LLMUsage.
     """
+    logger.info(f"Classifying document (text length: {len(document_text)} chars, model: {model})")
     client = LLMClient(model=model)
     prompt = _CLASSIFY_PROMPT.format(document_text=document_text)
     
@@ -57,4 +58,5 @@ def classify_document(document_text: str, model: str) -> tuple[Dict[str, Any], L
             "rationale": "Failed to parse JSON response."
         }
         
+    logger.info(f"Classification complete: {classification.get('document_type')} (confidence: {classification.get('confidence')}). Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
     return classification, usage

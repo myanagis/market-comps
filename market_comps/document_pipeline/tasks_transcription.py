@@ -104,25 +104,25 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
     'ocr', 'text', 'vlm', or 'vlm_plus_text'.
     Returns (markdown_text, LLMUsage)
     """
+    logger.info(f"Transcribe Document Task starting: filename='{filename}', method='{method}', model='{model}'")
     instructions = _load_instructions()
     
     if method == "ocr":
-        return extract_text_with_ocr(pdf_bytes, filename, model, instructions)
-        
+        res, usage = extract_text_with_ocr(pdf_bytes, filename, model, instructions)
     elif method == "text":
-        return extract_text_with_native(pdf_bytes, filename, model, instructions)
-        
+        res, usage = extract_text_with_native(pdf_bytes, filename, model, instructions)
     elif method == "vlm":
-        return extract_text_with_vlm(pdf_bytes, model, instructions)
-        
+        res, usage = extract_text_with_vlm(pdf_bytes, model, instructions)
     elif method == "vlm_plus_text":
-        logger.info("Running VLM_PLUS_TEXT hybrid extraction...")
+        logger.info("Running VLM_PLUS_TEXT hybrid extraction... (This will run native text extraction, then VLM extraction, and cross-reference them)")
         # Run text extraction
         text_content, text_usage = extract_text_with_native(pdf_bytes, filename, model, instructions)
         # Run VLM extraction
         vlm_content, vlm_usage = extract_text_with_vlm(pdf_bytes, model, instructions)
         # Cross compare
-        return reconcile_texts(text_content, vlm_content, text_usage, vlm_usage, model)
-        
+        res, usage = reconcile_texts(text_content, vlm_content, text_usage, vlm_usage, model)
     else:
         raise ValueError(f"Unknown method: {method}")
+        
+    logger.info(f"Transcription complete. Token usage: {usage.total_tokens} (Cost: ${usage.estimated_cost_usd:.5f})")
+    return res, usage
