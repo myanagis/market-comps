@@ -11,45 +11,7 @@ if "authenticated" not in st.session_state or not st.session_state["authenticate
 # Page configuration
 st.set_page_config(page_title="Admin DB Manager", page_icon="🔒", layout="wide")
 
-# Custom Styling for Admin Page
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
-    
-    .main-title {
-        font-size: 36px;
-        font-weight: 800;
-        margin-bottom: 24px;
-        background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    
-    .admin-card {
-        background: rgba(255, 255, 255, 0.02);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 24px;
-    }
-    
-    .stat-val {
-        font-size: 32px;
-        font-weight: 800;
-        color: #ec4899;
-    }
-    
-    .stat-lbl {
-        font-size: 14px;
-        color: #9ca3af;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-st.markdown('<div class="main-title">🔒 Admin Database Manager</div>', unsafe_allow_html=True)
+st.title("🔒 Admin Database Manager")
 
 # 1. Reflect Database Metadata
 @st.cache_data(ttl=60)
@@ -114,36 +76,9 @@ row_count = get_row_count(selected_table_name)
 
 # 4. Stat Cards Row
 col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown(
-        f"""
-        <div class="admin-card">
-            <div class="stat-lbl">Table Name</div>
-            <div class="stat-val" style="color: #a855f7; font-size: 24px; margin-top: 10px;">{selected_table_name}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-with col2:
-    st.markdown(
-        f"""
-        <div class="admin-card">
-            <div class="stat-lbl">Total Records</div>
-            <div class="stat-val">{row_count:,}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-with col3:
-    st.markdown(
-        f"""
-        <div class="admin-card">
-            <div class="stat-lbl">Columns Count</div>
-            <div class="stat-val" style="color: #3b82f6;">{len(columns_info)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+col1.metric("Selected Table", selected_table_name)
+col2.metric("Total Records", f"{row_count:,}")
+col3.metric("Columns Count", len(columns_info))
 
 # 5. Search & Filter Interface
 st.subheader("🔍 Filters & Search")
