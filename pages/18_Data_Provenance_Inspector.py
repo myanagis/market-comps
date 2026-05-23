@@ -64,8 +64,9 @@ if selected_doc_id:
             if job.llm_usage_json:
                 usage = job.llm_usage_json
                 traces = usage.get("traces", [])
+                
+                st.write("**LLM Traces & Costs:**")
                 if traces:
-                    st.write("**LLM Traces & Costs:**")
                     trace_data = []
                     for t in traces:
                         trace_data.append({
@@ -76,7 +77,10 @@ if selected_doc_id:
                             "Cost (USD)": f"${t.get('cost_usd', 0):.5f}"
                         })
                     st.dataframe(pd.DataFrame(trace_data), use_container_width=True, hide_index=True)
-                    st.write(f"*Total Pipeline Estimated Cost: ${usage.get('estimated_cost_usd', 0):.5f}*")
+                else:
+                    st.info("No detailed step-by-step traces available for this run (legacy format).")
+                    
+                st.caption(f"**Total Pipeline Tokens:** {usage.get('total_tokens', 0):,} | **Estimated Cost:** ${usage.get('estimated_cost_usd', 0):.5f}")
                     
             entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
             if entities:
