@@ -5,7 +5,8 @@ from sqlalchemy import or_
 from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, InvestorProfile, FundProfile,
-    ProgramMembership, PersonOrganizationRole, EntityAuditTrail
+    ProgramMembership, PersonOrganizationRole, EntityAuditTrail,
+    ProgramProfile, ProgramCohort
 )
 
 st.set_page_config(page_title="Investors Directory", page_icon="🏦", layout="wide")
@@ -23,8 +24,8 @@ def display_investor_details(investor_id):
     org = db.query(Organization).options(
         joinedload(Organization.investor_profile),
         joinedload(Organization.fund_profiles),
-        joinedload(Organization.program_profiles),
-        joinedload(Organization.program_memberships).joinedload(ProgramMembership.cohort),
+        joinedload(Organization.program_profiles).joinedload(ProgramProfile.cohorts),
+        joinedload(Organization.program_memberships).joinedload(ProgramMembership.cohort).joinedload(ProgramCohort.program),
         joinedload(Organization.roles).joinedload(PersonOrganizationRole.person)
     ).filter(Organization.id == int(investor_id)).first()
 
@@ -55,8 +56,10 @@ def display_investor_details(investor_id):
             if org.program_memberships:
                 st.markdown("#### Program Memberships")
                 for m in org.program_memberships:
-                    if m.cohort:
+                    if m.cohort and m.cohort.program:
                         st.write(f"- 🎯 **{m.cohort.program.program_name}** — {m.cohort.cohort_name}")
+                    elif m.cohort:
+                        st.write(f"- 🎯 {m.cohort.cohort_name}")
                     else:
                         st.write("- 🎯 (Unlinked Membership)")
                         
@@ -68,6 +71,26 @@ def display_investor_details(investor_id):
                         st.write(f"**Type:** {fund.fund_type} | **Status:** {fund.status}")
                         if fund.description:
                             st.caption(fund.description)
+
+            if org.program_profiles:
+                st.markdown("#### Programs & Cohorts")
+                for prog in org.program_profiles:
+                    with st.expander(f"🎯 {prog.program_name} ({prog.program_type or 'Program'})"):
+                        st.write(f"**Status:** {prog.status or 'N/A'}")
+                        if prog.description:
+                            st.write(prog.description)
+                        
+                        if prog.cohorts:
+                            st.write("**Cohorts:**")
+                            for cohort in prog.cohorts:
+                                date_str = ""
+                                if cohort.start_date:
+                                    date_str = f" ({cohort.start_date.strftime('%b %Y')} - {cohort.end_date.strftime('%b %Y') if cohort.end_date else 'Present'})"
+                                st.write(f"- 📦 **{cohort.cohort_name}**{date_str}")
+                                if cohort.description:
+                                    st.caption(f"  {cohort.description}")
+                        else:
+                            st.caption("No cohorts defined.")
 
         # People & Roles
         st.divider()
