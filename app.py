@@ -136,6 +136,7 @@ pg = st.navigation({
         st.Page("pages/11_CT_Business_Registry.py", title="CT Business Registry", icon="🏢"),
     ],
     "CRM": [
+        st.Page("pages/15_CRM_Document_Upload.py", title="Document Upload", icon="📄"),
         st.Page("pages/12_CRM_Companies.py", title="Companies", icon="🏢"),
         st.Page("pages/12_CRM_Investors.py", title="Investors", icon="🏦"),
         st.Page("pages/12_CRM_People.py", title="People", icon="👤"),
