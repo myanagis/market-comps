@@ -69,55 +69,75 @@ ENGINE_OPTIONS = {
     "Native (input tokens)": "native",
 }
 
-# ── Upload ────────────────────────────────────────────────────────────────────
-col1, col2 = st.columns([2, 1])
-with col1:
-    uploaded_file = st.file_uploader(
-        "Upload a PDF, PPTX, or Image",
-        type=["pdf", "pptx", "png", "jpg", "jpeg"],
-        label_visibility="collapsed",
-    )
-
-with col2:
-    st.markdown("<div style='margin-top: 5px; margin-bottom: 5px; color: #888;'>Or paste an image:</div>", unsafe_allow_html=True)
-    paste_result = paste_image_button(
-        label="📋 Paste Image",
-        background_color="#FF4B4B",
-        hover_background_color="#FF0000",
-        errors='ignore'
-    )
+# ── Input Source Selector ──────────────────────────────────────────────────────
+input_source = st.radio("Select Input Source", ["📄 File Upload / Paste", "📡 Web Link (Scrape)"], horizontal=True)
 
 file_bytes = None
 filename = ""
 file_size_kb = 0
+extraction_method = None
+web_url = ""
 
-if uploaded_file is not None:
-    file_bytes = uploaded_file.read()
-    filename = uploaded_file.name
-    file_size_kb = uploaded_file.size / 1024
-elif paste_result.image_data is not None:
-    img_byte_arr = io.BytesIO()
-    paste_result.image_data.save(img_byte_arr, format='PNG')
-    file_bytes = img_byte_arr.getvalue()
-    filename = "pasted_image.png"
-    file_size_kb = len(file_bytes) / 1024
+if input_source == "📄 File Upload / Paste":
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        uploaded_file = st.file_uploader(
+            "Upload a PDF, PPTX, or Image",
+            type=["pdf", "pptx", "png", "jpg", "jpeg"],
+            label_visibility="collapsed",
+        )
 
-if file_bytes is None:
-    st.info("👆 Upload a **PDF, PPTX, or Image** or paste an image above to get started — term sheets, SAFE notes, convertible notes, pitch decks, or any other document.")
-    st.session_state["pdf_result"] = None
-else:
-    st.caption(f"📎 **{filename}** — {file_size_kb:.1f} KB")
+    with col2:
+        st.markdown("<div style='margin-top: 5px; margin-bottom: 5px; color: #888;'>Or paste an image:</div>", unsafe_allow_html=True)
+        paste_result = paste_image_button(
+            label="📋 Paste Image",
+            background_color="#FF4B4B",
+            hover_background_color="#FF0000",
+            errors='ignore'
+        )
 
-    METHOD_OPTIONS = {
-        "OCR (Mistral)": "ocr",
-        "OCR (Paddle)": "paddle_ocr",
-        "Text Reader (Native)": "text",
-        "VLM (Image-based)": "vlm",
-        "Hybrid (VLM + Text cross-check)": "vlm_plus_text"
-    }
-    method_label = st.selectbox("Extraction Method", list(METHOD_OPTIONS.keys()), index=3)
-    extraction_method = METHOD_OPTIONS[method_label]
+    if uploaded_file is not None:
+        file_bytes = uploaded_file.read()
+        filename = uploaded_file.name
+        file_size_kb = uploaded_file.size / 1024
+    elif paste_result.image_data is not None:
+        img_byte_arr = io.BytesIO()
+        paste_result.image_data.save(img_byte_arr, format='PNG')
+        file_bytes = img_byte_arr.getvalue()
+        filename = "pasted_image.png"
+        file_size_kb = len(file_bytes) / 1024
 
+    if file_bytes is None:
+        st.info("👆 Upload a **PDF, PPTX, or Image** or paste an image above to get started — term sheets, SAFE notes, convertible notes, pitch decks, or any other document.")
+        st.session_state["pdf_result"] = None
+    else:
+        st.caption(f"📎 **{filename}** — {file_size_kb:.1f} KB")
+
+        METHOD_OPTIONS = {
+            "OCR (Mistral)": "ocr",
+            "OCR (Paddle)": "paddle_ocr",
+            "Text Reader (Native)": "text",
+            "VLM (Image-based)": "vlm",
+            "Hybrid (VLM + Text cross-check)": "vlm_plus_text"
+        }
+        method_label = st.selectbox("Extraction Method", list(METHOD_OPTIONS.keys()), index=3)
+        extraction_method = METHOD_OPTIONS[method_label]
+
+else: # Web Link (Scrape)
+    web_url = st.text_input("Enter Web Link to scrape", placeholder="e.g. https://example.com/company-profile")
+    if not web_url:
+        st.info("👆 Enter a **Web Link** above to start scraping and data extraction.")
+        st.session_state["pdf_result"] = None
+    else:
+        # Generate a clean filename for the scrape output
+        clean_url_name = web_url.split('//')[-1].replace('/', '_').replace(':', '_').replace('?', '_')
+        filename = f"web_scraped_{clean_url_name[:60]}.txt"
+        extraction_method = "web_scrape"
+
+# Check if we have valid input to configure
+has_input = (file_bytes is not None) or (input_source == "📡 Web Link (Scrape)" and web_url)
+
+if has_input:
     # Advanced Options
     def format_model(m: str) -> str:
         in_price, out_price = settings.get_model_pricing(m)
@@ -132,13 +152,26 @@ else:
         )
         generate_summary = st.checkbox("Generate Summary for documents", value=False, help="Uncheck to save tokens if you only need the raw transcription.")
 
-    parse_clicked = st.button("🔍 Parse Document", type="primary")
+    parse_clicked = st.button("🔍 Parse and Extract", type="primary")
 
     # ── Run pipeline ──────────────────────────────────────────────────────────
     if parse_clicked:
         progress = st.empty()
         with progress.container():
             st.info("🔄 Running intelligent document processing pipeline...")
+
+        # If Web Link, execute scrape first
+        if input_source == "📡 Web Link (Scrape)":
+            with st.spinner("Scraping webpage text via Playwright..."):
+                try:
+                    from market_comps.ingestion.scraper import fetch_page_text
+                    scraped_text = fetch_page_text(web_url)
+                    file_bytes = scraped_text.encode("utf-8")
+                    file_size_kb = len(file_bytes) / 1024
+                    st.toast("✅ Web page scraped successfully!")
+                except Exception as e:
+                    st.error(f"❌ Scraper error: {e}")
+                    st.stop()
 
         try:
             from market_comps.document_pipeline.flow_main import process_document_pipeline

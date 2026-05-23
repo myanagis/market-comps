@@ -184,6 +184,10 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
         raw_texts["raw_vlm_text"] = vlm_content
         # Cross compare
         res, usage = reconcile_texts(text_content, vlm_content, text_usage, vlm_usage, model)
+    elif method == "web_scrape":
+        res = pdf_bytes.decode("utf-8")
+        usage = LLMUsage()
+        raw_texts["raw_native_text"] = res
     else:
         raise ValueError(f"Unknown method: {method}")
         
