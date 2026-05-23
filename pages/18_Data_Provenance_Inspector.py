@@ -37,8 +37,9 @@ if selected_doc_id:
         st.subheader("Raw File Viewer")
         if doc.file_path and supabase_client:
             try:
+                from market_comps.config import settings
                 # Generate signed URL valid for 60 seconds
-                res = supabase_client.storage.from_("documents").create_signed_url(doc.file_path, 60)
+                res = supabase_client.storage.from_(settings.supabase_storage_bucket).create_signed_url(doc.file_path, 60)
                 signed_url = res.get("signedURL") if isinstance(res, dict) else res
                 if signed_url:
                     st.markdown(f"**Storage Path:** `{doc.file_path}`")

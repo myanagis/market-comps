@@ -83,16 +83,18 @@ if submitted:
             if supabase_client:
                 st.info("☁️ Uploading document to Supabase Storage...")
                 try:
+                    from market_comps.config import settings
                     # Generate a unique path: timestamp + file_name
                     path = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file_name}"
-                    supabase_client.storage.from_("documents").upload(
+                    supabase_client.storage.from_(settings.supabase_storage_bucket).upload(
                         file=file_bytes,
                         path=path,
                         file_options={"content-type": "application/pdf" if file_name.lower().endswith(".pdf") else "text/plain"}
                     )
                     storage_path = path
                 except Exception as e:
-                    st.warning(f"Failed to upload to Supabase Storage: {e}. Ensure the 'documents' bucket exists and credentials are correct.")
+                    from market_comps.config import settings
+                    st.warning(f"Failed to upload to Supabase Storage: {e}. Ensure the '{settings.supabase_storage_bucket}' bucket exists and credentials are correct.")
 
             # 2. Build instructions context
             final_instructions = custom_instructions

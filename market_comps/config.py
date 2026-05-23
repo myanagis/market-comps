@@ -55,6 +55,9 @@ class Settings:
     supabase_key: str = field(
         default_factory=lambda: _get_secret("SUPABASE_SERVICE_ROLE_KEY", "")
     )
+    supabase_storage_bucket: str = field(
+        default_factory=lambda: _get_secret("SUPABASE_STORAGE_BUCKET", "documents")
+    )
 
     # OpenRouter model pricing (per 1M tokens) — used for cost estimation.
     # Keys match model IDs; values are (input_price_usd, output_price_usd).
