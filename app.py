@@ -136,15 +136,18 @@ pg = st.navigation({
         st.Page("pages/11_CT_Business_Registry.py", title="CT Business Registry", icon="🏢"),
     ],
     "CRM": [
-        st.Page("pages/12_CRM_Directory.py", title="CRM Directory", icon="🗂️"),
+        st.Page("pages/12_CRM_Companies.py", title="Companies", icon="🏢"),
+        st.Page("pages/12_CRM_Investors.py", title="Investors", icon="🏦"),
+        st.Page("pages/12_CRM_People.py", title="People", icon="👤"),
+    ],
+    "Data Pipelines": [
         st.Page("pages/13_Data_Ingestion.py", title="Data Ingestion", icon="📡"),
         st.Page("pages/14_CRM_Record_Manager.py", title="CRM Record Manager", icon="📝"),
-        st.Page("pages/15_Record_Detail.py", title="Record Details", icon="📝"),
+        st.Page("pages/2_Data_Extraction.py", title="Data Extraction", icon="📄"),
     ],
     "Tools (Beta)": [
         st.Page("pages/1_Public_Comps.py",      title="Public Comps",           icon="📊"),
         st.Page("pages/2_Competition_Finder.py",title="Competition Finder",     icon="🏢"),
-        st.Page("pages/2_Data_Extraction.py",   title="Data Extraction",        icon="📄"),
         st.Page("pages/3_LLM_Cross_Checker.py", title="Chorus of LLMs",         icon="🎼"),
         st.Page("pages/4_Company_Primer.py",    title="Company Primer",         icon="📚"),
         st.Page("pages/5_FAQ.py",               title="FAQ",                    icon="❓"),
