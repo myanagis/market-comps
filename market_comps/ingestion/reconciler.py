@@ -2,7 +2,7 @@
 Reconciler — Business Logic / CRM Reconciliation
 ==================================================
 Maps extracted entities to CRM records (Organization, Person, etc.).
-All CRM changes are logged to entity_audit_trail.
+All CRM changes are logged to CanonicalMutation.
 No LLM calls — that's the extractor's job.
 """
 
@@ -15,18 +15,18 @@ from sqlalchemy.orm import Session
 from market_comps.db.models import (
     Organization, CompanyProfile, InvestorProfile, Person, PersonOrganizationRole,
     PersonEmail, ProgramMembership, ProgramCohort,
-    ExtractedEntity, ExtractedRelationship,
-    PipelineRun, EntityAuditTrail
+    ExtractedEntity, ExtractedRelationship, ExtractionJob,
+    PipelineRun, EntityMatch, EntityAttributeEvidence, CanonicalMutation
 )
 
 logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# AUDIT TRAIL HELPER
+# MUTATION HELPER
 # ==============================================================================
 
-def log_audit(
+def log_mutation(
     db: Session,
     entity_type: str,
     entity_id,
@@ -34,28 +34,19 @@ def log_audit(
     field_name: str = None,
     old_value: str = None,
     new_value: str = None,
-    pipeline_run_id: int = None,
-    extracted_entity_id: int = None,
-    extracted_relationship_id: int = None,
-    changed_by_user_id: str = None,
-    reason: str = None,
-    metadata_json: dict = None,
+    source: str = None,
+    extraction_job_id: int = None,
 ):
-    """Write a single audit trail entry."""
-    db.add(EntityAuditTrail(
-        entity_type=entity_type,
-        entity_id=str(entity_id),
-        audit_action=action,
+    """Write a single mutation entry."""
+    db.add(CanonicalMutation(
+        canonical_entity_type=entity_type,
+        canonical_entity_id=str(entity_id),
+        mutation_type=action,
         field_name=field_name,
         old_value=old_value,
         new_value=new_value,
-        pipeline_run_id=pipeline_run_id,
-        extracted_entity_id=extracted_entity_id,
-        extracted_relationship_id=extracted_relationship_id,
-        changed_by_user_id=changed_by_user_id,
-        reason=reason,
-        metadata_json=metadata_json,
-        created_at=datetime.utcnow()
+        source=source,
+        extraction_job_id=extraction_job_id,
     ))
 
 
@@ -79,6 +70,7 @@ def reconcile_organization(
     """
     payload = extracted_entity.extracted_payload_json or {}
     name = payload.get("name") or extracted_entity.raw_name or "Unknown"
+    job_id = extracted_entity.extraction_job_id
     
     # Resolve company URL (support multiple common keys)
     company_url = payload.get("url") or payload.get("website") or payload.get("company_website") or ""
@@ -102,19 +94,19 @@ def reconcile_organization(
     if org:
         # Update fields if we have better data
         if payload.get("description") and org.description != payload["description"]:
-            log_audit(db, "ORGANIZATION", org.id, "UPDATE",
+            log_mutation(db, "ORGANIZATION", org.id, "UPDATE",
                       field_name="description", old_value=org.description, new_value=payload["description"],
-                      pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
+                      source="PIPELINE_FILL", extraction_job_id=job_id)
             org.description = payload["description"]
         if linkedin_url and not org.linkedin_url:
-            log_audit(db, "ORGANIZATION", org.id, "UPDATE",
+            log_mutation(db, "ORGANIZATION", org.id, "UPDATE",
                       field_name="linkedin_url", new_value=linkedin_url,
-                      pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
+                      source="PIPELINE_FILL", extraction_job_id=job_id)
             org.linkedin_url = linkedin_url
         if company_url and not org.website_url:
-            log_audit(db, "ORGANIZATION", org.id, "UPDATE",
+            log_mutation(db, "ORGANIZATION", org.id, "UPDATE",
                       field_name="website_url", new_value=company_url,
-                      pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
+                      source="PIPELINE_FILL", extraction_job_id=job_id)
             org.website_url = company_url
     else:
         is_new = True
@@ -129,8 +121,8 @@ def reconcile_organization(
         )
         db.add(org)
         db.flush()
-        log_audit(db, "ORGANIZATION", org.id, "CREATE",
-                  pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_AUTO_CREATE")
+        log_mutation(db, "ORGANIZATION", org.id, "CREATE",
+                  source="PIPELINE_AUTO_CREATE", extraction_job_id=job_id)
 
     db.flush()
 
@@ -154,8 +146,15 @@ def reconcile_organization(
         if payload.get("founded_year") and not profile.founded_year:
             profile.founded_year = payload["founded_year"]
 
-    # Link extracted entity back to the matched org
-    extracted_entity.matched_organization_id = org.id
+    # Link extracted entity back using EntityMatch
+    db.add(EntityMatch(
+        extracted_entity_id=extracted_entity.id,
+        canonical_entity_type="Organization",
+        canonical_entity_id=str(org.id),
+        match_confidence=1.0,
+        match_method="PIPELINE_AUTO",
+        created_by="SYSTEM"
+    ))
 
     return org
 
@@ -173,6 +172,7 @@ def reconcile_person(
     fname = payload.get("first_name", "")
     lname = payload.get("last_name", "")
     full_name = f"{fname} {lname}".strip()
+    job_id = extracted_entity.extraction_job_id
 
     person = db.query(Person).filter_by(first_name=fname, last_name=lname).first()
 
@@ -185,13 +185,13 @@ def reconcile_person(
         )
         db.add(person)
         db.flush()
-        log_audit(db, "PERSON", str(person.id), "CREATE",
-                  pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_AUTO_CREATE")
+        log_mutation(db, "PERSON", str(person.id), "CREATE",
+                  source="PIPELINE_AUTO_CREATE", extraction_job_id=job_id)
     else:
         if payload.get("linkedin_url") and not person.linkedin_url:
-            log_audit(db, "PERSON", str(person.id), "UPDATE",
+            log_mutation(db, "PERSON", str(person.id), "UPDATE",
                       field_name="linkedin_url", new_value=payload["linkedin_url"],
-                      pipeline_run_id=run.id, extracted_entity_id=extracted_entity.id, reason="PIPELINE_FILL")
+                      source="PIPELINE_FILL", extraction_job_id=job_id)
             person.linkedin_url = payload["linkedin_url"]
 
     # Save email
@@ -206,8 +206,15 @@ def reconcile_person(
                 is_primary=True
             ))
 
-    # Link extracted entity back
-    extracted_entity.matched_person_id = person.id
+    # Link extracted entity back using EntityMatch
+    db.add(EntityMatch(
+        extracted_entity_id=extracted_entity.id,
+        canonical_entity_type="Person",
+        canonical_entity_id=str(person.id),
+        match_confidence=1.0,
+        match_method="PIPELINE_AUTO",
+        created_by="SYSTEM"
+    ))
 
     return person
 
@@ -245,11 +252,15 @@ def _reconcile_founder_of(db, extracted_rel, run, payload):
 
     if not source or not target:
         return
-    if not source.matched_person_id or not target.matched_organization_id:
+        
+    source_match = db.query(EntityMatch).filter_by(extracted_entity_id=source.id, canonical_entity_type="Person").first()
+    target_match = db.query(EntityMatch).filter_by(extracted_entity_id=target.id, canonical_entity_type="Organization").first()
+
+    if not source_match or not target_match:
         return
 
-    person_id = source.matched_person_id
-    org_id = target.matched_organization_id
+    person_id = source_match.canonical_entity_id
+    org_id = target_match.canonical_entity_id
 
     existing = db.query(PersonOrganizationRole).filter_by(
         person_id=person_id, organization_id=org_id
@@ -264,9 +275,8 @@ def _reconcile_founder_of(db, extracted_rel, run, payload):
             is_current=True
         )
         db.add(role)
-        log_audit(db, "PERSON_ORGANIZATION_ROLE", f"{person_id}_{org_id}", "CREATE",
-                  pipeline_run_id=run.id, extracted_relationship_id=extracted_rel.id,
-                  reason="PIPELINE_AUTO_CREATE")
+        log_mutation(db, "PERSON_ORGANIZATION_ROLE", f"{person_id}_{org_id}", "CREATE",
+                  source="PIPELINE_AUTO_CREATE", extraction_job_id=extracted_rel.extraction_job_id)
     else:
         existing.title = title
 
@@ -292,9 +302,8 @@ def _reconcile_member_of_cohort(db, extracted_rel, run, payload):
             program_cohort_id=cohort_id,
             is_active=True
         ))
-        log_audit(db, "PROGRAM_MEMBERSHIP", f"{org_id}_{cohort_id}", "CREATE",
-                  pipeline_run_id=run.id, extracted_relationship_id=extracted_rel.id,
-                  reason="PIPELINE_AUTO_CREATE")
+        log_mutation(db, "PROGRAM_MEMBERSHIP", f"{org_id}_{cohort_id}", "CREATE",
+                  source="PIPELINE_AUTO_CREATE", extraction_job_id=extracted_rel.extraction_job_id)
 
 
 # ==============================================================================
@@ -317,7 +326,7 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     org_type = "INVESTOR" if pipeline_type == "INVESTOR_PORTFOLIO_PAGE" else "COMPANY"
 
     # Step 1: Reconcile entities
-    entities = db.query(ExtractedEntity).filter_by(pipeline_run_id=run.id).all()
+    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
     logger.info(f"[Reconciler] Found {len(entities)} entities to reconcile for run {run.id}")
     
     for entity in entities:
@@ -334,7 +343,7 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     db.flush()
 
     # Step 2: Reconcile relationships
-    relationships = db.query(ExtractedRelationship).filter_by(pipeline_run_id=run.id).all()
+    relationships = db.query(ExtractedRelationship).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
     logger.info(f"[Reconciler] Found {len(relationships)} relationships to reconcile for run {run.id}")
     for rel in relationships:
         reconcile_relationship(db, rel, run)
@@ -344,9 +353,12 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     # Step 3: Auto-link to pipeline's cohort
     cohort_id = pipeline.program_cohort_id
     if cohort_id:
-        org_entities = [e for e in entities if e.entity_type == "ORGANIZATION" and e.matched_organization_id]
+        org_entities = [e for e in entities if e.entity_type == "ORGANIZATION"]
         for entity in org_entities:
-            org_id = entity.matched_organization_id
+            match = db.query(EntityMatch).filter_by(extracted_entity_id=entity.id, canonical_entity_type="Organization").first()
+            if not match:
+                continue
+            org_id = match.canonical_entity_id
             existing = db.query(ProgramMembership).filter_by(
                 company_organization_id=org_id, program_cohort_id=cohort_id
             ).first()
@@ -356,9 +368,8 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
                     program_cohort_id=cohort_id,
                     is_active=True
                 ))
-                log_audit(db, "PROGRAM_MEMBERSHIP", f"{org_id}_{cohort_id}", "CREATE",
-                          pipeline_run_id=run.id, extracted_entity_id=entity.id,
-                          reason="PIPELINE_COHORT_LINK")
+                log_mutation(db, "PROGRAM_MEMBERSHIP", f"{org_id}_{cohort_id}", "CREATE",
+                          source="PIPELINE_COHORT_LINK", extraction_job_id=entity.extraction_job_id)
 
     return {
         "orgs_reconciled": orgs_created,

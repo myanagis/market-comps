@@ -245,61 +245,88 @@ class PipelineRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     pipeline = relationship("Pipeline", back_populates="runs")
-    extracted_data = relationship("ExtractedDataRaw", back_populates="pipeline_run")
-    extracted_entities = relationship("ExtractedEntity", back_populates="pipeline_run")
-    extracted_relationships = relationship("ExtractedRelationship", back_populates="pipeline_run")
+    source_documents = relationship("SourceDocument", back_populates="pipeline_run")
+    extraction_jobs = relationship("ExtractionJob", back_populates="pipeline_run")
 
 
-class ExtractedDataRaw(Base):
-    __tablename__ = 'extracted_data_raw'
+class SourceDocument(Base, TimestampMixin):
+    __tablename__ = 'source_documents'
 
     id = Column(Integer, primary_key=True, index=True)
     pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
 
-    data_type = Column(String) # PAGE_TEXT, API_JSON, CSV_ROW, PROFILE_TEXT
+    document_type = Column(String) # PDF, WEB_PAGE, IMAGE, API_RESPONSE, CSV_FILE, DOCSEND, etc.
     source_url = Column(String)
+    file_path = Column(String)
+    source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
+    content_hash = Column(String, index=True)
+
+    pipeline_run = relationship("PipelineRun", back_populates="source_documents")
+    document_texts = relationship("DocumentText", back_populates="source_document")
+
+
+class DocumentText(Base, TimestampMixin):
+    __tablename__ = 'document_texts'
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_document_id = Column(Integer, ForeignKey('source_documents.id'), nullable=False)
+
+    data_type = Column(String) # PAGE_TEXT, API_JSON, CSV_ROW, PROFILE_TEXT
     raw_content = Column(Text)
     content_hash = Column(String, index=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    pipeline_run = relationship("PipelineRun", back_populates="extracted_data")
-    extracted_entities = relationship("ExtractedEntity", back_populates="extracted_data_raw")
-    extracted_relationships = relationship("ExtractedRelationship", back_populates="extracted_data_raw")
+    source_document = relationship("SourceDocument", back_populates="document_texts")
+    extraction_jobs = relationship("ExtractionJob", back_populates="document_text")
 
 
-class ExtractedEntity(Base):
-    __tablename__ = 'extracted_entities'
+class ExtractionJob(Base, TimestampMixin):
+    __tablename__ = 'extraction_jobs'
 
     id = Column(Integer, primary_key=True, index=True)
     pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
-    extracted_data_raw_id = Column(Integer, ForeignKey('extracted_data_raw.id'), nullable=True)
+    document_text_id = Column(Integer, ForeignKey('document_texts.id'), nullable=False)
+
+    schema_name = Column(String)
+    schema_version = Column(String)
+    prompt_name = Column(String)
+    prompt_version = Column(String)
+
+    status = Column(String) # PENDING, IN_PROGRESS, SUCCESS, FAILED
+    llm_usage_json = Column(JSON)
+    error_message = Column(String)
+
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+    pipeline_run = relationship("PipelineRun", back_populates="extraction_jobs")
+    document_text = relationship("DocumentText", back_populates="extraction_jobs")
+    extracted_entities = relationship("ExtractedEntity", back_populates="extraction_job")
+    extracted_relationships = relationship("ExtractedRelationship", back_populates="extraction_job")
+
+
+class ExtractedEntity(Base, TimestampMixin):
+    __tablename__ = 'extracted_entities'
+
+    id = Column(Integer, primary_key=True, index=True)
+    extraction_job_id = Column(Integer, ForeignKey('extraction_jobs.id'), nullable=False)
 
     entity_type = Column(String) # ORGANIZATION, PERSON, PROGRAM_COHORT
     raw_name = Column(String)
     normalized_name = Column(String, index=True)
 
     extracted_payload_json = Column(JSON)
-
-    matched_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
-    matched_person_id = Column(UUID(as_uuid=True), ForeignKey('people.id'), nullable=True, index=True)
-
     extraction_confidence = Column(Float, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    pipeline_run = relationship("PipelineRun", back_populates="extracted_entities")
-    extracted_data_raw = relationship("ExtractedDataRaw", back_populates="extracted_entities")
-    matched_organization = relationship("Organization")
-    matched_person = relationship("Person")
+    extraction_job = relationship("ExtractionJob", back_populates="extracted_entities")
+    matches = relationship("EntityMatch", back_populates="extracted_entity")
+    attribute_evidences = relationship("EntityAttributeEvidence", back_populates="extracted_entity")
 
 
-class ExtractedRelationship(Base):
+class ExtractedRelationship(Base, TimestampMixin):
     __tablename__ = 'extracted_relationships'
 
     id = Column(Integer, primary_key=True, index=True)
-    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
-    extracted_data_raw_id = Column(Integer, ForeignKey('extracted_data_raw.id'), nullable=True)
+    extraction_job_id = Column(Integer, ForeignKey('extraction_jobs.id'), nullable=False)
 
     relationship_type = Column(String) # FOUNDER_OF, EMPLOYEE_OF, MEMBER_OF_COHORT, INVESTED_IN
 
@@ -314,10 +341,7 @@ class ExtractedRelationship(Base):
     relationship_payload_json = Column(JSON)
     extraction_confidence = Column(Float, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    pipeline_run = relationship("PipelineRun", back_populates="extracted_relationships")
-    extracted_data_raw = relationship("ExtractedDataRaw", back_populates="extracted_relationships")
+    extraction_job = relationship("ExtractionJob", back_populates="extracted_relationships")
     source_extracted_entity = relationship("ExtractedEntity", foreign_keys=[source_extracted_entity_id])
     target_extracted_entity = relationship("ExtractedEntity", foreign_keys=[target_extracted_entity_id])
 
@@ -326,30 +350,55 @@ class ExtractedRelationship(Base):
 # AUDIT TRAIL
 # ==============================================================================
 
-class EntityAuditTrail(Base):
-    __tablename__ = 'entity_audit_trail'
+class EntityMatch(Base, TimestampMixin):
+    __tablename__ = 'entity_matches'
 
     id = Column(Integer, primary_key=True, index=True)
+    extracted_entity_id = Column(Integer, ForeignKey('extracted_entities.id'), nullable=False)
+    
+    canonical_entity_type = Column(String, nullable=False) # Organization, Person, FundProfile, ProgramProfile, etc.
+    canonical_entity_id = Column(String, nullable=False, index=True) # Int or UUID as string
+    
+    match_confidence = Column(Float, nullable=True)
+    match_method = Column(String) # EXACT_NAME_MATCH, LLM_SIMILARITY, MANUAL
+    created_by = Column(String) # SYSTEM, USER_ID
+    
+    extracted_entity = relationship("ExtractedEntity", back_populates="matches")
 
-    entity_type = Column(String, nullable=False) # ORGANIZATION, PERSON, COMPANY_PROFILE, etc.
-    entity_id = Column(String, nullable=False, index=True) # Polymorphic — int or UUID as string
 
-    audit_action = Column(String, nullable=False) # CREATE, UPDATE, DELETE
+class EntityAttributeEvidence(Base, TimestampMixin):
+    __tablename__ = 'entity_attribute_evidences'
 
+    id = Column(Integer, primary_key=True, index=True)
+    
+    canonical_entity_type = Column(String, nullable=False)
+    canonical_entity_id = Column(String, nullable=False, index=True)
+    
+    attribute_name = Column(String, nullable=False)
+    attribute_value_json = Column(JSON)
+    
+    source_document_id = Column(Integer, ForeignKey('source_documents.id'), nullable=True)
+    extracted_entity_id = Column(Integer, ForeignKey('extracted_entities.id'), nullable=True)
+
+    source_document = relationship("SourceDocument")
+    extracted_entity = relationship("ExtractedEntity", back_populates="attribute_evidences")
+
+
+class CanonicalMutation(Base, TimestampMixin):
+    __tablename__ = 'canonical_mutations'
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    canonical_entity_type = Column(String, nullable=False)
+    canonical_entity_id = Column(String, nullable=False, index=True)
+    
+    mutation_type = Column(String, nullable=False) # CREATE, UPDATE, DELETE
+    
     field_name = Column(String, nullable=True)
     old_value = Column(String, nullable=True)
     new_value = Column(String, nullable=True)
-
-    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=True)
-    extracted_entity_id = Column(Integer, ForeignKey('extracted_entities.id'), nullable=True)
-    extracted_relationship_id = Column(Integer, ForeignKey('extracted_relationships.id'), nullable=True)
-
-    changed_by_user_id = Column(String, nullable=True)
-    reason = Column(String, nullable=True)
-    metadata_json = Column(JSON, nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    pipeline_run = relationship("PipelineRun")
-    extracted_entity = relationship("ExtractedEntity")
-    extracted_relationship = relationship("ExtractedRelationship")
+    
+    source = Column(String) # PIPELINE, USER_EDIT
+    extraction_job_id = Column(Integer, ForeignKey('extraction_jobs.id'), nullable=True)
+    
+    extraction_job = relationship("ExtractionJob")

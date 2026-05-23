@@ -3,8 +3,8 @@ import json
 from market_comps.db.session import get_db
 import pandas as pd
 from market_comps.db.models import (
-    Pipeline, PipelineRun, ExtractedDataRaw, ExtractedEntity, ExtractedRelationship,
-    Organization, ProgramProfile, ProgramCohort, FundProfile
+    Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship,
+    Organization, ProgramProfile, ProgramCohort, FundProfile, EntityMatch
 )
 from market_comps.ingestion.pipeline_runner import run_pipeline
 
@@ -140,7 +140,7 @@ with tab2:
                     st.success(f"Pipeline completed! Processed {run.records_processed} entities, created {run.records_created} records.")
                     
                     # Show extracted entities
-                    entities = db.query(ExtractedEntity).filter_by(pipeline_run_id=run.id).all()
+                    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
                     if entities:
                         st.subheader("Extracted Entities")
                         for e in entities:
@@ -187,11 +187,12 @@ with tab3:
                     st.json(selected_run.logs_json)
                     
             # Show source content
-            raw_data = db.query(ExtractedDataRaw).filter_by(pipeline_run_id=selected_run_id).all()
+            raw_data = db.query(DocumentText).join(SourceDocument).filter(SourceDocument.pipeline_run_id == selected_run_id).all()
             if raw_data:
                 with st.expander(f"📄 Source Content ({len(raw_data)} pages)"):
                     for rd in raw_data:
-                        st.caption(f"**{rd.data_type}** — {rd.source_url}")
+                        url_display = rd.source_document.source_url if rd.source_document else "?"
+                        st.caption(f"**{rd.data_type}** — {url_display}")
                         st.code((rd.raw_content or "")[:3000], language=None)
     else:
         st.info("No runs yet.")
@@ -209,16 +210,19 @@ with tab4:
             if isinstance(industry_val, list):
                 industry_val = ", ".join(industry_val)
                 
+            org_match = next((m.canonical_entity_id for m in e.matches if m.canonical_entity_type == "Organization"), "")
+            person_match = next((m.canonical_entity_id for m in e.matches if m.canonical_entity_type == "Person"), "")
+            
             entity_data.append({
                 "Entity ID": e.id,
-                "Run ID": e.pipeline_run_id,
+                "Job ID": e.extraction_job_id,
                 "Type": e.entity_type,
                 "Name": e.raw_name,
                 "Industry": str(industry_val),
                 "URL": str(payload.get("url", "")),
                 "LinkedIn": str(payload.get("linkedin_url", "")),
-                "Matched Org ID": e.matched_organization_id,
-                "Matched Person ID": str(e.matched_person_id) if e.matched_person_id else "",
+                "Matched Org ID": org_match,
+                "Matched Person ID": person_match,
             })
         st.dataframe(pd.DataFrame(entity_data), use_container_width=True, hide_index=True)
     else:
@@ -234,7 +238,7 @@ with tab4:
             tgt_name = r.target_extracted_entity.raw_name if r.target_extracted_entity else "?"
             rel_data.append({
                 "Rel ID": r.id,
-                "Run ID": r.pipeline_run_id,
+                "Job ID": r.extraction_job_id,
                 "Type": r.relationship_type,
                 "Source": src_name,
                 "Target": tgt_name,

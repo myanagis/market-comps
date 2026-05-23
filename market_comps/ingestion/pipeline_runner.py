@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 
 from sqlalchemy.orm import Session
 
-from market_comps.db.models import Pipeline, PipelineRun, ExtractedDataRaw, ExtractedEntity, ExtractedRelationship
+from market_comps.db.models import Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
 from market_comps.ingestion.scraper import fetch_page_text
 from market_comps.ingestion.extractor import extract_entities_from_text, extract_profile_detail
 from market_comps.ingestion.reconciler import reconcile_all
@@ -61,15 +61,33 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
         text_content = fetch_page_text(url)
 
         content_hash = hashlib.sha256(text_content.encode()).hexdigest()
-        raw_data = ExtractedDataRaw(
+        
+        source_doc = SourceDocument(
             pipeline_run_id=run.id,
-            data_type="PAGE_TEXT",
+            document_type="WEB_PAGE",
             source_url=url,
+            content_hash=content_hash,
+        )
+        db.add(source_doc)
+        db.flush()
+
+        doc_text = DocumentText(
+            source_document_id=source_doc.id,
+            data_type="PAGE_TEXT",
             raw_content=text_content,
             content_hash=content_hash,
-            created_at=datetime.utcnow()
         )
-        db.add(raw_data)
+        db.add(doc_text)
+        db.flush()
+
+        job = ExtractionJob(
+            pipeline_run_id=run.id,
+            document_text_id=doc_text.id,
+            schema_name="PROGRAM_COMPANY_SCHEMA",
+            status="IN_PROGRESS",
+            started_at=datetime.utcnow()
+        )
+        db.add(job)
         db.flush()
 
         all_logs = {"steps": []}
@@ -77,7 +95,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
         # --- STEP 3: TRANSFORM — LLM extraction ---
         logger.info(f"[Pipeline {pipeline.id}] Step 3: LLM extraction (type={pipeline.pipeline_type})")
         extraction_result = extract_entities_from_text(
-            db, run, raw_data, pipeline.pipeline_type, config
+            db, run, job, doc_text, pipeline.pipeline_type, config
         )
         all_logs["steps"].append({
             "step": "extract_directory",
@@ -106,19 +124,36 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
                     profile_text = fetch_page_text(profile_url)
                     profile_hash = hashlib.sha256(profile_text.encode()).hexdigest()
 
-                    profile_raw = ExtractedDataRaw(
+                    profile_doc = SourceDocument(
                         pipeline_run_id=run.id,
-                        data_type="PROFILE_TEXT",
+                        document_type="WEB_PAGE",
                         source_url=profile_url,
+                        content_hash=profile_hash,
+                    )
+                    db.add(profile_doc)
+                    db.flush()
+
+                    profile_text_obj = DocumentText(
+                        source_document_id=profile_doc.id,
+                        data_type="PROFILE_TEXT",
                         raw_content=profile_text,
                         content_hash=profile_hash,
-                        created_at=datetime.utcnow()
                     )
-                    db.add(profile_raw)
+                    db.add(profile_text_obj)
+                    db.flush()
+
+                    profile_job = ExtractionJob(
+                        pipeline_run_id=run.id,
+                        document_text_id=profile_text_obj.id,
+                        schema_name="PROFILE_DETAIL_SCHEMA",
+                        status="IN_PROGRESS",
+                        started_at=datetime.utcnow()
+                    )
+                    db.add(profile_job)
                     db.flush()
 
                     detail_result = extract_profile_detail(
-                        db, run, profile_raw, c.get("name", "Unknown")
+                        db, run, profile_job, profile_text_obj, c.get("name", "Unknown")
                     )
                     deep_logs.append({
                         "company": c.get("name"),
@@ -130,7 +165,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
                     })
 
                     # Merge detail into the matching ExtractedEntity
-                    _merge_profile_into_entity(db, run, c.get("name"), detail_result.get("detail", {}))
+                    _merge_profile_into_entity(db, run, profile_job, c.get("name"), detail_result.get("detail", {}))
 
                 except Exception as e:
                     deep_logs.append({
@@ -175,7 +210,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
     return run
 
 
-def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str, detail: dict):
+def _merge_profile_into_entity(db: Session, run: PipelineRun, profile_job: ExtractionJob, company_name: str, detail: dict):
     """Merge deep-scraped profile detail into the matching ExtractedEntity's payload.
     
     Also creates ExtractedEntity (PERSON) and ExtractedRelationship (FOUNDER_OF)
@@ -185,10 +220,10 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
     if not detail or not company_name:
         return
 
-    entity = db.query(ExtractedEntity).filter_by(
-        pipeline_run_id=run.id,
-        entity_type="ORGANIZATION",
-        normalized_name=company_name.lower()
+    entity = db.query(ExtractedEntity).join(ExtractionJob).filter(
+        ExtractionJob.pipeline_run_id == run.id,
+        ExtractedEntity.entity_type == "ORGANIZATION",
+        ExtractedEntity.normalized_name == company_name.lower()
     ).first()
 
     if not entity:
@@ -245,28 +280,24 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, company_name: str,
             continue
 
         person_entity = ExtractedEntity(
-            pipeline_run_id=run.id,
-            extracted_data_raw_id=entity.extracted_data_raw_id,
+            extraction_job_id=profile_job.id,
             entity_type="PERSON",
             raw_name=f"{fname} {lname}",
             normalized_name=f"{fname} {lname}".lower(),
             extracted_payload_json=f,
-            created_at=datetime.utcnow()
         )
         db.add(person_entity)
         db.flush()
         logger.info(f"[Pipeline] Created ExtractedEntity (PERSON): {fname} {lname} for {company_name}")
 
         rel = ExtractedRelationship(
-            pipeline_run_id=run.id,
-            extracted_data_raw_id=entity.extracted_data_raw_id,
+            extraction_job_id=profile_job.id,
             relationship_type="FOUNDER_OF",
             source_extracted_entity_id=person_entity.id,
             source_entity_type="PERSON",
             target_extracted_entity_id=entity.id,
             target_entity_type="ORGANIZATION",
             relationship_payload_json={"title": f.get("title", "Founder")},
-            created_at=datetime.utcnow()
         )
         db.add(rel)
 

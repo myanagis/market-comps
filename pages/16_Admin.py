@@ -31,12 +31,12 @@ if not tables:
     st.info("No tables found in the database or connection failed.")
     st.stop()
 
-# 2. Sidebar Table Selection & Configuration
-with st.sidebar:
-    st.header("Database Config")
+# 2. Table Selection & Configuration
+st.subheader("Database Config")
+col_table, col_limit = st.columns(2)
+with col_table:
     selected_table_name = st.selectbox("📂 Select Database Table", tables, index=0)
-    
-    # Query parameters
+with col_limit:
     limit = st.slider("Row Display Limit", min_value=10, max_value=5000, value=500, step=50)
 
 # 3. Load Selected Table Schema & Stats

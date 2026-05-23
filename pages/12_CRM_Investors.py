@@ -5,8 +5,8 @@ from sqlalchemy import or_
 from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, InvestorProfile, FundProfile,
-    ProgramMembership, PersonOrganizationRole, EntityAuditTrail,
-    ProgramProfile, ProgramCohort
+    ProgramMembership, PersonOrganizationRole, CanonicalMutation,
+    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, DocumentText, SourceDocument
 )
 
 st.set_page_config(page_title="Investors Directory", page_icon="🏦", layout="wide")
@@ -111,26 +111,42 @@ def display_investor_details(investor_id):
         else:
             st.info("No people linked to this investor.")
 
+        # Linked Source Documents
+        st.divider()
+        st.subheader("📄 Linked Source Documents")
+        
+        docs = db.query(SourceDocument).join(DocumentText).join(ExtractionJob).join(ExtractedEntity).join(EntityMatch).filter(
+            EntityMatch.canonical_entity_type == "Organization",
+            EntityMatch.canonical_entity_id == str(org.id)
+        ).distinct().all()
+        
+        if docs:
+            for doc in docs:
+                st.write(f"- **{doc.document_type}**: {doc.source_url} (Processed: {doc.created_at.strftime('%Y-%m-%d')})")
+        else:
+            st.info("No documents linked to this investor.")
+
         # Audit Trail
         st.divider()
-        st.subheader("📜 Audit Trail")
-        audit = db.query(EntityAuditTrail).filter_by(
-            entity_type="ORGANIZATION", entity_id=str(org.id)
-        ).order_by(EntityAuditTrail.created_at.desc()).limit(10).all()
+        st.subheader("📜 Mutation History")
+        audit = db.query(CanonicalMutation).filter_by(
+            canonical_entity_type="ORGANIZATION", canonical_entity_id=str(org.id)
+        ).order_by(CanonicalMutation.created_at.desc()).limit(10).all()
         
         if audit:
             audit_data = []
             for a in audit:
                 audit_data.append({
                     "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
-                    "Action": a.audit_action,
+                    "Action": a.mutation_type,
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
-                    "New Value": a.new_value or ""
+                    "New Value": a.new_value or "",
+                    "Source": a.source or ""
                 })
             st.dataframe(pd.DataFrame(audit_data), use_container_width=True, hide_index=True)
         else:
-            st.info("No audit trail entries found.")
+            st.info("No mutation entries found.")
 
 # Fetch and query data
 search_query = st.text_input("Search Investors...", placeholder="Search by name, domain, or website...")

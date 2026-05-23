@@ -14,7 +14,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from market_comps.db.models import (
-    PipelineRun, ExtractedDataRaw, ExtractedEntity, ExtractedRelationship
+    PipelineRun, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
 )
 from market_comps.llm_client import LLMClient
 
@@ -93,6 +93,7 @@ SCHEMA_BY_TYPE = {
     "PROGRAM_COMPANY_PAGE": PROGRAM_COMPANY_SCHEMA,
     "INVESTOR_PORTFOLIO_PAGE": PROGRAM_COMPANY_SCHEMA,  # Same structure, different prompt
     "API_COMPANY_SEARCH": PROGRAM_COMPANY_SCHEMA,
+    "DOCUMENT_ENTITIES": PROGRAM_COMPANY_SCHEMA,
 }
 
 
@@ -103,7 +104,8 @@ SCHEMA_BY_TYPE = {
 def extract_entities_from_text(
     db: Session,
     run: PipelineRun,
-    raw_data: ExtractedDataRaw,
+    job: ExtractionJob,
+    doc_text: DocumentText,
     pipeline_type: str,
     config: dict
 ) -> dict:
@@ -113,7 +115,7 @@ def extract_entities_from_text(
 
     Returns a dict with extraction stats and the raw LLM response.
     """
-    text = raw_data.raw_content or ""
+    text = doc_text.raw_content or ""
     custom_instruction = config.get("llm_instruction", "")
     schema = SCHEMA_BY_TYPE.get(pipeline_type, PROGRAM_COMPANY_SCHEMA)
 
@@ -144,13 +146,11 @@ def extract_entities_from_text(
 
         # Create ORGANIZATION entity
         org_entity = ExtractedEntity(
-            pipeline_run_id=run.id,
-            extracted_data_raw_id=raw_data.id,
+            extraction_job_id=job.id,
             entity_type="ORGANIZATION",
             raw_name=c.get("name", "Unknown"),
             normalized_name=(c.get("name") or "unknown").lower(),
             extracted_payload_json=c,
-            created_at=datetime.utcnow()
         )
         db.add(org_entity)
         db.flush()
@@ -176,13 +176,11 @@ def extract_entities_from_text(
                 continue
 
             person_entity = ExtractedEntity(
-                pipeline_run_id=run.id,
-                extracted_data_raw_id=raw_data.id,
+                extraction_job_id=job.id,
                 entity_type="PERSON",
                 raw_name=f"{fname} {lname}",
                 normalized_name=f"{fname} {lname}".lower(),
                 extracted_payload_json=f,
-                created_at=datetime.utcnow()
             )
             db.add(person_entity)
             db.flush()
@@ -190,15 +188,13 @@ def extract_entities_from_text(
 
             # Create FOUNDER_OF relationship (person → org)
             rel = ExtractedRelationship(
-                pipeline_run_id=run.id,
-                extracted_data_raw_id=raw_data.id,
+                extraction_job_id=job.id,
                 relationship_type="FOUNDER_OF",
                 source_extracted_entity_id=person_entity.id,
                 source_entity_type="PERSON",
                 target_extracted_entity_id=org_entity.id,
                 target_entity_type="ORGANIZATION",
                 relationship_payload_json={"title": f.get("title", "Founder")},
-                created_at=datetime.utcnow()
             )
             db.add(rel)
             relationship_count += 1
@@ -216,14 +212,15 @@ def extract_entities_from_text(
 def extract_profile_detail(
     db: Session,
     run: PipelineRun,
-    raw_data: ExtractedDataRaw,
+    job: ExtractionJob,
+    doc_text: DocumentText,
     company_name: str
 ) -> dict:
     """Deep scrape Pass 2: extract rich firmographics from a single profile page.
 
     Returns the extracted detail dict and LLM usage.
     """
-    text = raw_data.raw_content or ""
+    text = doc_text.raw_content or ""
 
     prompt = (
         f"Extract detailed company information for '{company_name}' from this profile page. "
@@ -268,6 +265,11 @@ def _build_extraction_prompt(pipeline_type: str, custom_instruction: str) -> str
             "Extract all companies from the following data. "
             "For each company, extract its name, website URL, LinkedIn URL, description, "
             "industry, and founded year."
+        ),
+        "DOCUMENT_ENTITIES": (
+            "Extract all companies and people mentioned in this document. "
+            "For each company, extract its name, website URL, description, industry, and founded year. "
+            "For any people mentioned, extract their names, titles, LinkedIn URLs, and link them to the appropriate company as founders or team members."
         ),
     }
 
