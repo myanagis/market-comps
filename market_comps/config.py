@@ -49,6 +49,12 @@ class Settings:
             "DEFAULT_MODEL", "google/gemini-2.5-flash"
         )
     )
+    supabase_url: str = field(
+        default_factory=lambda: _get_secret("SUPABASE_URL", "")
+    )
+    supabase_key: str = field(
+        default_factory=lambda: _get_secret("SUPABASE_SERVICE_ROLE_KEY", "")
+    )
 
     # OpenRouter model pricing (per 1M tokens) — used for cost estimation.
     # Keys match model IDs; values are (input_price_usd, output_price_usd).
@@ -87,6 +93,14 @@ class Settings:
 
 # Singleton — import this anywhere
 settings = Settings()
+
+try:
+    from supabase import create_client, Client
+    supabase_client: Client | None = None
+    if settings.supabase_url and settings.supabase_key:
+        supabase_client = create_client(settings.supabase_url, settings.supabase_key)
+except ImportError:
+    supabase_client = None
 
 # Global default LLM Model
 DEFAULT_LLM_MODEL: str = settings.default_model

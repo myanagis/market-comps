@@ -18,6 +18,7 @@ dependencies = [
     "requests>=2.31.0",
     "streamlit-tags",
     "pdfplumber",
+    "supabase",
 ]
 
 [tool.setuptools.packages.find]

@@ -10,6 +10,7 @@ from market_comps.db.models import (
 )
 from market_comps.ingestion.extractor import extract_entities_from_text
 from market_comps.ingestion.reconciler import reconcile_all
+from market_comps.config import supabase_client
 
 st.set_page_config(page_title="Document Upload", page_icon="📄", layout="wide")
 st.title("📄 Upload CRM Document")
@@ -77,6 +78,22 @@ if submitted:
                 st.error("Document appears to be empty or contains no extractable text.")
                 st.stop()
 
+            # 1.5 Upload to Supabase Storage
+            storage_path = None
+            if supabase_client:
+                st.info("☁️ Uploading document to Supabase Storage...")
+                try:
+                    # Generate a unique path: timestamp + file_name
+                    path = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{file_name}"
+                    supabase_client.storage.from_("documents").upload(
+                        file=file_bytes,
+                        path=path,
+                        file_options={"content-type": "application/pdf" if file_name.lower().endswith(".pdf") else "text/plain"}
+                    )
+                    storage_path = path
+                except Exception as e:
+                    st.warning(f"Failed to upload to Supabase Storage: {e}. Ensure the 'documents' bucket exists and credentials are correct.")
+
             # 2. Build instructions context
             final_instructions = custom_instructions
             if linked_org_id != 0:
@@ -112,6 +129,7 @@ if submitted:
                 pipeline_run_id=run.id,
                 document_type="PDF" if file_name.lower().endswith(".pdf") else "TEXT",
                 source_url=file_name,
+                file_path=storage_path,
                 content_hash=content_hash,
             )
             db.add(source_doc)
