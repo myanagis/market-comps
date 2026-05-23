@@ -71,75 +71,64 @@ components.html(
     width=0,
 )
 
-# 5. Render Login Interface if not authenticated
-if not st.session_state["authenticated"]:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.title("📊 Market Comps Portal")
-        st.subheader("Secure Administration Login")
-        
-        tab_google, tab_dev = st.tabs(["🔒 Supabase OAuth", "🛠️ Developer Bypass"])
-        
-        with tab_google:
-            anon_key = get_supabase_anon_key()
-            project_ref = get_supabase_project_ref()
-            
-            if not anon_key or not project_ref:
-                st.warning("⚠️ Supabase Credentials missing. Please configure `SUPABASE_ANON_KEY` in `.streamlit/secrets.toml` to enable Google Auth.")
-                st.info("💡 You can use the 'Developer Bypass' tab to sign in and test locally.")
-            else:
-                # Dynamic redirect to current app base URL
-                try:
-                    app_base_url = st.context.url
-                except Exception:
-                    app_base_url = "http://localhost:8501/"
-                    
-                google_url = get_google_auth_url(app_base_url)
-                
-                # Standard HTML button matching base design
-                st.markdown(
-                    f"""
-                    <div style="margin: 24px 0; text-align: center;">
-                        <a href="{google_url}" target="_self">
-                            <button style="
-                                cursor: pointer;
-                                padding: 12px 24px;
-                                border: 1px solid #ccc;
-                                border-radius: 8px;
-                                background-color: #ffffff;
-                                color: #000000;
-                                font-size: 16px;
-                                font-weight: bold;
-                                width: 100%;
-                            ">
-                                Sign in with Google
-                            </button>
-                        </a>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-        
-        with tab_dev:
-            st.write("Simulate a successful login for local development and testing.")
-            dev_email = st.text_input("Developer Email", value="admin@marketcomps.dev")
-            
-            if st.button("🚀 Launch Developer Session", use_container_width=True):
-                st.session_state["authenticated"] = True
-                st.session_state["user_email"] = dev_email
-                st.success("Welcome back! Redirecting...")
-                st.rerun()
-                
-    st.stop()
-
-# 6. Authenticated User - Sidebar Log Out Option
+# 5. Sidebar Authentication Widget (Optional Login)
 with st.sidebar:
-    st.write(f"Logged in as: **{st.session_state['user_email']}**")
-    if st.button("🚪 Log Out", use_container_width=True):
-        st.session_state["authenticated"] = False
-        st.session_state["user_email"] = None
-        st.success("Logged out successfully!")
-        st.rerun()
+    st.markdown("---")
+    if st.session_state["authenticated"]:
+        st.success(f"👤 {st.session_state['user_email']}")
+        if st.button("🚪 Log Out", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.session_state["user_email"] = None
+            st.success("Logged out successfully!")
+            st.rerun()
+    else:
+        with st.expander("🔑 Admin Login", expanded=False):
+            tab_google, tab_dev = st.tabs(["Google OAuth", "Dev Bypass"])
+            
+            with tab_google:
+                anon_key = get_supabase_anon_key()
+                project_ref = get_supabase_project_ref()
+                
+                if not anon_key or not project_ref:
+                    st.warning("Please configure `SUPABASE_ANON_KEY` in `secrets.toml` to enable Google Auth.")
+                else:
+                    try:
+                        app_base_url = st.context.url
+                    except Exception:
+                        app_base_url = "http://localhost:8501/"
+                        
+                    google_url = get_google_auth_url(app_base_url)
+                    
+                    st.markdown(
+                        f"""
+                        <div style="margin: 10px 0; text-align: center;">
+                            <a href="{google_url}" target="_self">
+                                <button style="
+                                    cursor: pointer;
+                                    padding: 8px 16px;
+                                    border: 1px solid #ccc;
+                                    border-radius: 6px;
+                                    background-color: #ffffff;
+                                    color: #000000;
+                                    font-size: 14px;
+                                    font-weight: bold;
+                                    width: 100%;
+                                ">
+                                    Sign in with Google
+                                </button>
+                            </a>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+            
+            with tab_dev:
+                dev_email = st.text_input("Developer Email", value="admin@marketcomps.dev")
+                if st.button("🚀 Sign In (Bypass)", use_container_width=True):
+                    st.session_state["authenticated"] = True
+                    st.session_state["user_email"] = dev_email
+                    st.success("Welcome back!")
+                    st.rerun()
 
 # 7. Navigation Setup
 pg = st.navigation({
