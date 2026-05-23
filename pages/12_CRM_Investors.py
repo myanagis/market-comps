@@ -8,11 +8,6 @@ from market_comps.db.models import (
     ProgramMembership, PersonOrganizationRole, EntityAuditTrail
 )
 
-# Authentication check
-if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
-    st.warning("🔒 This page is restricted to authenticated users. Please log in using the sidebar panel.")
-    st.stop()
-
 st.set_page_config(page_title="Investors Directory", page_icon="🏦", layout="wide")
 st.title("🏦 Investors Directory")
 
