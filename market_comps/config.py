@@ -49,8 +49,8 @@ class Settings:
             "DEFAULT_MODEL", "google/gemini-2.5-flash"
         )
     )
-    supabase_url: str = field(
-        default_factory=lambda: _get_secret("SUPABASE_URL", "")
+    supabase_api_url: str = field(
+        default_factory=lambda: _get_secret("SUPABASE_API_URL", "")
     )
     supabase_key: str = field(
         default_factory=lambda: _get_secret("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -97,8 +97,12 @@ settings = Settings()
 try:
     from supabase import create_client, Client
     supabase_client: Client | None = None
-    if settings.supabase_url and settings.supabase_key:
-        supabase_client = create_client(settings.supabase_url, settings.supabase_key)
+    if settings.supabase_api_url and settings.supabase_key:
+        try:
+            supabase_client = create_client(settings.supabase_api_url, settings.supabase_key)
+        except Exception as e:
+            print(f"Warning: Failed to initialize Supabase client: {e}")
+            supabase_client = None
 except ImportError:
     supabase_client = None
 
