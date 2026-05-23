@@ -45,6 +45,15 @@ with st.form("upload_document_form", clear_on_submit=False):
         help="Providing a linked organization helps the LLM understand the context of the document."
     )
     
+    col3, col4 = st.columns(2)
+    pdf_method = col3.selectbox("PDF Parsing Method", ["vlm_plus_text", "text", "vlm", "ocr", "paddle_ocr"], index=0, format_func=lambda x: {
+        "vlm_plus_text": "Hybrid (Native Text + VLM)",
+        "text": "Native Text (Fast, Free)",
+        "vlm": "VLM Vision-based",
+        "ocr": "Mistral OCR ($2 / 1k pages)",
+        "paddle_ocr": "Paddle OCR (Local, Free)"
+    }.get(x, x))
+    
     custom_instructions = st.text_area("Additional LLM Instructions (Optional)", help="E.g., 'Pay special attention to founders.'")
     
     submitted = st.form_submit_button("Upload & Process", type="primary")
@@ -58,12 +67,19 @@ if submitted:
             file_name = uploaded_file.name
             file_bytes = uploaded_file.read()
             text_content = ""
+            transcription_usage = None
             
             if file_name.lower().endswith(".pdf"):
+                from market_comps.document_pipeline.tasks_transcription import transcribe_document
+                from market_comps.config import DEFAULT_LLM_MODEL
                 try:
-                    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                        for page in pdf.pages:
-                            text_content += page.extract_text() + "\n"
+                    st.info(f"📄 Extracting text using '{pdf_method}' method...")
+                    text_content, transcription_usage, raw_texts = transcribe_document(
+                        pdf_bytes=file_bytes, 
+                        filename=file_name, 
+                        method=pdf_method, 
+                        model=DEFAULT_LLM_MODEL
+                    )
                 except Exception as e:
                     st.error(f"Failed to parse PDF: {e}")
                     st.stop()
@@ -112,7 +128,7 @@ if submitted:
                 pipeline_type=pipeline_type,
                 source_url=file_name,
                 organization_id=linked_org_id if linked_org_id != 0 else None,
-                schedule_type="MANUAL",
+                schedule_type="UPLOAD",
                 is_active=True,
                 config_json={"llm_instruction": final_instructions}
             )
@@ -162,6 +178,20 @@ if submitted:
                 extraction_result = extract_entities_from_text(
                     db, run, job, doc_text, pipeline_type, pipeline.config_json
                 )
+                
+                # Merge LLM usages
+                from market_comps.models import LLMUsage
+                total_usage = LLMUsage(**extraction_result["llm_usage"])
+                if transcription_usage:
+                    total_usage.total_prompt_tokens += transcription_usage.total_prompt_tokens
+                    total_usage.total_completion_tokens += transcription_usage.total_completion_tokens
+                    total_usage.total_tokens += transcription_usage.total_tokens
+                    total_usage.estimated_cost_usd += transcription_usage.estimated_cost_usd
+                    total_usage.call_count += transcription_usage.call_count
+                    total_usage.traces = transcription_usage.traces + total_usage.traces
+                    
+                job.llm_usage_json = total_usage.model_dump()
+                db.flush()
                 
                 # 5. Reconcile
                 st.info("🔄 Reconciling against CRM...")

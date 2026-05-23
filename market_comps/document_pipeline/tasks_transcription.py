@@ -33,12 +33,12 @@ def extract_text_with_vlm(pdf_bytes: bytes, model: str, instructions: str) -> Tu
         })
         
     client = LLMClient(model=model)
-    return client.chat_completion(messages=messages, temperature=0.0)
+    return client.chat_completion(messages=messages, temperature=0.0, step_name="vlm_transcription")
 
 @task(name="extract_text_with_ocr")
 def extract_text_with_ocr(pdf_bytes: bytes, filename: str, model: str, instructions: str) -> Tuple[str, LLMUsage]:
     client = PDFClient(pdf_engine="mistral-ocr", model=model)
-    content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0)
+    content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0, step_name="mistral_ocr")
     return content, step_usage
 
 @task(name="extract_text_with_paddle_ocr")
@@ -97,11 +97,11 @@ def extract_text_with_native(pdf_bytes: bytes, filename: str, model: str, instru
         except ImportError:
             # Fallback if pdfplumber is not available
             client = PDFClient(pdf_engine="pdf-text", model=model)
-            content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0)
+            content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0, step_name="native_pdf_text")
             return content, step_usage
     else:
         client = PDFClient(pdf_engine="pdf-text", model=model)
-        content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0)
+        content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0, step_name="native_pdf_text")
         return content, step_usage
 
 @task(name="reconcile_texts")
@@ -128,7 +128,7 @@ INSTRUCTIONS:
 """
     
     client = LLMClient(model=model)
-    final_content, final_usage = client.simple_text(prompt=merge_prompt, temperature=0.0)
+    final_content, final_usage = client.simple_text(prompt=merge_prompt, temperature=0.0, step_name="hybrid_reconciliation")
     
     # Merge all usages
     total_usage = LLMUsage()

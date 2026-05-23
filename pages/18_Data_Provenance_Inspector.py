@@ -8,9 +8,9 @@ from market_comps.db.models import (
 )
 from market_comps.config import supabase_client
 
-st.set_page_config(page_title="Data Provenance Inspector", page_icon="🔬", layout="wide")
-st.title("🔬 Data Provenance Inspector")
-st.markdown("Deep dive into the backend processing and provenance of imported documents.")
+st.set_page_config(page_title="Pipeline/Upload Troubleshooting", page_icon="🔬", layout="wide")
+st.title("🔬 Pipeline/Upload Troubleshooting")
+st.markdown("Deep dive into the backend processing and provenance of imported documents and pipelines.")
 
 try:
     db = next(get_db())
@@ -43,11 +43,7 @@ if selected_doc_id:
                 signed_url = res.get("signedURL") if isinstance(res, dict) else res
                 if signed_url:
                     st.markdown(f"**Storage Path:** `{doc.file_path}`")
-                    
-                    if doc.file_path.lower().endswith(".pdf"):
-                        st.components.v1.iframe(signed_url, height=800, scrolling=True)
-                    else:
-                        st.markdown(f"[Download / View Raw File]({signed_url})")
+                    st.markdown(f"[Download / View Raw File]({signed_url})")
             except Exception as e:
                 st.error(f"Could not load file from Supabase Storage: {e}")
         else:
@@ -64,6 +60,24 @@ if selected_doc_id:
         jobs = db.query(ExtractionJob).filter_by(pipeline_run_id=run.id).all()
         for job in jobs:
             st.markdown(f"**Job ID:** `{job.id}` | **Schema:** `{job.schema_name}` | **Status:** `{job.status}`")
+            
+            if job.llm_usage_json:
+                usage = job.llm_usage_json
+                traces = usage.get("traces", [])
+                if traces:
+                    st.write("**LLM Traces & Costs:**")
+                    trace_data = []
+                    for t in traces:
+                        trace_data.append({
+                            "Timestamp": pd.to_datetime(t.get("timestamp")).strftime('%H:%M:%S') if t.get("timestamp") else "",
+                            "Step": t.get("step_name", ""),
+                            "Model": t.get("model", ""),
+                            "Tokens (P/C)": f"{t.get('prompt_tokens', 0)} / {t.get('completion_tokens', 0)}",
+                            "Cost (USD)": f"${t.get('cost_usd', 0):.5f}"
+                        })
+                    st.dataframe(pd.DataFrame(trace_data), use_container_width=True, hide_index=True)
+                    st.write(f"*Total Pipeline Estimated Cost: ${usage.get('estimated_cost_usd', 0):.5f}*")
+                    
             entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
             if entities:
                 st.write("**Extracted Entities:**")

@@ -81,7 +81,7 @@ with tab1:
     
     st.divider()
     st.subheader("Existing Pipelines")
-    pipelines = db.query(Pipeline).order_by(Pipeline.created_at.desc()).all()
+    pipelines = db.query(Pipeline).filter(Pipeline.schedule_type != "UPLOAD").order_by(Pipeline.created_at.desc()).all()
     if pipelines:
         for p in pipelines:
             cfg = p.config_json or {}
@@ -125,7 +125,7 @@ with tab1:
 # --- TAB 2: RUN PIPELINE ---
 with tab2:
     st.subheader("Run Pipeline")
-    pipelines = db.query(Pipeline).filter_by(is_active=True).all()
+    pipelines = db.query(Pipeline).filter(Pipeline.is_active == True, Pipeline.schedule_type != "UPLOAD").all()
     if not pipelines:
         st.warning("Create a pipeline first.")
     else:
@@ -160,7 +160,7 @@ with tab2:
 # --- TAB 3: PIPELINE RUNS ---
 with tab3:
     st.subheader("Recent Pipeline Runs")
-    runs = db.query(PipelineRun).order_by(PipelineRun.started_at.desc()).limit(20).all()
+    runs = db.query(PipelineRun).join(Pipeline).filter(Pipeline.schedule_type != "UPLOAD").order_by(PipelineRun.started_at.desc()).limit(20).all()
     if runs:
         run_data = []
         for r in runs:

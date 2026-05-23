@@ -85,6 +85,7 @@ class PDFClient:
         file_annotations: Optional[list[dict]] = None,
         system_prompt: Optional[str] = None,
         temperature: float = 0.1,
+        step_name: str = "pdf_parse",
     ) -> tuple[str, Optional[list[dict]], LLMUsage]:
         """
         Send a prompt to the LLM with PDF content.
@@ -164,6 +165,8 @@ class PDFClient:
                 completion_tokens=raw_usage.get("completion_tokens", 0),
                 input_price_per_m=in_price,
                 output_price_per_m=out_price,
+                step_name=step_name,
+                model=self.model,
             )
 
         return content, new_annotations, usage

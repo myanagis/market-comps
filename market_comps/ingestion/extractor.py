@@ -130,7 +130,8 @@ def extract_entities_from_text(
         prompt=prompt,
         json_schema=schema,
         system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
-        model=DEFAULT_LLM_MODEL
+        model=DEFAULT_LLM_MODEL,
+        step_name="entity_extraction"
     )
 
     # Normalize response
@@ -235,7 +236,8 @@ def extract_profile_detail(
         prompt=prompt,
         json_schema=PROFILE_DETAIL_SCHEMA,
         system_prompt="You are a data extraction assistant. Follow the user's instructions and schema strictly.",
-        model=DEFAULT_LLM_MODEL
+        model=DEFAULT_LLM_MODEL,
+        step_name="profile_extraction",
     )
 
     detail = parsed if isinstance(parsed, dict) else {}

@@ -97,6 +97,15 @@ class CompanyMetrics(BaseModel):
     data_notes: str = ""
 
 
+class LLMCallTrace(BaseModel):
+    step_name: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost_usd: float
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
 class LLMUsage(BaseModel):
     """Tracks token consumption and estimated costs across all LLM calls."""
 
@@ -105,6 +114,7 @@ class LLMUsage(BaseModel):
     total_tokens: int = 0
     estimated_cost_usd: float = 0.0
     call_count: int = 0
+    traces: list[LLMCallTrace] = Field(default_factory=list)
 
     def add(
         self,
@@ -112,16 +122,24 @@ class LLMUsage(BaseModel):
         completion_tokens: int,
         input_price_per_m: float,
         output_price_per_m: float,
+        step_name: str = "unknown",
+        model: str = "unknown",
     ) -> None:
         """Accumulate tokens and cost from one LLM call."""
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         self.total_tokens += prompt_tokens + completion_tokens
-        self.estimated_cost_usd += (
-            prompt_tokens / 1_000_000 * input_price_per_m
-            + completion_tokens / 1_000_000 * output_price_per_m
-        )
+        cost = (prompt_tokens / 1_000_000 * input_price_per_m) + (completion_tokens / 1_000_000 * output_price_per_m)
+        self.estimated_cost_usd += cost
         self.call_count += 1
+        self.traces.append(LLMCallTrace(
+            step_name=step_name,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            cost_usd=cost
+        ))
 
 
 class CompsResult(BaseModel):

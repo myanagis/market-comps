@@ -63,6 +63,7 @@ class LLMClient:
         model: Optional[str] = None,
         response_format: Optional[dict] = None,
         temperature: float = 0.2,
+        step_name: str = "chat_completion",
     ) -> tuple[str, LLMUsage]:
         """
         Call the chat completion endpoint.
@@ -94,6 +95,8 @@ class LLMClient:
                 completion_tokens=response.usage.completion_tokens,
                 input_price_per_m=in_price,
                 output_price_per_m=out_price,
+                step_name=step_name,
+                model=model,
             )
         else:
             # OpenRouter may not always return usage; estimate conservatively
@@ -108,6 +111,7 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.1,
+        step_name: str = "structured_output",
     ) -> tuple[Any, LLMUsage]:
         """
         Ask the model to return a JSON object matching json_schema.
@@ -131,6 +135,7 @@ class LLMClient:
             model=model,
             response_format={"type": "json_object"},
             temperature=temperature,
+            step_name=step_name,
         )
 
         # Strip any accidental markdown fences
@@ -155,6 +160,7 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.3,
+        step_name: str = "simple_text",
     ) -> tuple[str, LLMUsage]:
         """Simple text completion — returns (text, LLMUsage)."""
         system = system_prompt or "You are a helpful financial analyst assistant."
@@ -162,4 +168,4 @@ class LLMClient:
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ]
-        return self.chat_completion(messages=messages, model=model, temperature=temperature)
+        return self.chat_completion(messages=messages, model=model, temperature=temperature, step_name=step_name)

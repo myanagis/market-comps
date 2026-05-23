@@ -144,7 +144,7 @@ pg = st.navigation({
         st.Page("pages/12_CRM_People.py", title="People", icon="👤"),
     ],
     "Data Pipelines": [
-        st.Page("pages/18_Data_Provenance_Inspector.py", title="Data Provenance Inspector", icon="🔬"),
+        st.Page("pages/18_Data_Provenance_Inspector.py", title="Pipeline/Upload Troubleshooting", icon="🔬"),
         st.Page("pages/13_Data_Ingestion.py", title="Data Ingestion", icon="📡"),
         st.Page("pages/2_Data_Extraction.py", title="Data Extraction", icon="📄"),
     ],
