@@ -39,6 +39,8 @@ class Organization(Base, TimestampMixin):
     roles = relationship("PersonOrganizationRole", back_populates="organization")
     program_memberships = relationship("ProgramMembership", back_populates="company")
     pipelines = relationship("Pipeline", back_populates="organization")
+    investments_made = relationship("Investment", foreign_keys="[Investment.investor_organization_id]", back_populates="investor")
+    investments_received = relationship("Investment", foreign_keys="[Investment.company_organization_id]", back_populates="company")
 
 
 class CompanyProfile(Base, TimestampMixin):
@@ -179,6 +181,23 @@ class PersonOrganizationRole(Base, TimestampMixin):
 
     person = relationship("Person", back_populates="roles")
     organization = relationship("Organization", back_populates="roles")
+
+
+class Investment(Base, TimestampMixin):
+    __tablename__ = 'investments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    investor_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    company_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    
+    investment_date = Column(DateTime)
+    round_type = Column(String) # e.g., Seed, Series A
+    amount = Column(String) # e.g., $5M
+    is_lead = Column(Boolean, default=False)
+    metadata_json = Column(JSON)
+
+    investor = relationship("Organization", foreign_keys=[investor_organization_id], back_populates="investments_made")
+    company = relationship("Organization", foreign_keys=[company_organization_id], back_populates="investments_received")
 
 
 # ==============================================================================

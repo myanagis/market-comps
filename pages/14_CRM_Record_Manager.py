@@ -1,9 +1,12 @@
 import streamlit as st
 from market_comps.db.session import get_db
-from market_comps.db.models import Organization, CompanyProfile, InvestorProfile, Person, FundProfile, ProgramProfile, ProgramCohort
+from market_comps.db.models import (
+    Organization, CompanyProfile, InvestorProfile, Person, 
+    FundProfile, ProgramProfile, ProgramCohort, Investment, PersonOrganizationRole
+)
 
-st.set_page_config(page_title="CRM Record Manager", page_icon="📝", layout="wide")
-st.title("📝 CRM Record Manager")
+st.set_page_config(page_title="Add/Update Companies/Investors", page_icon="📝", layout="wide")
+st.title("📝 Add/Update Companies/Investors")
 st.markdown("Use this administrative page to manually create or update records in the CRM.")
 
 # Get database session
@@ -31,7 +34,18 @@ if entity_type == "Company":
         industry = col4.text_input("Industry")
         stage = col3.text_input("Company Stage")
         
-        submitted = st.form_submit_button("Create Company")
+        st.subheader("Add Investor (Optional)")
+        investors = db.query(Organization).filter_by(organization_type="INVESTOR").order_by(Organization.name).all()
+        investor_opts = {0: "-- None --"}
+        investor_opts.update({i.id: i.name for i in investors})
+        
+        col5, col6 = st.columns(2)
+        linked_investor_id = col5.selectbox("Select Investor", options=list(investor_opts.keys()), format_func=lambda x: investor_opts[x])
+        inv_round = col6.text_input("Round (e.g. Seed, Series A)")
+        inv_amount = col5.text_input("Amount (e.g. $2M)")
+        inv_date = col6.date_input("Investment Date", value=None)
+        
+        submitted = st.form_submit_button("Create/Update Company")
         if submitted:
             if not name or not domain:
                 st.error("Name and Domain are required.")
@@ -62,6 +76,19 @@ if entity_type == "Company":
                         db.add(profile)
                         
                     db.commit()
+                    
+                    if linked_investor_id != 0:
+                        inv = Investment(
+                            investor_organization_id=linked_investor_id,
+                            company_organization_id=org.id,
+                            round_type=inv_round,
+                            amount=inv_amount,
+                            investment_date=inv_date
+                        )
+                        db.add(inv)
+                        db.commit()
+                        st.success(f"Successfully added investment from {investor_opts[linked_investor_id]}!")
+                        
                     st.success(f"Successfully {action_str} company: {name}!")
                 except Exception as e:
                     db.rollback()
@@ -125,7 +152,17 @@ elif entity_type == "Person":
         city = col1.text_input("City")
         bio = st.text_area("Bio")
         
-        submitted = st.form_submit_button("Create Person")
+        st.subheader("Add Current Role (Optional)")
+        companies = db.query(Organization).filter_by(organization_type="COMPANY").order_by(Organization.name).all()
+        company_opts = {0: "-- None --"}
+        company_opts.update({c.id: c.name for c in companies})
+        
+        col3, col4 = st.columns(2)
+        linked_company_id = col3.selectbox("Select Company", options=list(company_opts.keys()), format_func=lambda x: company_opts[x])
+        role_title = col4.text_input("Title (e.g. CEO, Founder)")
+        start_date = col3.date_input("Start Date", value=None)
+        
+        submitted = st.form_submit_button("Create/Update Person")
         if submitted:
             if not first_name or not last_name:
                 st.error("First and Last Name are required.")
@@ -145,6 +182,19 @@ elif entity_type == "Person":
                         db.add(p)
                         
                     db.commit()
+                    
+                    if linked_company_id != 0:
+                        role = PersonOrganizationRole(
+                            person_id=p.id,
+                            organization_id=linked_company_id,
+                            title=role_title,
+                            start_date=start_date,
+                            is_current=True
+                        )
+                        db.add(role)
+                        db.commit()
+                        st.success(f"Successfully linked role at {company_opts[linked_company_id]}!")
+                        
                     st.success(f"Successfully {action_str} person: {full_name}!")
                 except Exception as e:
                     db.rollback()
