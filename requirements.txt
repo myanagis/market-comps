@@ -23,3 +23,4 @@ playwright
 streamlit-aggrid
 streamlit-paste-button
 prefect
+pdfplumber
