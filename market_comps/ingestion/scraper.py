@@ -71,10 +71,19 @@ def strip_html(html: str) -> str:
             tag.extract()
             continue
 
-    # 3. Use html2text to convert the cleaned HTML body
+    # 3. Unwrap all <a> tags and insert inline [link: ...] annotations
+    for a_tag in list(soup.find_all("a", href=True)):
+        href = a_tag["href"]
+        if href:
+            link_span = soup.new_tag("span")
+            link_span.string = f" [link: {href}]"
+            a_tag.append(link_span)
+        a_tag.unwrap()
+
+    # 4. Use html2text to convert the cleaned and unwrapped HTML body
     cleaned_html = str(soup)
     h = html2text.HTML2Text()
-    h.ignore_links = False
+    h.ignore_links = True
     h.ignore_images = True
     h.ignore_emphasis = False
     h.body_width = 0  # Prevents wrapping lines
