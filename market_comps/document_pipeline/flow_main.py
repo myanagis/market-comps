@@ -18,7 +18,7 @@ def process_document_pipeline(file_bytes: bytes, filename: str, extraction_metho
     logger.info(f"Starting document pipeline for {filename} using {extraction_method} method and {model} model.")
     
     # 1. Transcribe
-    transcription_text, transcribe_usage = transcribe_document(
+    transcription_text, transcribe_usage, raw_texts = transcribe_document(
         pdf_bytes=file_bytes, 
         filename=filename, 
         method=extraction_method, 
@@ -42,6 +42,10 @@ def process_document_pipeline(file_bytes: bytes, filename: str, extraction_metho
     
     # Consolidate usage and metadata
     result.pdf_engine = extraction_method
+    result.raw_native_text = raw_texts.get("raw_native_text")
+    result.raw_vlm_text = raw_texts.get("raw_vlm_text")
+    result.raw_ocr_text = raw_texts.get("raw_ocr_text")
+    result.raw_paddle_text = raw_texts.get("raw_paddle_text")
     
     total_usage = result.llm_usage
     for u in [transcribe_usage, classify_usage, extract_usage]:

@@ -41,6 +41,37 @@ def extract_text_with_ocr(pdf_bytes: bytes, filename: str, model: str, instructi
     content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0)
     return content, step_usage
 
+@task(name="extract_text_with_paddle_ocr")
+def extract_text_with_paddle_ocr(pdf_bytes: bytes, filename: str) -> Tuple[str, LLMUsage]:
+    try:
+        from paddleocr import PaddleOCR
+        import fitz
+        import io
+        import numpy as np
+        from PIL import Image
+        
+        ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf" if filename.lower().endswith(".pdf") else None)
+        
+        full_text = []
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            pix = page.get_pixmap(dpi=150)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img_np = np.array(img)
+            
+            result = ocr.ocr(img_np, cls=True)
+            page_text = []
+            if result and result[0]:
+                for line in result[0]:
+                    page_text.append(line[1][0])
+            full_text.append(f"--- Page {page_num + 1} ---\n" + "\n".join(page_text))
+            
+        return "\n\n".join(full_text), LLMUsage()
+    except Exception as e:
+        logger.error(f"PaddleOCR error: {e}")
+        return f"PaddleOCR extraction failed: {e}", LLMUsage()
+
 @task(name="extract_text_with_native")
 def extract_text_with_native(pdf_bytes: bytes, filename: str, model: str, instructions: str) -> Tuple[str, LLMUsage]:
     if filename.lower().endswith(".pptx"):
@@ -56,6 +87,18 @@ def extract_text_with_native(pdf_bytes: bytes, filename: str, model: str, instru
             if slide_text:
                 text_runs.append(f"--- Slide {slide_num + 1} ---\n" + "\n".join(slide_text))
         return "\n\n".join(text_runs), LLMUsage()
+    elif filename.lower().endswith(".pdf"):
+        import io
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+            return text, LLMUsage()
+        except ImportError:
+            # Fallback if pdfplumber is not available
+            client = PDFClient(pdf_engine="pdf-text", model=model)
+            content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0)
+            return content, step_usage
     else:
         client = PDFClient(pdf_engine="pdf-text", model=model)
         content, _, step_usage = client.send(prompt=instructions, pdf_bytes=pdf_bytes, filename=filename, temperature=0.0)
@@ -101,11 +144,11 @@ INSTRUCTIONS:
 import json
 
 @flow(name="transcribe_document")
-def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str) -> Tuple[str, LLMUsage]:
+def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str) -> Tuple[str, LLMUsage, dict]:
     """
     Process a PDF document using one of four methods:
     'ocr', 'text', 'vlm', or 'vlm_plus_text'.
-    Returns (markdown_text, LLMUsage)
+    Returns (markdown_text, LLMUsage, raw_texts_dict)
     """
     logger.info(json.dumps({
         "event": "transcribe_document_start",
@@ -114,13 +157,20 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
         "model": model
     }))
     instructions = _load_instructions()
+    raw_texts = {}
     
     if method == "ocr":
         res, usage = extract_text_with_ocr(pdf_bytes, filename, model, instructions)
+        raw_texts["raw_ocr_text"] = res
+    elif method == "paddle_ocr":
+        res, usage = extract_text_with_paddle_ocr(pdf_bytes, filename)
+        raw_texts["raw_paddle_text"] = res
     elif method == "text":
         res, usage = extract_text_with_native(pdf_bytes, filename, model, instructions)
+        raw_texts["raw_native_text"] = res
     elif method == "vlm":
         res, usage = extract_text_with_vlm(pdf_bytes, model, instructions)
+        raw_texts["raw_vlm_text"] = res
     elif method == "vlm_plus_text":
         logger.info(json.dumps({
             "event": "transcribe_document_hybrid_start",
@@ -128,8 +178,10 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
         }))
         # Run text extraction
         text_content, text_usage = extract_text_with_native(pdf_bytes, filename, model, instructions)
+        raw_texts["raw_native_text"] = text_content
         # Run VLM extraction
         vlm_content, vlm_usage = extract_text_with_vlm(pdf_bytes, model, instructions)
+        raw_texts["raw_vlm_text"] = vlm_content
         # Cross compare
         res, usage = reconcile_texts(text_content, vlm_content, text_usage, vlm_usage, model)
     else:
@@ -141,4 +193,4 @@ def transcribe_document(pdf_bytes: bytes, filename: str, method: str, model: str
         "tokens": usage.total_tokens,
         "cost_usd": round(usage.estimated_cost_usd, 5)
     }))
-    return res, usage
+    return res, usage, raw_texts

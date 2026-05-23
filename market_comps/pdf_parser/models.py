@@ -66,6 +66,10 @@ class ParserResult:
 
     # PDF parsing metadata
     raw_extracted_text: Optional[str] = None
+    raw_native_text: Optional[str] = None
+    raw_vlm_text: Optional[str] = None
+    raw_ocr_text: Optional[str] = None
+    raw_paddle_text: Optional[str] = None
     pdf_pages: int = 0
     pdf_parsing_cost_usd: float = 0.0  # mistral-ocr: $0.002/page; pdf-text: free
 

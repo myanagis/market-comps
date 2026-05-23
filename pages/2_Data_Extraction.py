@@ -14,7 +14,7 @@ import io
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="PDF Parser",
+    page_title="Data Extraction",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -54,7 +54,7 @@ st.markdown("""
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
-<h1>📄 Document Parser</h1>
+<h1>📄 Data Extraction</h1>
 <p>This parses a document using both a vision LLM and OCR, then cross-checks them. It also tries to parse and capture charts, images, and formatting.</p>
 """, unsafe_allow_html=True)
 
@@ -110,6 +110,7 @@ else:
 
     METHOD_OPTIONS = {
         "OCR (Mistral)": "ocr",
+        "OCR (Paddle)": "paddle_ocr",
         "Text Reader (Native)": "text",
         "VLM (Image-based)": "vlm",
         "Hybrid (VLM + Text cross-check)": "vlm_plus_text"
@@ -255,12 +256,33 @@ if result is not None:
     if raw_text and "⚠️ Manual Resolution Required" in raw_text:
         st.warning("⚠️ **Manual Resolution Required:** The intelligent cross-checker found discrepancies between the Native Text and VLM extractions that could not be confidently resolved. Please review the flagged items at the bottom of the Document Transcription tab.")
 
-    tab1, tab2, tab3 = st.tabs(["📝 Document Transcription", "📊 Extraction Results", "📋 Pipeline Logs"])
+    tab_names = ["📝 Final Transcription", "📊 Extraction Results", "📋 Pipeline Logs"]
+    if getattr(result, "raw_native_text", None): tab_names.append("📄 Raw Native Text")
+    if getattr(result, "raw_vlm_text", None): tab_names.append("🖼️ Raw VLM Text")
+    if getattr(result, "raw_ocr_text", None): tab_names.append("🔍 Raw OCR Text")
+    if getattr(result, "raw_paddle_text", None): tab_names.append("🛶 Raw Paddle OCR")
+    
+    tab_objects = st.tabs(tab_names)
+    tab1, tab2, tab3 = tab_objects[0], tab_objects[1], tab_objects[2]
+    extra_tabs = tab_objects[3:]
+
+    def downlevel_headers(text: str) -> str:
+        if not text: return ""
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            if line.startswith('# '):
+                lines[i] = '### ' + line[2:]
+            elif line.startswith('## '):
+                lines[i] = '#### ' + line[3:]
+            elif line.startswith('### '):
+                lines[i] = '##### ' + line[4:]
+        return '\n'.join(lines)
 
     with tab1:
         if raw_text:
             from market_comps.ui import safe_markdown
-            st.markdown(safe_markdown(raw_text))
+            with st.container(height=600, border=True):
+                st.markdown(safe_markdown(downlevel_headers(raw_text)))
         else:
             st.info("No raw text captured. Re-run the parser to populate this field.")
 
@@ -356,6 +378,29 @@ if result is not None:
             st.markdown('<div class="section-header" style="margin-top: 2rem;">Raw Markdown Source</div>', unsafe_allow_html=True)
             with st.expander("View Raw Markdown Code", expanded=False):
                 st.code(result.raw_extracted_text, language="markdown")
+                
+    # Extra tabs for raw texts
+    extra_idx = 0
+    if getattr(result, "raw_native_text", None):
+        with extra_tabs[extra_idx]:
+            with st.container(height=600, border=True):
+                st.markdown(safe_markdown(downlevel_headers(result.raw_native_text)))
+        extra_idx += 1
+    if getattr(result, "raw_vlm_text", None):
+        with extra_tabs[extra_idx]:
+            with st.container(height=600, border=True):
+                st.markdown(safe_markdown(downlevel_headers(result.raw_vlm_text)))
+        extra_idx += 1
+    if getattr(result, "raw_ocr_text", None):
+        with extra_tabs[extra_idx]:
+            with st.container(height=600, border=True):
+                st.markdown(safe_markdown(downlevel_headers(result.raw_ocr_text)))
+        extra_idx += 1
+    if getattr(result, "raw_paddle_text", None):
+        with extra_tabs[extra_idx]:
+            with st.container(height=600, border=True):
+                st.markdown(safe_markdown(downlevel_headers(result.raw_paddle_text)))
+        extra_idx += 1
 
     st.markdown("<hr style='border:1px solid #334155; margin: 2rem 0;'/>", unsafe_allow_html=True)
 
