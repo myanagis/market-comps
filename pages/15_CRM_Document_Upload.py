@@ -138,153 +138,49 @@ if st.session_state.get("start_processing"):
                     ctx_note = f"NOTE: This document is related to the organization '{linked_org.name}'. Pay special attention to their properties and relationships."
                     final_instructions = f"{ctx_note}\n{final_instructions}".strip()
 
-            # 3. Create DB records
+            # 3. Create DB records and start background ingestion
             content_hash = hashlib.sha256(text_content.encode()).hexdigest()
             
-            run = IngestionRun(
-                pipeline_id=None,
-                run_status="RUNNING",
-                started_at=datetime.utcnow()
-            )
-            db.add(run)
-            db.flush()
-            
-            source_doc = SourceDocument(
-                ingestion_run_id=run.id,
-                document_type="PDF" if file_name.lower().endswith(".pdf") else "TEXT",
-                source_url=file_name,
-                file_path=storage_path,
-                content_hash=content_hash,
-            )
-            db.add(source_doc)
-            db.flush()
-            
-            doc_text = DocumentText(
-                source_document_id=source_doc.id,
-                data_type="DOCUMENT_TEXT",
-                raw_content=text_content,
-                content_hash=content_hash,
-            )
-            db.add(doc_text)
-            db.flush()
+            from market_comps.ingestion.async_processor import start_document_ingestion
             
             try:
-                # 3.5 Classify Document
-                st.info("🔍 Classifying document...")
-                from market_comps.ingestion.classifier import classify_document, get_recommended_schemas
-                from market_comps.llm_client import LLMClient
-                
-                try:
-                    class_result, class_usage = classify_document(text_content, LLMClient())
-                    doc_class = class_result.get("document_type", "unknown")
-                    source_doc.document_class = doc_class
-                    source_doc.classification_result_json = class_result
-                    db.flush()
-                    st.success(f"🏷️ Classified as: **{doc_class}** (Confidence: {class_result.get('confidence', 0):.2f})")
-                    
-                    schemas_to_run = get_recommended_schemas(doc_class)
-                    if not schemas_to_run:
-                        st.warning(f"No schemas recommended for class '{doc_class}'. Running default extraction.")
-                        schemas_to_run = ["DOCUMENT_ENTITIES"]
-                except Exception as e:
-                    st.error(f"Classification failed: {e}. Falling back to default schema.")
-                    source_doc.document_class = "unknown"
-                    source_doc.classification_result_json = {"error": str(e)}
-                    db.flush()
-                    schemas_to_run = ["DOCUMENT_ENTITIES"]
-                    class_usage = None
-                
-                # 4. Run LLM Extraction
-                total_entities_extracted = 0
-                
-                # Use the first recommended schema, which should match the doc class
-                schema_name = schemas_to_run[0] if schemas_to_run else "DOCUMENT_ENTITIES"
-                
-                st.info(f"🤖 Running extraction schema: **{schema_name}**...")
-                
-                job = ExtractionJob(
-                    ingestion_run_id=run.id,
-                    document_text_id=doc_text.id,
-                    schema_name=schema_name,
-                    status="IN_PROGRESS",
-                    started_at=datetime.utcnow()
+                run_id = start_document_ingestion(
+                    db=db,
+                    text_content=text_content,
+                    file_name=file_name,
+                    storage_path=storage_path,
+                    content_hash=content_hash,
+                    final_instructions=final_instructions,
+                    transcription_usage=transcription_usage
                 )
-                db.add(job)
-                db.flush()
-                
-                try:
-                    extraction_result = extract_entities_from_text(
-                        db, run, job, doc_text, schema_name, {"llm_instruction": final_instructions}
-                    )
-                    
-                    total_entities_extracted += extraction_result["entities_extracted"]
-                    job_usage = extraction_result["llm_usage"]
-                    
-                    from market_comps.models import LLMUsage
-                    usage_obj = LLMUsage(**job_usage)
-                    if transcription_usage:
-                        usage_obj.total_prompt_tokens += transcription_usage.total_prompt_tokens
-                        usage_obj.total_completion_tokens += transcription_usage.total_completion_tokens
-                        usage_obj.total_tokens += transcription_usage.total_tokens
-                        usage_obj.estimated_cost_usd += transcription_usage.estimated_cost_usd
-                        usage_obj.call_count += transcription_usage.call_count
-                        usage_obj.traces = transcription_usage.traces + usage_obj.traces
-                    if class_usage:
-                        usage_obj.total_prompt_tokens += class_usage.total_prompt_tokens
-                        usage_obj.total_completion_tokens += class_usage.total_completion_tokens
-                        usage_obj.total_tokens += class_usage.total_tokens
-                        usage_obj.estimated_cost_usd += class_usage.estimated_cost_usd
-                        usage_obj.call_count += class_usage.call_count
-                        usage_obj.traces = class_usage.traces + usage_obj.traces
-                        
-                    job_usage = usage_obj.model_dump(mode="json")
-                    
-                    import json
-                    job.llm_usage_json = json.loads(json.dumps(job_usage, default=str))
-                    job.status = "SUCCESS"
-                    job.completed_at = datetime.utcnow()
-                    db.flush()
-                except Exception as e:
-                    job.status = "FAILED"
-                    job.error_message = str(e)
-                    job.completed_at = datetime.utcnow()
-                    db.flush()
-                    st.error(f"Extraction failed: {e}")
-                
-                # 5. Reconcile
-                st.info("🔄 Reconciling combined results against CRM...")
-                reconcile_stats = reconcile_all(db, run, None)
-                
-                # 6. Complete
-                total_created = reconcile_stats.get("orgs_reconciled", 0) + reconcile_stats.get("people_reconciled", 0)
-                run.run_status = "SUCCESS"
-                run.completed_at = datetime.utcnow()
-                run.records_processed = total_entities_extracted
-                run.records_created = total_created
-                
-                db.commit()
-                
-                st.success(f"✅ Success! Processed {total_entities_extracted} entities across {len(schemas_to_run)} schemas, created {total_created} CRM records.")
-                
-                # Save run ID to session state so it persists
-                st.session_state.last_doc_upload_run_id = run.id
-                
+                st.session_state.last_doc_upload_run_id = run_id
+                st.success(f"🚀 Document processing started in the background (Run ID: {run_id}).")
+                st.rerun()
             except Exception as e:
                 db.rollback()
-                st.error(f"Pipeline failed: {e}")
-                run_failed = db.query(IngestionRun).get(run.id)
-                if run_failed:
-                    run_failed.run_status = "FAILED"
-                    run_failed.error_message = str(e)
-                    run_failed.completed_at = datetime.utcnow()
-                    db.commit()
+                st.error(f"Failed to start document ingestion: {e}")
 
 # --- Display Results Outside of Submit Block ---
 if "last_doc_upload_run_id" in st.session_state:
     last_run = db.query(IngestionRun).get(st.session_state.last_doc_upload_run_id)
     if last_run:
         st.divider()
-        st.subheader("Latest Upload Results")
+        st.subheader(f"Latest Upload Results (Run ID: {last_run.id})")
+        
+        # Status Banner
+        if last_run.run_status == "RUNNING":
+            st.info("⏳ Processing in background... Please wait.")
+            import time
+            time.sleep(3)
+            st.rerun()
+        elif last_run.run_status == "SUCCESS":
+            st.success("✅ Processing complete!")
+        elif last_run.run_status == "FAILED":
+            st.error(f"❌ Processing failed: {last_run.error_message}")
+            
+        # Refresh button if user wants to force refresh
+        if st.button("Refresh Status"):
+            st.rerun()
         
         # Look up document class
         source_doc = db.query(SourceDocument).filter_by(ingestion_run_id=last_run.id).first()
