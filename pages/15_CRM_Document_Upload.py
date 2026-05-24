@@ -229,6 +229,10 @@ if submitted:
                                 first_usage.call_count += class_usage.call_count
                                 first_usage.traces = class_usage.traces + first_usage.traces
                             job_usage = first_usage.model_dump(mode="json")
+                        else:
+                            # Defensively parse and dump for subsequent schemas in case of stale imports
+                            from market_comps.models import LLMUsage
+                            job_usage = LLMUsage(**job_usage).model_dump(mode="json")
                             
                         total_usage_dict["total_prompt_tokens"] += job_usage.get("total_prompt_tokens", 0)
                         total_usage_dict["total_completion_tokens"] += job_usage.get("total_completion_tokens", 0)
@@ -237,7 +241,8 @@ if submitted:
                         total_usage_dict["call_count"] += job_usage.get("call_count", 0)
                         total_usage_dict["traces"] += job_usage.get("traces", [])
                         
-                        job.llm_usage_json = job_usage
+                        import json
+                        job.llm_usage_json = json.loads(json.dumps(job_usage, default=str))
                         job.status = "SUCCESS"
                         job.completed_at = datetime.utcnow()
                         db.flush()
