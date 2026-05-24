@@ -81,7 +81,7 @@ if search_query:
         # Display Investors
         investors = [o for o in orgs if o.organization_type == "INVESTOR"]
         if investors:
-            st.subheader("🏦 Investors")
+            st.subheader("🏦 Investment Firms")
             for i in investors:
                 with st.container(border=True):
                     st.markdown(f"**{i.name}**")

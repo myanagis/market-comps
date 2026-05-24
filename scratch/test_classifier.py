@@ -1,33 +1,29 @@
-import sys
 import os
+import sys
+import logging
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+logging.basicConfig(level=logging.DEBUG)
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from market_comps.ingestion.classifier import classify_document
 from market_comps.llm_client import LLMClient
-from market_comps.ingestion.classifier import classify_document, get_recommended_schemas
 
-def main():
-    print("Testing document classification...")
-    llm = LLMClient()
-    text = """
-    Acme Corp Series A Pitch Deck. 
-    We are a fast growing B2B SaaS startup revolutionizing the cloud.
-    Founders: John Doe (CEO), Jane Smith (CTO)
-    Revenue: $2M ARR.
-    Seeking: $10M Series A at $40M pre-money valuation.
-    """
-    
-    result, usage = classify_document(text, llm)
-    print("Classification Result:")
-    import json
-    print(json.dumps(result, indent=2))
-    print("Usage:", usage)
-    
-    doc_class = result.get("document_type")
-    schemas = get_recommended_schemas(doc_class)
-    print(f"\nRecommended schemas for {doc_class}:")
-    for s in schemas:
-        print(f" - {s}")
+sample_text = """
+This is a startup pitch deck for Acme Corp.
+We are a B2B SaaS company that helps restaurants manage inventory.
+We are raising $5M in a Seed round.
+Our team consists of former Google and Facebook engineers.
+"""
 
-if __name__ == "__main__":
-    main()
+try:
+    print("Initializing LLMClient...")
+    client = LLMClient()
+    print("Classifying...")
+    res, usage = classify_document(sample_text, client)
+    print("Result:")
+    print(res)
+    print("Usage:")
+    print(usage.model_dump())
+except Exception as e:
+    print(f"Error: {e}")

@@ -131,9 +131,18 @@ def display_company_details(company_id):
         docs = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids_subquery)).all()
         
         if docs:
+            from market_comps.config import get_supabase_url
+            import zoneinfo
+            eastern = zoneinfo.ZoneInfo("America/New_York")
+            
             for doc in docs:
-                url_display = f"[{doc.source_url}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc.source_url
-                tz_time = doc.created_at.strftime('%Y-%m-%d %I:%M %p UTC') if doc.created_at else "Unknown Time"
+                signed_url = get_supabase_url(doc.file_path) if doc.file_path else ""
+                if signed_url:
+                    url_display = f"{doc.source_url} [(View)]({signed_url})"
+                else:
+                    url_display = f"[{doc.source_url}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc.source_url
+                
+                tz_time = doc.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %I:%M %p ET') if doc.created_at else "Unknown Time"
                 st.markdown(f"- **{doc.document_type}**: {url_display} (Processed: {tz_time})")
         else:
             st.info("No documents linked to this company.")

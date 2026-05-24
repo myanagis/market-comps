@@ -5,8 +5,8 @@ from market_comps.db.models import (
     FundProfile, ProgramProfile, ProgramCohort, Investment, PersonOrganizationRole
 )
 
-st.set_page_config(page_title="Add/Update Companies/Investors", page_icon="📝", layout="wide")
-st.title("📝 Add/Update Companies/Investors")
+st.set_page_config(page_title="Add/Update Companies/Investment Firms", page_icon="📝", layout="wide")
+st.title("📝 Add/Update Companies/Investment Firms")
 st.markdown("Use this administrative page to manually create or update records in the CRM.")
 
 # Get database session
@@ -17,7 +17,19 @@ except Exception as e:
     st.stop()
 
 # --- DATA ENTRY ---
-entity_type = st.selectbox("Record Type", ["Company", "Investor", "Person", "Fund", "Program", "Cohort"])
+if "active_record_tab" not in st.session_state:
+    st.session_state.active_record_tab = "Company"
+
+st.write("**Select Record Type:**")
+cols = st.columns(6)
+tabs = [("🏢", "Company"), ("🏦", "Investment Firm"), ("👤", "Person"), ("💰", "Fund"), ("🚀", "Program"), ("📦", "Cohort")]
+for i, (icon, label) in enumerate(tabs):
+    with cols[i]:
+        if st.button(f"{icon} {label}", use_container_width=True, type="primary" if st.session_state.active_record_tab == label else "secondary"):
+            st.session_state.active_record_tab = label
+
+st.divider()
+entity_type = st.session_state.active_record_tab
 
 if entity_type == "Company":
     with st.form("company_form", clear_on_submit=True):
@@ -34,13 +46,13 @@ if entity_type == "Company":
         industry = col4.text_input("Industry")
         stage = col3.text_input("Company Stage")
         
-        st.subheader("Add Investor (Optional)")
+        st.subheader("Add Investment Firm (Optional)")
         investors = db.query(Organization).filter_by(organization_type="INVESTOR").order_by(Organization.name).all()
         investor_opts = {0: "-- None --"}
         investor_opts.update({i.id: i.name for i in investors})
         
         col5, col6 = st.columns(2)
-        linked_investor_id = col5.selectbox("Select Investor", options=list(investor_opts.keys()), format_func=lambda x: investor_opts[x])
+        linked_investor_id = col5.selectbox("Select Investment Firm", options=list(investor_opts.keys()), format_func=lambda x: investor_opts[x])
         inv_round = col6.text_input("Round (e.g. Seed, Series A)")
         inv_amount = col5.text_input("Amount (e.g. $2M)")
         inv_date = col6.date_input("Investment Date", value=None)
@@ -94,7 +106,7 @@ if entity_type == "Company":
                     db.rollback()
                     st.error(f"Error saving to DB: {str(e)}")
 
-elif entity_type == "Investor":
+elif entity_type == "Investment Firm":
     with st.form("investor_form", clear_on_submit=True):
         st.subheader("Organization Details")
         col1, col2 = st.columns(2)
@@ -103,12 +115,12 @@ elif entity_type == "Investor":
         city = col1.text_input("City")
         desc = st.text_area("Description")
         
-        st.subheader("Investor Profile")
+        st.subheader("Investment Firm Profile")
         col3, col4 = st.columns(2)
-        inv_type = col3.selectbox("Investor Type", ["VC", "PE", "Angel", "CVC", "Family Office"])
+        inv_type = col3.selectbox("Investment Firm Type", ["VC", "PE", "Angel", "CVC", "Family Office"])
         pref_stage = col4.text_input("Preferred Stage (e.g. Seed, Series A)")
         
-        submitted = st.form_submit_button("Create Investor")
+        submitted = st.form_submit_button("Create Investment Firm")
         if submitted:
             if not name or not domain:
                 st.error("Name and Domain are required.")

@@ -136,11 +136,11 @@ def build_competition_data(result: CompetitionResult) -> tuple[pd.DataFrame, pd.
                 "Country": getattr(c, "country", None) or "—",
                 "Latest Round": c.latest_round or "—",
                 "Amount Raised": fmt_currency(c.amount_raised_usd),
-                "Investors": inv,
+                "Investment Firms": inv,
                 "Exit": exit_str
             }
             priv_rows_df.append(row_dict)
-            priv_rows_html.append([name_html, row_dict["Country"], row_dict["Latest Round"], row_dict["Amount Raised"], row_dict["Investors"], row_dict["Exit"]])
+            priv_rows_html.append([name_html, row_dict["Country"], row_dict["Latest Round"], row_dict["Amount Raised"], row_dict["Investment Firms"], row_dict["Exit"]])
             
     def _tbl(headers, rows):
         if not rows: return "<p><em>No data.</em></p>"
@@ -149,7 +149,7 @@ def build_competition_data(result: CompetitionResult) -> tuple[pd.DataFrame, pd.
         return f'<table class="printable-table"><thead><tr>{h}</tr></thead><tbody>{r}</tbody></table>'
         
     pub_html = _tbl(["Company", "Ticker", "Country", "Market Cap", "Revenue", "EV/Revenue"], pub_rows_html)
-    priv_html = _tbl(["Company", "Country", "Latest Round", "Amount Raised", "Investors", "Exit"], priv_rows_html)
+    priv_html = _tbl(["Company", "Country", "Latest Round", "Amount Raised", "Investment Firms", "Exit"], priv_rows_html)
     
     fn_html = ""
     if footnotes:
@@ -183,7 +183,7 @@ def generate_html_report(query: str, comp_result: CompetitionResult) -> str:
                     if exit_d: exit_str += f" in {exit_d}"
                 else:
                     exit_str = "—"
-                fin = f"Latest Round: {c.latest_round or '—'} &nbsp;|&nbsp; Raised: {fmt_currency(c.amount_raised_usd)} &nbsp;|&nbsp; Year: {fmt_int(c.funding_year)} &nbsp;|&nbsp; Investors: {inv} &nbsp;|&nbsp; Exit: {exit_str}"
+                fin = f"Latest Round: {c.latest_round or '—'} &nbsp;|&nbsp; Raised: {fmt_currency(c.amount_raised_usd)} &nbsp;|&nbsp; Year: {fmt_int(c.funding_year)} &nbsp;|&nbsp; Investment Firms: {inv} &nbsp;|&nbsp; Exit: {exit_str}"
             details += f"""
             <div class="card">
               <div class="card-header"><span class="badge badge-{c.type}">{badge}</span> <strong>{c.name}</strong>{' (' + c.ticker + ')' if c.ticker else ''}{(' &mdash; ' + getattr(c, 'country', None)) if getattr(c, 'country', None) else ''}</div>
@@ -402,8 +402,8 @@ if comp_result is not None:
                             if exit_amt != "—": exit_str += f" ({exit_amt})"
                             if exit_d: exit_str += f"\n{exit_d}"
                             _d4.metric("Acquired By", exit_str)
-                        else:
-                            _d4.metric("Investors", inv)
+                        with _d4:
+                            _d4.metric("Investment Firms", inv)
                             
                     if c.source_urls:
                         links = " · ".join(f"[{_domain(u)}]({u})" for u in c.source_urls)

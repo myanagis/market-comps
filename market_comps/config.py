@@ -109,6 +109,16 @@ try:
 except ImportError:
     supabase_client = None
 
+def get_supabase_url(file_path: str) -> str:
+    """Returns a temporary signed URL for a file in Supabase storage."""
+    if not supabase_client or not file_path:
+        return ""
+    try:
+        res = supabase_client.storage.from_(settings.supabase_storage_bucket).create_signed_url(file_path, 3600)
+        return res.get("signedURL") if isinstance(res, dict) else res
+    except Exception:
+        return ""
+
 # Global default LLM Model
 DEFAULT_LLM_MODEL: str = settings.default_model
 
