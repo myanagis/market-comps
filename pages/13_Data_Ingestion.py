@@ -203,28 +203,18 @@ with tab4:
     st.subheader("Recent Extracted Entities")
     entities = db.query(ExtractedEntity).order_by(ExtractedEntity.created_at.desc()).limit(50).all()
     if entities:
-        entity_data = []
         for e in entities:
             payload = e.extracted_payload_json or {}
-            industry_val = payload.get("industry", "")
-            if isinstance(industry_val, list):
-                industry_val = ", ".join(industry_val)
-                
+            
             org_match = next((m.canonical_entity_id for m in e.matches if m.canonical_entity_type == "Organization"), "")
             person_match = next((m.canonical_entity_id for m in e.matches if m.canonical_entity_type == "Person"), "")
             
-            entity_data.append({
-                "Entity ID": e.id,
-                "Job ID": e.extraction_job_id,
-                "Type": e.entity_type,
-                "Name": e.raw_name,
-                "Industry": str(industry_val),
-                "URL": str(payload.get("url", "")),
-                "LinkedIn": str(payload.get("linkedin_url", "")),
-                "Matched Org ID": org_match,
-                "Matched Person ID": person_match,
-            })
-        st.dataframe(pd.DataFrame(entity_data), use_container_width=True, hide_index=True)
+            match_label = ""
+            if org_match: match_label = f" → Org ID: {org_match}"
+            elif person_match: match_label = f" → Person ID: {person_match}"
+            
+            with st.expander(f"[{e.entity_type}] {e.raw_name}{match_label} (Job {e.extraction_job_id})"):
+                st.json(payload)
     else:
         st.info("No extracted entities yet.")
     
