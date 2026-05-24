@@ -3,11 +3,11 @@ Pipeline Runner — Orchestrator
 ================================
 Top-level entry point that coordinates the ETL steps.
 
-    Step 1: Create PipelineRun record
+    Step 1: Create IngestionRun record
     Step 2: EXTRACT — Fetch raw content → save to extracted_data_raw
     Step 3: TRANSFORM — LLM extraction → save to extracted_entities + extracted_relationships
     Step 4: LOAD — Reconcile against CRM → write to organizations/people/etc. + entity_audit_trail
-    Step 5: Complete PipelineRun
+    Step 5: Complete IngestionRun
 """
 
 import hashlib
