@@ -164,7 +164,7 @@ if submitted:
             try:
                 st.info("🤖 Sending to LLM for extraction...")
                 extraction_result = extract_entities_from_text(
-                    db, run, job, doc_text, pipeline_type, pipeline.config_json
+                    db, run, job, doc_text, pipeline_type, {"llm_instruction": final_instructions}
                 )
                 
                 # Merge LLM usages
@@ -183,7 +183,7 @@ if submitted:
                 
                 # 5. Reconcile
                 st.info("🔄 Reconciling against CRM...")
-                reconcile_stats = reconcile_all(db, run, pipeline)
+                reconcile_stats = reconcile_all(db, run, None)
                 
                 # 6. Complete
                 total_created = reconcile_stats.get("orgs_reconciled", 0) + reconcile_stats.get("people_reconciled", 0)
@@ -191,9 +191,6 @@ if submitted:
                 run.completed_at = datetime.utcnow()
                 run.records_processed = extraction_result["entities_extracted"]
                 run.records_created = total_created
-                
-                pipeline.last_run_at = datetime.utcnow()
-                pipeline.last_success_at = datetime.utcnow()
                 
                 db.commit()
                 

@@ -38,16 +38,17 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_ingestion_runs_id'), 'ingestion_runs', ['id'], unique=False)
-    op.drop_index(op.f('ix_pipeline_runs_id'), table_name='pipeline_runs')
-    op.drop_table('pipeline_runs')
     op.add_column('extraction_jobs', sa.Column('ingestion_run_id', sa.Integer(), nullable=False))
-    op.drop_constraint(op.f('extraction_jobs_pipeline_run_id_fkey'), 'extraction_jobs', type_='foreignkey')
+    op.drop_constraint('extraction_jobs_pipeline_run_id_fkey', 'extraction_jobs', type_='foreignkey')
     op.create_foreign_key(None, 'extraction_jobs', 'ingestion_runs', ['ingestion_run_id'], ['id'])
     op.drop_column('extraction_jobs', 'pipeline_run_id')
     op.add_column('source_documents', sa.Column('ingestion_run_id', sa.Integer(), nullable=False))
-    op.drop_constraint(op.f('source_documents_pipeline_run_id_fkey'), 'source_documents', type_='foreignkey')
+    op.drop_constraint('source_documents_pipeline_run_id_fkey', 'source_documents', type_='foreignkey')
     op.create_foreign_key(None, 'source_documents', 'ingestion_runs', ['ingestion_run_id'], ['id'])
     op.drop_column('source_documents', 'pipeline_run_id')
+    
+    op.drop_index(op.f('ix_pipeline_runs_id'), table_name='pipeline_runs')
+    op.drop_table('pipeline_runs')
     # ### end Alembic commands ###
 
 
