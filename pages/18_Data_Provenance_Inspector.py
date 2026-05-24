@@ -49,6 +49,15 @@ if selected_doc_id:
         else:
             st.info("No raw file was uploaded to Supabase Storage for this document.")
             
+        if doc.classification_result_json:
+            st.subheader("Document Classification")
+            cls_res = doc.classification_result_json
+            st.markdown(f"**Classified As:** `{doc.document_class}` (Confidence: {cls_res.get('confidence', 0):.2f})")
+            if "reasoning" in cls_res:
+                st.info(f"**Reasoning:** {cls_res['reasoning']}")
+            with st.expander("Raw Classification Output"):
+                st.json(cls_res)
+                
         st.subheader("Extracted Text Content")
         dt = db.query(DocumentText).filter_by(source_document_id=doc.id).first()
         if dt:
