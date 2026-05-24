@@ -117,10 +117,30 @@ def extract_entities_from_text(
     """
     text = doc_text.raw_content or ""
     custom_instruction = config.get("llm_instruction", "")
-    schema = SCHEMA_BY_TYPE.get(pipeline_type, PROGRAM_COMPANY_SCHEMA)
+    
+    from market_comps.ingestion.schema_builder import load_toml_schema_as_json, get_schema_description
+    
+    # Check if it's a hardcoded schema or dynamic TOML
+    is_dynamic = False
+    schema = SCHEMA_BY_TYPE.get(pipeline_type)
+    if not schema:
+        schema = load_toml_schema_as_json(pipeline_type)
+        if schema:
+            is_dynamic = True
+            
+    if not schema:
+        schema = PROGRAM_COMPANY_SCHEMA
+        pipeline_type = "PROGRAM_COMPANY_PAGE"
 
     # Build the prompt
-    prompt = _build_extraction_prompt(pipeline_type, custom_instruction)
+    if is_dynamic:
+        desc = get_schema_description(pipeline_type)
+        prompt = f"Extract all entities from this document based on the provided schema. {desc}"
+        if custom_instruction:
+            prompt += f"\n\nADDITIONAL INSTRUCTIONS: {custom_instruction}"
+    else:
+        prompt = _build_extraction_prompt(pipeline_type, custom_instruction)
+        
     prompt += f"\n\nTEXT:\n{text[:50000]}"
 
     # Call the LLM
@@ -134,71 +154,102 @@ def extract_entities_from_text(
         step_name="entity_extraction"
     )
 
-    # Normalize response
-    companies = _normalize_companies(parsed)
-
-    # Write ExtractedEntity + ExtractedRelationship records
     entity_count = 0
     relationship_count = 0
-
-    for c in companies:
-        if not isinstance(c, dict):
-            continue
-
-        # Create ORGANIZATION entity
-        org_entity = ExtractedEntity(
-            extraction_job_id=job.id,
-            entity_type="ORGANIZATION",
-            raw_name=c.get("name", "Unknown"),
-            normalized_name=(c.get("name") or "unknown").lower(),
-            extracted_payload_json=c,
-        )
-        db.add(org_entity)
-        db.flush()
-        entity_count += 1
-
-        # Create PERSON entities + FOUNDER_OF relationships
-        founders = c.get("founders", [])
-        for f in founders:
-            if not isinstance(f, dict):
+    
+    if is_dynamic:
+        # Dynamic schema handling (Generic)
+        entities_list = parsed.get("entities", [])
+        if not isinstance(entities_list, list):
+            entities_list = [parsed]
+            
+        for entity_data in entities_list:
+            if not isinstance(entity_data, dict):
                 continue
-            fname = f.get("first_name", "")
-            lname = f.get("last_name", "")
-            if not fname and not lname:
-                full = f.get("name", "").strip()
-                if not full:
-                    continue
-                parts = full.split(None, 1)
-                fname = parts[0]
-                lname = parts[1] if len(parts) > 1 else ""
-                f["first_name"] = fname
-                f["last_name"] = lname
-            if not fname:
-                continue
-
-            person_entity = ExtractedEntity(
+                
+            # Default to the schema name as entity type (e.g. COMPANY_REVENUE_METRICS)
+            entity_type = pipeline_type.upper()
+            raw_name = entity_data.get("company_name", "Unknown")
+            
+            # If the schema defines a company, we treat it as an organization payload
+            if "company_name" in entity_data:
+                entity_type = "ORGANIZATION"
+                
+            generic_entity = ExtractedEntity(
                 extraction_job_id=job.id,
-                entity_type="PERSON",
-                raw_name=f"{fname} {lname}",
-                normalized_name=f"{fname} {lname}".lower(),
-                extracted_payload_json=f,
+                entity_type=entity_type,
+                raw_name=raw_name,
+                normalized_name=raw_name.lower(),
+                extracted_payload_json=entity_data,
             )
-            db.add(person_entity)
+            db.add(generic_entity)
+            db.flush()
+            entity_count += 1
+            
+        companies = entities_list
+        
+    else:
+        # Legacy hardcoded schema handling (companies array)
+        companies = _normalize_companies(parsed)
+
+        for c in companies:
+            if not isinstance(c, dict):
+                continue
+
+            # Create ORGANIZATION entity
+            org_entity = ExtractedEntity(
+                extraction_job_id=job.id,
+                entity_type="ORGANIZATION",
+                raw_name=c.get("name", "Unknown"),
+                normalized_name=(c.get("name") or "unknown").lower(),
+                extracted_payload_json=c,
+            )
+            db.add(org_entity)
             db.flush()
             entity_count += 1
 
-            # Create FOUNDER_OF relationship (person → org)
-            rel = ExtractedRelationship(
-                extraction_job_id=job.id,
-                relationship_type="FOUNDER_OF",
-                source_extracted_entity_id=person_entity.id,
-                source_entity_type="PERSON",
-                target_extracted_entity_id=org_entity.id,
-                target_entity_type="ORGANIZATION",
-                relationship_payload_json={"title": f.get("title", "Founder")},
-            )
-            db.add(rel)
-            relationship_count += 1
+            # Create PERSON entities + FOUNDER_OF relationships
+            founders = c.get("founders", [])
+            for f in founders:
+                if not isinstance(f, dict):
+                    continue
+                fname = f.get("first_name", "")
+                lname = f.get("last_name", "")
+                if not fname and not lname:
+                    full = f.get("name", "").strip()
+                    if not full:
+                        continue
+                    parts = full.split(None, 1)
+                    fname = parts[0]
+                    lname = parts[1] if len(parts) > 1 else ""
+                    f["first_name"] = fname
+                    f["last_name"] = lname
+                if not fname:
+                    continue
+
+                person_entity = ExtractedEntity(
+                    extraction_job_id=job.id,
+                    entity_type="PERSON",
+                    raw_name=f"{fname} {lname}",
+                    normalized_name=f"{fname} {lname}".lower(),
+                    extracted_payload_json=f,
+                )
+                db.add(person_entity)
+                db.flush()
+                entity_count += 1
+
+                # Create FOUNDER_OF relationship (person → org)
+                rel = ExtractedRelationship(
+                    extraction_job_id=job.id,
+                    relationship_type="FOUNDER_OF",
+                    source_extracted_entity_id=person_entity.id,
+                    source_entity_type="PERSON",
+                    target_extracted_entity_id=org_entity.id,
+                    target_entity_type="ORGANIZATION",
+                    relationship_payload_json={"title": f.get("title", "Founder")},
+                )
+                db.add(rel)
+                relationship_count += 1
 
     db.flush()
 

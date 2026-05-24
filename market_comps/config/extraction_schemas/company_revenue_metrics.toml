@@ -1,0 +1,55 @@
+name = "company_revenue_metrics"
+version = "v1"
+
+description = "Extract revenue and growth metrics"
+
+enabled = true
+
+model_complexity = "medium"
+
+[[fields]]
+
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the company these metrics belong to"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+
+id = "annual_revenue"
+type = "currency"
+required = false
+
+description = "Most recent annual revenue figure"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+
+id = "arr"
+type = "currency"
+required = false
+
+description = "Annual recurring revenue"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+
+id = "revenue_growth_percent"
+type = "float"
+required = false
+
+description = "Revenue growth percentage"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+
+id = "revenue_year"
+type = "integer"
+required = false
+
+description = "Year associated with revenue metrics"

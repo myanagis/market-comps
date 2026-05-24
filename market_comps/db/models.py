@@ -275,6 +275,9 @@ class SourceDocument(Base, TimestampMixin):
     ingestion_run_id = Column(Integer, ForeignKey('ingestion_runs.id'), nullable=False)
 
     document_type = Column(String) # PDF, WEB_PAGE, IMAGE, API_RESPONSE, CSV_FILE, DOCSEND, etc.
+    document_class = Column(String) # startup_pitch_deck, legal_contract, etc.
+    classification_result_json = Column(JSON)
+    
     source_url = Column(String)
     file_path = Column(String)
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.

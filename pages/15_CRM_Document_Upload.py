@@ -32,7 +32,7 @@ with st.form("upload_document_form", clear_on_submit=False):
     uploaded_file = st.file_uploader("Choose a document", type=["pdf", "txt"])
     
     col1, col2 = st.columns(2)
-    pipeline_type = col1.selectbox("Extraction Schema", PIPELINE_TYPES, index=0, help="What kind of entities should the AI look for?")
+    st.info("💡 The system will automatically classify your document and run the recommended extraction schemas.")
     
     # Optional linked Organization
     orgs = db.query(Organization).order_by(Organization.name).all()
@@ -150,61 +150,129 @@ if submitted:
             db.add(doc_text)
             db.flush()
             
-            job = ExtractionJob(
-                ingestion_run_id=run.id,
-                document_text_id=doc_text.id,
-                schema_name=pipeline_type,
-                status="IN_PROGRESS",
-                started_at=datetime.utcnow()
-            )
-            db.add(job)
-            db.flush()
-            
-            # 4. Run LLM Extraction
             try:
-                st.info("🤖 Sending to LLM for extraction...")
-                extraction_result = extract_entities_from_text(
-                    db, run, job, doc_text, pipeline_type, {"llm_instruction": final_instructions}
-                )
+                # 3.5 Classify Document
+                st.info("🔍 Classifying document...")
+                from market_comps.ingestion.classifier import classify_document, get_recommended_schemas
+                from market_comps.llm_client import LLMClient
                 
-                # Merge LLM usages
-                from market_comps.models import LLMUsage
-                total_usage = LLMUsage(**extraction_result["llm_usage"])
-                if transcription_usage:
-                    total_usage.total_prompt_tokens += transcription_usage.total_prompt_tokens
-                    total_usage.total_completion_tokens += transcription_usage.total_completion_tokens
-                    total_usage.total_tokens += transcription_usage.total_tokens
-                    total_usage.estimated_cost_usd += transcription_usage.estimated_cost_usd
-                    total_usage.call_count += transcription_usage.call_count
-                    total_usage.traces = transcription_usage.traces + total_usage.traces
+                try:
+                    class_result, class_usage = classify_document(text_content, LLMClient())
+                    doc_class = class_result.get("document_type", "unknown")
+                    source_doc.document_class = doc_class
+                    source_doc.classification_result_json = class_result
+                    db.flush()
+                    st.success(f"🏷️ Classified as: **{doc_class}** (Confidence: {class_result.get('confidence', 0):.2f})")
                     
-                job.llm_usage_json = total_usage.model_dump()
-                db.flush()
+                    schemas_to_run = get_recommended_schemas(doc_class)
+                    if not schemas_to_run:
+                        st.warning(f"No schemas recommended for class '{doc_class}'. Running default extraction.")
+                        schemas_to_run = ["DOCUMENT_ENTITIES"]
+                except Exception as e:
+                    st.error(f"Classification failed: {e}. Falling back to default schema.")
+                    source_doc.document_class = "unknown"
+                    source_doc.classification_result_json = {"error": str(e)}
+                    db.flush()
+                    schemas_to_run = ["DOCUMENT_ENTITIES"]
+                    class_usage = None
+                
+                # 4. Run LLM Extraction for each schema
+                total_entities_extracted = 0
+                all_jobs = []
+                total_usage_dict = {
+                    "total_prompt_tokens": 0,
+                    "total_completion_tokens": 0,
+                    "total_tokens": 0,
+                    "estimated_cost_usd": 0.0,
+                    "call_count": 0,
+                    "traces": []
+                }
+                
+                for schema_idx, schema_name in enumerate(schemas_to_run):
+                    st.info(f"🤖 [{schema_idx+1}/{len(schemas_to_run)}] Running schema: **{schema_name}**...")
+                    
+                    job = ExtractionJob(
+                        ingestion_run_id=run.id,
+                        document_text_id=doc_text.id,
+                        schema_name=schema_name,
+                        status="IN_PROGRESS",
+                        started_at=datetime.utcnow()
+                    )
+                    db.add(job)
+                    db.flush()
+                    all_jobs.append(job)
+                    
+                    try:
+                        extraction_result = extract_entities_from_text(
+                            db, run, job, doc_text, schema_name, {"llm_instruction": final_instructions}
+                        )
+                        
+                        total_entities_extracted += extraction_result["entities_extracted"]
+                        
+                        job_usage = extraction_result["llm_usage"]
+                        
+                        if schema_idx == 0:
+                            from market_comps.models import LLMUsage
+                            first_usage = LLMUsage(**job_usage)
+                            if transcription_usage:
+                                first_usage.total_prompt_tokens += transcription_usage.total_prompt_tokens
+                                first_usage.total_completion_tokens += transcription_usage.total_completion_tokens
+                                first_usage.total_tokens += transcription_usage.total_tokens
+                                first_usage.estimated_cost_usd += transcription_usage.estimated_cost_usd
+                                first_usage.call_count += transcription_usage.call_count
+                                first_usage.traces = transcription_usage.traces + first_usage.traces
+                            if class_usage:
+                                first_usage.total_prompt_tokens += class_usage.total_prompt_tokens
+                                first_usage.total_completion_tokens += class_usage.total_completion_tokens
+                                first_usage.total_tokens += class_usage.total_tokens
+                                first_usage.estimated_cost_usd += class_usage.estimated_cost_usd
+                                first_usage.call_count += class_usage.call_count
+                                first_usage.traces = class_usage.traces + first_usage.traces
+                            job_usage = first_usage.model_dump()
+                            
+                        total_usage_dict["total_prompt_tokens"] += job_usage.get("total_prompt_tokens", 0)
+                        total_usage_dict["total_completion_tokens"] += job_usage.get("total_completion_tokens", 0)
+                        total_usage_dict["total_tokens"] += job_usage.get("total_tokens", 0)
+                        total_usage_dict["estimated_cost_usd"] += job_usage.get("estimated_cost_usd", 0.0)
+                        total_usage_dict["call_count"] += job_usage.get("call_count", 0)
+                        total_usage_dict["traces"] += job_usage.get("traces", [])
+                        
+                        job.llm_usage_json = job_usage
+                        job.status = "SUCCESS"
+                        job.completed_at = datetime.utcnow()
+                        db.flush()
+                    except Exception as e:
+                        job.status = "FAILED"
+                        job.error_message = str(e)
+                        job.completed_at = datetime.utcnow()
+                        db.flush()
+                        st.error(f"Schema {schema_name} failed: {e}")
                 
                 # 5. Reconcile
-                st.info("🔄 Reconciling against CRM...")
+                st.info("🔄 Reconciling combined results against CRM...")
                 reconcile_stats = reconcile_all(db, run, None)
                 
                 # 6. Complete
                 total_created = reconcile_stats.get("orgs_reconciled", 0) + reconcile_stats.get("people_reconciled", 0)
                 run.run_status = "SUCCESS"
                 run.completed_at = datetime.utcnow()
-                run.records_processed = extraction_result["entities_extracted"]
+                run.records_processed = total_entities_extracted
                 run.records_created = total_created
                 
                 db.commit()
                 
-                st.success(f"✅ Success! Processed {extraction_result['entities_extracted']} entities, created {total_created} CRM records.")
+                st.success(f"✅ Success! Processed {total_entities_extracted} entities across {len(schemas_to_run)} schemas, created {total_created} CRM records.")
                 
                 # 7. Show summary
-                entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
-                if entities:
-                    st.subheader("Extracted Entities")
-                    for e in entities:
-                        payload = e.extracted_payload_json or {}
-                        icon = "🏢" if e.entity_type == "ORGANIZATION" else "👤"
-                        with st.expander(f"{icon} {e.raw_name} ({e.entity_type})"):
-                            st.json(payload)
+                for job in all_jobs:
+                    entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
+                    if entities:
+                        st.subheader(f"Extracted Entities ({job.schema_name})")
+                        for e in entities:
+                            payload = e.extracted_payload_json or {}
+                            icon = "🏢" if e.entity_type == "ORGANIZATION" else "👤"
+                            with st.expander(f"{icon} {e.raw_name} ({e.entity_type})"):
+                                st.json(payload)
                 
             except Exception as e:
                 db.rollback()
