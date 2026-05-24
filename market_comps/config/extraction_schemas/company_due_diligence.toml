@@ -89,9 +89,38 @@ description = "A summary of the company's competitive advantage or economic moat
 
 [[fields]]
 id = "founders"
-type = "text"
-required = false
-description = "A comma-separated list of the founders' names"
+type = "array"
+description = "List of founders of the company"
+
+  [[fields.items]]
+  id = "first_name"
+  type = "string"
+  description = "Founder's first name"
+  
+  [[fields.items]]
+  id = "last_name"
+  type = "string"
+  description = "Founder's last name"
+
+  [[fields.items]]
+  id = "email"
+  type = "string"
+  description = "Founder's email address, if mentioned"
+
+  [[fields.items]]
+  id = "title"
+  type = "string"
+  description = "Founder's title (e.g. CEO, CTO)"
+
+  [[fields.items]]
+  id = "start_year"
+  type = "integer"
+  description = "Year the founder started, if mentioned"
+
+  [[fields.items]]
+  id = "end_year"
+  type = "integer"
+  description = "Year the founder left, if mentioned"
 
 [[fields]]
 id = "team_size"

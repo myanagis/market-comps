@@ -104,9 +104,19 @@ def display_company_details(company_id):
                     emails = ", ".join([e.email for e in p.emails]) if p.emails else ""
                     location = f"{p.city or ''}, {p.state or ''}".strip(", ")
                     if location == ",": location = ""
+                    
+                    years = ""
+                    if role.start_date:
+                        start_str = role.start_date.strftime("%Y")
+                        end_str = role.end_date.strftime("%Y") if role.end_date else "Present"
+                        years = f"{start_str} - {end_str}"
+                    elif role.end_date:
+                        years = f"Until {role.end_date.strftime('%Y')}"
+                        
                     role_data.append({
                         "Name": name,
                         "Title": role.title or "",
+                        "Years": years,
                         "Seniority": role.seniority_level or "",
                         "Location": location,
                         "Email": emails,

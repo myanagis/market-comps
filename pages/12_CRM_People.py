@@ -61,6 +61,16 @@ def display_person_details(person_id):
                     if org:
                         with st.expander(f"🏢 {org.name} — {role.title or 'No Title'}"):
                             st.write(f"**Title:** {role.title or 'No Title'}")
+                            
+                            years = ""
+                            if role.start_date:
+                                start_str = role.start_date.strftime("%Y")
+                                end_str = role.end_date.strftime("%Y") if role.end_date else "Present"
+                                years = f"{start_str} - {end_str}"
+                            elif role.end_date:
+                                years = f"Until {role.end_date.strftime('%Y')}"
+                                
+                            st.write(f"**Years:** {years}")
                             st.write(f"**Seniority:** {role.seniority_level or 'N/A'}")
                             st.write(f"**Role Type:** {role.role_type or 'N/A'}")
                             st.write(f"**Current:** {role.is_current}")

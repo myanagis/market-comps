@@ -45,13 +45,36 @@ def load_toml_schema_as_json(schema_name: str) -> Optional[Dict[str, Any]]:
             continue
             
         field_type = field.get("type", "string")
-        js_type = _type_mapping(field_type)
         
-        prop_def = {"type": js_type}
-        if "description" in field:
-            prop_def["description"] = field["description"]
-            
-        properties[field_id] = prop_def
+        if field_type == "array" and "items" in field:
+            prop_def = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+            if "description" in field:
+                prop_def["description"] = field["description"]
+                
+            for item in field["items"]:
+                i_id = item.get("id")
+                if not i_id: continue
+                i_type = _type_mapping(item.get("type", "string"))
+                i_prop = {"type": i_type}
+                if "description" in item:
+                    i_prop["description"] = item["description"]
+                prop_def["items"]["properties"][i_id] = i_prop
+                if item.get("required"):
+                    prop_def["items"]["required"].append(i_id)
+            properties[field_id] = prop_def
+        else:
+            js_type = _type_mapping(field_type)
+            prop_def = {"type": js_type}
+            if "description" in field:
+                prop_def["description"] = field["description"]
+            properties[field_id] = prop_def
         
         if field.get("required", False):
             required.append(field_id)
@@ -119,13 +142,36 @@ def build_aggregated_schema(schema_names: list[str]) -> tuple[Optional[Dict[str,
                 continue
                 
             field_type = field.get("type", "string")
-            js_type = _type_mapping(field_type)
             
-            prop_def = {"type": js_type}
-            if "description" in field:
-                prop_def["description"] = field["description"]
-                
-            properties[field_id] = prop_def
+            if field_type == "array" and "items" in field:
+                prop_def = {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+                if "description" in field:
+                    prop_def["description"] = field["description"]
+                    
+                for item in field["items"]:
+                    i_id = item.get("id")
+                    if not i_id: continue
+                    i_type = _type_mapping(item.get("type", "string"))
+                    i_prop = {"type": i_type}
+                    if "description" in item:
+                        i_prop["description"] = item["description"]
+                    prop_def["items"]["properties"][i_id] = i_prop
+                    if item.get("required"):
+                        prop_def["items"]["required"].append(i_id)
+                properties[field_id] = prop_def
+            else:
+                js_type = _type_mapping(field_type)
+                prop_def = {"type": js_type}
+                if "description" in field:
+                    prop_def["description"] = field["description"]
+                properties[field_id] = prop_def
             
             if field.get("required", False):
                 required.add(field_id)

@@ -38,15 +38,14 @@ with st.form("upload_document_form", clear_on_submit=False):
     orgs = db.query(Organization).order_by(Organization.name).all()
     org_opts = {0: "-- None --"}
     org_opts.update({o.id: o.name for o in orgs})
-    linked_org_id = col2.selectbox(
+    linked_org_id = col1.selectbox(
         "Linked Organization (Optional)", 
         options=list(org_opts.keys()), 
         format_func=lambda x: org_opts[x],
         help="Providing a linked organization helps the LLM understand the context of the document."
     )
     
-    col3, col4 = st.columns(2)
-    pdf_method = col3.selectbox("PDF Parsing Method", ["vlm_plus_text", "text", "vlm", "ocr", "paddle_ocr"], index=0, format_func=lambda x: {
+    pdf_method = col2.selectbox("PDF Parsing Method", ["vlm_plus_text", "text", "vlm", "ocr", "paddle_ocr"], index=0, format_func=lambda x: {
         "vlm_plus_text": "Hybrid (Native Text + VLM)",
         "text": "Native Text (Fast, Free)",
         "vlm": "VLM Vision-based",

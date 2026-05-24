@@ -146,38 +146,76 @@ def reconcile_organization(
         if payload.get("founded_year") and not profile.founded_year:
             profile.founded_year = payload["founded_year"]
 
-    # Auto-parse founders if present in the payload (comma-separated string)
-    founders_str = payload.get("founders")
-    if founders_str and isinstance(founders_str, str):
-        founder_names = [f.strip() for f in founders_str.split(",") if f.strip()]
-        for fn in founder_names:
-            parts = fn.split(" ", 1)
-            fname = parts[0]
-            lname = parts[1] if len(parts) > 1 else ""
+    # Auto-parse founders if present in the payload
+    founders_data = payload.get("founders")
+    if founders_data:
+        # Fallback for old comma-separated string format
+        if isinstance(founders_data, str):
+            founder_names = [f.strip() for f in founders_data.split(",") if f.strip()]
+            founders_list = [{"first_name": fn.split(" ", 1)[0], "last_name": fn.split(" ", 1)[1] if " " in fn else "", "title": "Founder"} for fn in founder_names]
+        elif isinstance(founders_data, list):
+            founders_list = founders_data
+        else:
+            founders_list = []
+            
+        for f_dict in founders_list:
+            if not isinstance(f_dict, dict):
+                continue
+                
+            fname = f_dict.get("first_name", "")
+            lname = f_dict.get("last_name", "")
+            if not fname and not lname:
+                continue
+                
+            full_name = f"{fname} {lname}".strip()
             
             person = db.query(Person).filter_by(first_name=fname, last_name=lname).first()
             if not person:
                 person = Person(
                     first_name=fname,
                     last_name=lname,
-                    full_name=fn
+                    full_name=full_name
                 )
                 db.add(person)
                 db.flush()
                 log_mutation(db, "PERSON", str(person.id), "CREATE", source="PIPELINE_AUTO_FOUNDER", extraction_job_id=job_id)
             
+            # Save Email if present
+            email_val = f_dict.get("email")
+            if email_val:
+                existing_email = db.query(PersonEmail).filter_by(email=email_val).first()
+                if not existing_email:
+                    db.add(PersonEmail(
+                        person_id=person.id,
+                        email=email_val,
+                        organization_id=org.id,
+                        is_primary=True
+                    ))
+                    log_mutation(db, "PERSON_EMAIL", str(person.id), "CREATE", field_name="email", new_value=email_val, source="PIPELINE_AUTO_FOUNDER", extraction_job_id=job_id)
+            
             # Link to org
+            title = f_dict.get("title") or "Founder"
             existing_role = db.query(PersonOrganizationRole).filter_by(
-                person_id=person.id, organization_id=org.id, title="Founder"
+                person_id=person.id, organization_id=org.id, title=title
             ).first()
             
             if not existing_role:
+                # Handle start/end dates
+                start_year = f_dict.get("start_year")
+                end_year = f_dict.get("end_year")
+                
+                from datetime import datetime
+                s_date = datetime(start_year, 1, 1) if isinstance(start_year, int) else None
+                e_date = datetime(end_year, 12, 31) if isinstance(end_year, int) else None
+                is_current = True if not e_date else False
+                
                 role = PersonOrganizationRole(
                     person_id=person.id,
                     organization_id=org.id,
-                    title="Founder",
-                    start_date=None,
-                    is_current=True
+                    title=title,
+                    start_date=s_date,
+                    end_date=e_date,
+                    is_current=is_current
                 )
                 db.add(role)
                 db.flush()
