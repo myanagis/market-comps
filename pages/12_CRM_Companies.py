@@ -96,18 +96,26 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("👥 People & Roles")
         if org.roles:
+            role_data = []
             for role in org.roles:
                 p = role.person
                 if p:
                     name = p.full_name or f"{p.first_name} {p.last_name}"
-                    with st.expander(f"👤 {name} — {role.title or 'No Title'}"):
-                        st.write(f"**Seniority:** {role.seniority_level or 'N/A'} | **Type:** {role.role_type or 'N/A'}")
-                        st.write(f"**LinkedIn:** {p.linkedin_url or 'N/A'}")
-                        st.write(f"**Location:** {p.city or 'N/A'}, {p.state or 'N/A'}")
-                        if p.emails:
-                            st.write("**Emails:**")
-                            for e in p.emails:
-                                st.write(f"- {e.email} ({e.email_type})")
+                    emails = ", ".join([e.email for e in p.emails]) if p.emails else ""
+                    location = f"{p.city or ''}, {p.state or ''}".strip(", ")
+                    if location == ",": location = ""
+                    role_data.append({
+                        "Name": name,
+                        "Title": role.title or "",
+                        "Seniority": role.seniority_level or "",
+                        "Location": location,
+                        "Email": emails,
+                        "LinkedIn": p.linkedin_url or ""
+                    })
+            if role_data:
+                st.dataframe(role_data, use_container_width=True, hide_index=True)
+            else:
+                st.info("No people linked to this company.")
         else:
             st.info("No people linked to this company.")
 
@@ -124,7 +132,9 @@ def display_company_details(company_id):
         
         if docs:
             for doc in docs:
-                st.write(f"- **{doc.document_type}**: {doc.source_url} (Processed: {doc.created_at.strftime('%Y-%m-%d')})")
+                url_display = f"[{doc.source_url}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc.source_url
+                tz_time = doc.created_at.strftime('%Y-%m-%d %I:%M %p UTC') if doc.created_at else "Unknown Time"
+                st.markdown(f"- **{doc.document_type}**: {url_display} (Processed: {tz_time})")
         else:
             st.info("No documents linked to this company.")
 
@@ -149,7 +159,7 @@ def display_company_details(company_id):
 
         # Audit Trail
         st.divider()
-        st.subheader("📜 Mutation History")
+        st.subheader("📜 Audit Trail")
         audit = db.query(CanonicalMutation).filter_by(
             canonical_entity_type="ORGANIZATION", canonical_entity_id=str(org.id)
         ).order_by(CanonicalMutation.created_at.desc()).limit(10).all()

@@ -81,13 +81,15 @@ def display_person_details(person_id):
         
         if docs:
             for doc in docs:
-                st.write(f"- **{doc.document_type}**: {doc.source_url} (Processed: {doc.created_at.strftime('%Y-%m-%d')})")
+                url_display = f"[{doc.source_url}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc.source_url
+                tz_time = doc.created_at.strftime('%Y-%m-%d %I:%M %p UTC') if doc.created_at else "Unknown Time"
+                st.markdown(f"- **{doc.document_type}**: {url_display} (Processed: {tz_time})")
         else:
             st.info("No documents linked to this person.")
 
         # Audit Trail
         st.divider()
-        st.subheader("📜 Mutation History")
+        st.subheader("📜 Audit Trail")
         audit = db.query(CanonicalMutation).filter_by(
             canonical_entity_type="PERSON", canonical_entity_id=str(person.id)
         ).order_by(CanonicalMutation.created_at.desc()).limit(10).all()
