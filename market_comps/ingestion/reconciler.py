@@ -136,15 +136,21 @@ def reconcile_organization(
                 preferred_stage=payload.get("preferred_stage")
             )
             db.add(inv_profile)
+            db.flush()
+            log_mutation(db, "INVESTOR_PROFILE", str(inv_profile.id), "CREATE", source="PIPELINE_AUTO_CREATE", extraction_job_id=job_id)
     else:
         profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
         if not profile:
             profile = CompanyProfile(organization_id=org.id)
             db.add(profile)
+            db.flush()
+            log_mutation(db, "COMPANY_PROFILE", str(profile.id), "CREATE", source="PIPELINE_AUTO_CREATE", extraction_job_id=job_id)
         if payload.get("industry") and not profile.industry:
             profile.industry = payload["industry"]
+            log_mutation(db, "COMPANY_PROFILE", str(profile.id), "UPDATE", field_name="industry", new_value=payload["industry"], source="PIPELINE_FILL", extraction_job_id=job_id)
         if payload.get("founded_year") and not profile.founded_year:
             profile.founded_year = payload["founded_year"]
+            log_mutation(db, "COMPANY_PROFILE", str(profile.id), "UPDATE", field_name="founded_year", new_value=str(payload["founded_year"]), source="PIPELINE_FILL", extraction_job_id=job_id)
 
     # Auto-parse founders if present in the payload
     founders_data = payload.get("founders")

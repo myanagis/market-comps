@@ -179,9 +179,19 @@ def display_company_details(company_id):
         # Audit Trail
         st.divider()
         st.subheader("📜 Audit Trail")
-        audit = db.query(CanonicalMutation).filter_by(
-            canonical_entity_type="ORGANIZATION", canonical_entity_id=str(org.id)
-        ).order_by(CanonicalMutation.created_at.desc()).limit(10).all()
+        filters = [
+            (CanonicalMutation.canonical_entity_type == "ORGANIZATION") & (CanonicalMutation.canonical_entity_id == str(org.id))
+        ]
+        if org.company_profile:
+            filters.append((CanonicalMutation.canonical_entity_type == "COMPANY_PROFILE") & (CanonicalMutation.canonical_entity_id == str(org.company_profile.id)))
+            
+        role_ids = [str(role.id) for role in org.roles] if org.roles else []
+        if role_ids:
+            filters.append((CanonicalMutation.canonical_entity_type == "PERSON_ROLE") & (CanonicalMutation.canonical_entity_id.in_(role_ids)))
+            
+        audit = db.query(CanonicalMutation).filter(
+            or_(*filters)
+        ).order_by(CanonicalMutation.created_at.desc()).limit(20).all()
         
         if audit:
             audit_data = []

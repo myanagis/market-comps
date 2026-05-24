@@ -109,9 +109,17 @@ def display_person_details(person_id):
         # Audit Trail
         st.divider()
         st.subheader("📜 Audit Trail")
-        audit = db.query(CanonicalMutation).filter_by(
-            canonical_entity_type="PERSON", canonical_entity_id=str(person.id)
-        ).order_by(CanonicalMutation.created_at.desc()).limit(10).all()
+        filters = [
+            (CanonicalMutation.canonical_entity_type == "PERSON") & (CanonicalMutation.canonical_entity_id == str(person.id)),
+            (CanonicalMutation.canonical_entity_type == "PERSON_EMAIL") & (CanonicalMutation.canonical_entity_id == str(person.id))
+        ]
+        role_ids = [str(role.id) for role in person.roles] if person.roles else []
+        if role_ids:
+            filters.append((CanonicalMutation.canonical_entity_type == "PERSON_ROLE") & (CanonicalMutation.canonical_entity_id.in_(role_ids)))
+            
+        audit = db.query(CanonicalMutation).filter(
+            or_(*filters)
+        ).order_by(CanonicalMutation.created_at.desc()).limit(20).all()
         
         if audit:
             audit_data = []
