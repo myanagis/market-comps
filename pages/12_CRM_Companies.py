@@ -115,10 +115,12 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("📄 Linked Source Documents")
         
-        docs = db.query(SourceDocument).join(DocumentText).join(ExtractionJob).join(ExtractedEntity).join(EntityMatch).filter(
+        doc_ids_subquery = db.query(SourceDocument.id).join(DocumentText).join(ExtractionJob).join(ExtractedEntity).join(EntityMatch).filter(
             EntityMatch.canonical_entity_type == "Organization",
             EntityMatch.canonical_entity_id == str(org.id)
-        ).distinct().all()
+        ).subquery()
+        
+        docs = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids_subquery)).all()
         
         if docs:
             for doc in docs:
