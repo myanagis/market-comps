@@ -103,7 +103,7 @@ SCHEMA_BY_TYPE = {
 
 def extract_entities_from_text(
     db: Session,
-    run: PipelineRun,
+    run: IngestionRun,
     job: ExtractionJob,
     doc_text: DocumentText,
     pipeline_type: str,
@@ -212,7 +212,7 @@ def extract_entities_from_text(
 
 def extract_profile_detail(
     db: Session,
-    run: PipelineRun,
+    run: IngestionRun,
     job: ExtractionJob,
     doc_text: DocumentText,
     company_name: str
