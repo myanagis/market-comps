@@ -256,7 +256,7 @@ def extract_entities_from_text(
     return {
         "entities_extracted": entity_count,
         "relationships_extracted": relationship_count,
-        "llm_usage": usage.model_dump(),
+        "llm_usage": usage.model_dump(mode="json"),
         "companies_raw": companies
     }
 
@@ -292,7 +292,7 @@ def extract_profile_detail(
     )
 
     detail = parsed if isinstance(parsed, dict) else {}
-    return {"detail": detail, "llm_usage": usage.model_dump()}
+    return {"detail": detail, "llm_usage": usage.model_dump(mode="json")}
 
 
 # ==============================================================================

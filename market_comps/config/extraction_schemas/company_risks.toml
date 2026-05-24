@@ -1,0 +1,29 @@
+name = "company_risks"
+version = "v1"
+
+description = "Extract key business, financial, and operational risks"
+
+enabled = true
+model_complexity = "medium"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the company being analyzed"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "key_risks"
+type = "text"
+required = false
+description = "A comma-separated list or summary of the primary risks identified in the document"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "mitigants"
+type = "text"
+required = false
+description = "Summary of factors mitigating the identified risks"

@@ -228,7 +228,7 @@ if submitted:
                                 first_usage.estimated_cost_usd += class_usage.estimated_cost_usd
                                 first_usage.call_count += class_usage.call_count
                                 first_usage.traces = class_usage.traces + first_usage.traces
-                            job_usage = first_usage.model_dump()
+                            job_usage = first_usage.model_dump(mode="json")
                             
                         total_usage_dict["total_prompt_tokens"] += job_usage.get("total_prompt_tokens", 0)
                         total_usage_dict["total_completion_tokens"] += job_usage.get("total_completion_tokens", 0)
@@ -263,16 +263,8 @@ if submitted:
                 
                 st.success(f"✅ Success! Processed {total_entities_extracted} entities across {len(schemas_to_run)} schemas, created {total_created} CRM records.")
                 
-                # 7. Show summary
-                for job in all_jobs:
-                    entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
-                    if entities:
-                        st.subheader(f"Extracted Entities ({job.schema_name})")
-                        for e in entities:
-                            payload = e.extracted_payload_json or {}
-                            icon = "🏢" if e.entity_type == "ORGANIZATION" else "👤"
-                            with st.expander(f"{icon} {e.raw_name} ({e.entity_type})"):
-                                st.json(payload)
+                # Save run ID to session state so it persists
+                st.session_state.last_doc_upload_run_id = run.id
                 
             except Exception as e:
                 db.rollback()
@@ -283,3 +275,26 @@ if submitted:
                     run_failed.error_message = str(e)
                     run_failed.completed_at = datetime.utcnow()
                     db.commit()
+
+# --- Display Results Outside of Submit Block ---
+if "last_doc_upload_run_id" in st.session_state:
+    last_run = db.query(IngestionRun).get(st.session_state.last_doc_upload_run_id)
+    if last_run:
+        st.divider()
+        st.subheader("Latest Upload Results")
+        
+        # Look up document class
+        source_doc = db.query(SourceDocument).filter_by(ingestion_run_id=last_run.id).first()
+        if source_doc and source_doc.document_class:
+            st.info(f"🏷️ Document classified as: **{source_doc.document_class}**")
+            
+        jobs = db.query(ExtractionJob).filter_by(ingestion_run_id=last_run.id).all()
+        for job in jobs:
+            entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
+            if entities:
+                st.subheader(f"Extracted Entities ({job.schema_name})")
+                for e in entities:
+                    payload = e.extracted_payload_json or {}
+                    icon = "🏢" if e.entity_type == "ORGANIZATION" else "👤"
+                    with st.expander(f"{icon} {e.raw_name} ({e.entity_type})"):
+                        st.json(payload)

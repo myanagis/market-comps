@@ -1,0 +1,53 @@
+name = "company_overview"
+version = "v1"
+
+description = "Extract high-level company overview details from a startup pitch deck or memo"
+
+enabled = true
+model_complexity = "easy"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the startup company"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "company_description"
+type = "text"
+required = false
+description = "A short paragraph describing what the company does and its core value proposition"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "industry"
+type = "string"
+required = false
+description = "The primary industry or vertical the company operates in (e.g., SaaS, FinTech, Healthcare)"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "founded_year"
+type = "integer"
+required = false
+description = "The year the company was founded"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "website"
+type = "string"
+required = false
+description = "The company's website URL"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "headquarters"
+type = "string"
+required = false
+description = "The city and state/country where the company is headquartered"

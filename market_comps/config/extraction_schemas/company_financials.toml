@@ -1,0 +1,53 @@
+name = "company_financials"
+version = "v1"
+
+description = "Extract high-level financial metrics and projections for a startup"
+
+enabled = true
+model_complexity = "medium"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the startup company"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "current_arr"
+type = "currency"
+required = false
+description = "Current Annual Recurring Revenue (ARR) or run rate"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "gross_margin_percent"
+type = "float"
+required = false
+description = "Current or target gross margin percentage (e.g., 75.0)"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "monthly_burn_rate"
+type = "currency"
+required = false
+description = "Average monthly cash burn rate"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "runway_months"
+type = "integer"
+required = false
+description = "Months of runway remaining based on current cash and burn"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "ltv_cac_ratio"
+type = "float"
+required = false
+description = "LTV to CAC ratio, if mentioned"

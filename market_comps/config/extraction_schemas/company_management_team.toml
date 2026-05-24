@@ -1,0 +1,45 @@
+name = "company_management_team"
+version = "v1"
+
+description = "Extract team details and founders from a startup pitch deck"
+
+enabled = true
+model_complexity = "easy"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the startup company"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "founders"
+type = "text"
+required = false
+description = "A comma-separated list of the founders' names"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "team_size"
+type = "integer"
+required = false
+description = "Total number of employees or team members"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "key_advisors"
+type = "text"
+required = false
+description = "A comma-separated list of key advisors or board members"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "open_roles"
+type = "text"
+required = false
+description = "A comma-separated list of key roles the company is looking to hire"

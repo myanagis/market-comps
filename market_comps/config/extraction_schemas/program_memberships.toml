@@ -1,0 +1,29 @@
+name = "program_memberships"
+version = "v1"
+
+description = "Extract details about a company's participation in an accelerator, incubator, or program"
+
+enabled = true
+model_complexity = "easy"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the participating company"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "program_name"
+type = "string"
+required = false
+description = "The name of the program, accelerator, or incubator (e.g., Y Combinator, Techstars)"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "cohort_name"
+type = "string"
+required = false
+description = "The specific cohort or batch the company participated in (e.g., W24, Summer 2023)"

@@ -1,0 +1,37 @@
+name = "company_competition"
+version = "v1"
+
+description = "Extract details about competitors and competitive advantages"
+
+enabled = true
+model_complexity = "medium"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the company being analyzed"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "direct_competitors"
+type = "text"
+required = false
+description = "A comma-separated list of direct competitors"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "indirect_competitors"
+type = "text"
+required = false
+description = "A comma-separated list of indirect or legacy competitors"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "competitive_advantage"
+type = "text"
+required = false
+description = "A summary of the company's competitive advantage or economic moat"

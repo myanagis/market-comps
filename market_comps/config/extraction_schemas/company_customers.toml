@@ -1,0 +1,29 @@
+name = "company_customers"
+version = "v1"
+
+description = "Extract customer segments and notable clients"
+
+enabled = true
+model_complexity = "easy"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the company being analyzed"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "customer_segments"
+type = "string"
+required = false
+description = "Description of the primary customer segments (e.g., Enterprise, SMB, B2C)"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "notable_clients"
+type = "text"
+required = false
+description = "A comma-separated list of marquee or notable customers mentioned"

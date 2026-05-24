@@ -48,17 +48,17 @@ examples = [
 ]
 
 recommended_schemas = [
-  "startup_company_overview",
-  "startup_market",
-  "startup_financials",
-  "startup_fundraising",
-  "startup_team",
+  "company_overview",
+  "company_market",
+  "company_financials",
+  "company_fundraising",
+  "company_management_team",
   "company_revenue_metrics"
 ]
 
 optional_schemas = [
-  "startup_patents",
-  "startup_customer_quotes"
+  "company_ip",
+  "company_customer_quotes"
 ]
 
 extraction_complexity = "medium"

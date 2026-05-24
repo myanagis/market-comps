@@ -1,0 +1,29 @@
+name = "company_regulatory"
+version = "v1"
+
+description = "Extract regulatory environment, compliance, and legal considerations"
+
+enabled = true
+model_complexity = "medium"
+
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the company"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "regulatory_bodies"
+type = "text"
+required = false
+description = "A comma-separated list of relevant regulatory bodies (e.g., FDA, SEC, EPA)"
+
+# ----------------------------------------------------------------------------
+
+[[fields]]
+id = "compliance_status"
+type = "text"
+required = false
+description = "Summary of the company's compliance status or regulatory hurdles"

@@ -159,15 +159,15 @@ with tab2:
 
 # --- TAB 3: PIPELINE RUNS ---
 with tab3:
-    st.subheader("Recent Pipeline Runs")
-    runs = db.query(IngestionRun).filter(IngestionRun.pipeline_id.isnot(None)).order_by(IngestionRun.started_at.desc()).limit(20).all()
+    st.subheader("Recent Ingestion Runs")
+    runs = db.query(IngestionRun).order_by(IngestionRun.started_at.desc()).limit(20).all()
     if runs:
         run_data = []
         for r in runs:
             run_data.append({
                 "Run ID": r.id,
-                "Pipeline": r.pipeline.pipeline_name if r.pipeline else "?",
-                "Type": r.pipeline.pipeline_type if r.pipeline else "?",
+                "Source": r.pipeline.pipeline_name if r.pipeline else "Document Upload",
+                "Type": r.pipeline.pipeline_type if r.pipeline else "DOCUMENT",
                 "Status": r.run_status,
                 "Started": r.started_at,
                 "Completed": r.completed_at,
