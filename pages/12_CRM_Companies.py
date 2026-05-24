@@ -128,6 +128,25 @@ def display_company_details(company_id):
         else:
             st.info("No documents linked to this company.")
 
+        # Raw Extracted Data
+        st.divider()
+        st.subheader("🧠 Raw Extracted Data")
+        
+        matches = db.query(EntityMatch).filter_by(
+            canonical_entity_type="Organization",
+            canonical_entity_id=str(org.id)
+        ).all()
+        
+        extracted_entities = [m.extracted_entity for m in matches if m.extracted_entity]
+        if extracted_entities:
+            for ent in extracted_entities:
+                job = ent.extraction_job
+                schema_label = job.schema_name if job else "Unknown Schema"
+                with st.expander(f"{schema_label} Data (Entity ID: {ent.id})"):
+                    st.json(ent.extracted_payload_json)
+        else:
+            st.info("No raw extracted data found.")
+
         # Audit Trail
         st.divider()
         st.subheader("📜 Mutation History")
