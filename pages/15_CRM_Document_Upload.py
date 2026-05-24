@@ -6,7 +6,7 @@ import io
 
 from market_comps.db.session import get_db
 from market_comps.db.models import (
-    Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship, Organization
+    Pipeline, IngestionRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship, Organization
 )
 from market_comps.ingestion.extractor import extract_entities_from_text
 from market_comps.ingestion.reconciler import reconcile_all
@@ -120,23 +120,11 @@ if submitted:
                     ctx_note = f"NOTE: This document is related to the organization '{linked_org.name}'. Pay special attention to their properties and relationships."
                     final_instructions = f"{ctx_note}\n{final_instructions}".strip()
 
-            # 3. Create Pipeline & DB records
+            # 3. Create DB records
             content_hash = hashlib.sha256(text_content.encode()).hexdigest()
             
-            pipeline = Pipeline(
-                pipeline_name=f"Upload: {file_name}",
-                pipeline_type=pipeline_type,
-                source_url=file_name,
-                organization_id=linked_org_id if linked_org_id != 0 else None,
-                schedule_type="UPLOAD",
-                is_active=True,
-                config_json={"llm_instruction": final_instructions}
-            )
-            db.add(pipeline)
-            db.flush()
-            
-            run = PipelineRun(
-                pipeline_id=pipeline.id,
+            run = IngestionRun(
+                pipeline_id=None,
                 run_status="RUNNING",
                 started_at=datetime.utcnow()
             )
@@ -144,7 +132,7 @@ if submitted:
             db.flush()
             
             source_doc = SourceDocument(
-                pipeline_run_id=run.id,
+                ingestion_run_id=run.id,
                 document_type="PDF" if file_name.lower().endswith(".pdf") else "TEXT",
                 source_url=file_name,
                 file_path=storage_path,
@@ -163,7 +151,7 @@ if submitted:
             db.flush()
             
             job = ExtractionJob(
-                pipeline_run_id=run.id,
+                ingestion_run_id=run.id,
                 document_text_id=doc_text.id,
                 schema_name=pipeline_type,
                 status="IN_PROGRESS",
@@ -224,7 +212,7 @@ if submitted:
             except Exception as e:
                 db.rollback()
                 st.error(f"Pipeline failed: {e}")
-                run_failed = db.query(PipelineRun).get(run.id)
+                run_failed = db.query(IngestionRun).get(run.id)
                 if run_failed:
                     run_failed.run_status = "FAILED"
                     run_failed.error_message = str(e)

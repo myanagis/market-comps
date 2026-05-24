@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 
 from sqlalchemy.orm import Session
 
-from market_comps.db.models import Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
+from market_comps.db.models import Pipeline, IngestionRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
 from market_comps.ingestion.scraper import fetch_page_text
 from market_comps.ingestion.extractor import extract_entities_from_text, extract_profile_detail
 from market_comps.ingestion.reconciler import reconcile_all
@@ -25,15 +25,15 @@ from market_comps.ingestion.reconciler import reconcile_all
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
+def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
     """Main entry point: runs a full pipeline.
 
     Steps:
-        1. Create PipelineRun record
+        1. Create IngestionRun record
         2. EXTRACT — Fetch raw content → ExtractedDataRaw
         3. TRANSFORM — LLM extraction → ExtractedEntity + ExtractedRelationship
         4. LOAD — Reconcile against CRM → Organization/Person/etc. + EntityAuditTrail
-        5. Complete PipelineRun
+        5. Complete IngestionRun
     """
     # --- STEP 1: Load pipeline, create run ---
     pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
@@ -42,7 +42,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
 
     config = pipeline.config_json or {}
 
-    run = PipelineRun(
+    run = IngestionRun(
         pipeline_id=pipeline.id,
         run_status="RUNNING",
         started_at=datetime.utcnow(),
@@ -63,7 +63,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
         content_hash = hashlib.sha256(text_content.encode()).hexdigest()
         
         source_doc = SourceDocument(
-            pipeline_run_id=run.id,
+            ingestion_run_id=run.id,
             document_type="WEB_PAGE",
             source_url=url,
             content_hash=content_hash,
@@ -81,7 +81,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
         db.flush()
 
         job = ExtractionJob(
-            pipeline_run_id=run.id,
+            ingestion_run_id=run.id,
             document_text_id=doc_text.id,
             schema_name="PROGRAM_COMPANY_SCHEMA",
             status="IN_PROGRESS",
@@ -125,7 +125,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
                     profile_hash = hashlib.sha256(profile_text.encode()).hexdigest()
 
                     profile_doc = SourceDocument(
-                        pipeline_run_id=run.id,
+                        ingestion_run_id=run.id,
                         document_type="WEB_PAGE",
                         source_url=profile_url,
                         content_hash=profile_hash,
@@ -143,7 +143,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
                     db.flush()
 
                     profile_job = ExtractionJob(
-                        pipeline_run_id=run.id,
+                        ingestion_run_id=run.id,
                         document_text_id=profile_text_obj.id,
                         schema_name="PROFILE_DETAIL_SCHEMA",
                         status="IN_PROGRESS",
@@ -200,7 +200,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
         logger.error(f"Pipeline run failed: {e}", exc_info=True)
         db.rollback()
 
-        failed_run = db.query(PipelineRun).filter(PipelineRun.id == run.id).first()
+        failed_run = db.query(IngestionRun).filter(IngestionRun.id == run.id).first()
         if failed_run:
             failed_run.run_status = "FAILED"
             failed_run.error_message = str(e)
@@ -210,7 +210,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
     return run
 
 
-def _merge_profile_into_entity(db: Session, run: PipelineRun, profile_job: ExtractionJob, company_name: str, detail: dict):
+def _merge_profile_into_entity(db: Session, run: IngestionRun, profile_job: ExtractionJob, company_name: str, detail: dict):
     """Merge deep-scraped profile detail into the matching ExtractedEntity's payload.
     
     Also creates ExtractedEntity (PERSON) and ExtractedRelationship (FOUNDER_OF)
@@ -221,7 +221,7 @@ def _merge_profile_into_entity(db: Session, run: PipelineRun, profile_job: Extra
         return
 
     entity = db.query(ExtractedEntity).join(ExtractionJob).filter(
-        ExtractionJob.pipeline_run_id == run.id,
+        ExtractionJob.ingestion_run_id == run.id,
         ExtractedEntity.entity_type == "ORGANIZATION",
         ExtractedEntity.normalized_name == company_name.lower()
     ).first()

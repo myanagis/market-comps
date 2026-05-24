@@ -14,7 +14,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from market_comps.db.models import (
-    PipelineRun, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
+    IngestionRun, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
 )
 from market_comps.llm_client import LLMClient
 

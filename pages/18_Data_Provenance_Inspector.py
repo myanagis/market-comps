@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from market_comps.db.session import get_db
 from market_comps.db.models import (
-    SourceDocument, PipelineRun, Pipeline, DocumentText, 
+    SourceDocument, IngestionRun, Pipeline, DocumentText, 
     ExtractionJob, ExtractedEntity, ExtractedRelationship,
     CanonicalMutation, EntityMatch
 )
@@ -18,17 +18,17 @@ except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
 
-docs = db.query(SourceDocument).join(PipelineRun).join(Pipeline).order_by(SourceDocument.created_at.desc()).all()
+docs = db.query(SourceDocument).join(IngestionRun).outerjoin(Pipeline).order_by(SourceDocument.created_at.desc()).all()
 if not docs:
     st.warning("No imported documents found.")
     st.stop()
 
-doc_opts = {d.id: f"{d.source_url} (Pipeline Run #{d.pipeline_run_id}) [Created: {d.created_at.strftime('%Y-%m-%d %H:%M')}]" for d in docs}
+doc_opts = {d.id: f"{d.source_url} (Ingestion Run #{d.ingestion_run_id}) [Created: {d.created_at.strftime('%Y-%m-%d %H:%M')}]" for d in docs}
 selected_doc_id = st.selectbox("Select Source Document", options=list(doc_opts.keys()), format_func=lambda x: doc_opts[x])
 
 if selected_doc_id:
     doc = db.query(SourceDocument).get(selected_doc_id)
-    run = db.query(PipelineRun).get(doc.pipeline_run_id)
+    run = db.query(IngestionRun).get(doc.ingestion_run_id)
     
     st.divider()
     tab1, tab2, tab3, tab4 = st.tabs(["Raw Document", "Extracted Payload", "Entity Matches", "CRM Mutations"])
@@ -57,7 +57,7 @@ if selected_doc_id:
                 
     with tab2:
         st.subheader("LLM Extracted Payloads")
-        jobs = db.query(ExtractionJob).filter_by(pipeline_run_id=run.id).all()
+        jobs = db.query(ExtractionJob).filter_by(ingestion_run_id=run.id).all()
         for job in jobs:
             st.markdown(f"**Job ID:** `{job.id}` | **Schema:** `{job.schema_name}` | **Status:** `{job.status}`")
             
@@ -98,7 +98,7 @@ if selected_doc_id:
     with tab3:
         st.subheader("Entity Matches")
         st.markdown("Shows how raw extracted names were mapped to canonical CRM IDs.")
-        matches = db.query(EntityMatch).join(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
+        matches = db.query(EntityMatch).join(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.ingestion_run_id == run.id).all()
         if matches:
             for m in matches:
                 st.write(f"- Extracted Entity **{m.extracted_entity.raw_name}** ({m.extracted_entity.entity_type}) matched to CRM **{m.canonical_entity_type}** `#{m.canonical_entity_id}` via `{m.match_method}` (Confidence: {m.match_confidence})")
@@ -108,7 +108,7 @@ if selected_doc_id:
     with tab4:
         st.subheader("CRM Canonical Mutations")
         st.markdown("Shows exactly which fields were created or updated in the CRM by this document.")
-        muts = db.query(CanonicalMutation).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
+        muts = db.query(CanonicalMutation).join(ExtractionJob).filter(ExtractionJob.ingestion_run_id == run.id).all()
         if muts:
             df = pd.DataFrame([{
                 "Entity Type": m.canonical_entity_type,

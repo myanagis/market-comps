@@ -16,7 +16,7 @@ from market_comps.db.models import (
     Organization, CompanyProfile, InvestorProfile, Person, PersonOrganizationRole,
     PersonEmail, ProgramMembership, ProgramCohort,
     ExtractedEntity, ExtractedRelationship, ExtractionJob,
-    PipelineRun, EntityMatch, EntityAttributeEvidence, CanonicalMutation
+    IngestionRun, EntityMatch, EntityAttributeEvidence, CanonicalMutation
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def log_mutation(
 def reconcile_organization(
     db: Session,
     extracted_entity: ExtractedEntity,
-    run: PipelineRun,
+    run: IngestionRun,
     org_type: str = "COMPANY",
 ) -> Organization:
     """Find or create an Organization + profile from an extracted entity.
@@ -162,7 +162,7 @@ def reconcile_organization(
 def reconcile_person(
     db: Session,
     extracted_entity: ExtractedEntity,
-    run: PipelineRun,
+    run: IngestionRun,
 ) -> Person:
     """Find or create a Person from an extracted entity.
 
@@ -226,7 +226,7 @@ def reconcile_person(
 def reconcile_relationship(
     db: Session,
     extracted_rel: ExtractedRelationship,
-    run: PipelineRun,
+    run: IngestionRun,
 ):
     """Reconcile an extracted relationship into the CRM.
 
@@ -310,7 +310,7 @@ def _reconcile_member_of_cohort(db, extracted_rel, run, payload):
 # BULK RECONCILIATION
 # ==============================================================================
 
-def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
+def reconcile_all(db: Session, run: IngestionRun, pipeline) -> dict:
     """Reconcile all extracted entities and relationships for a pipeline run.
 
     Also auto-links organizations to the pipeline's cohort if configured.
@@ -326,7 +326,7 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     org_type = "INVESTOR" if pipeline_type == "INVESTOR_PORTFOLIO_PAGE" else "COMPANY"
 
     # Step 1: Reconcile entities
-    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
+    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.ingestion_run_id == run.id).all()
     logger.info(f"[Reconciler] Found {len(entities)} entities to reconcile for run {run.id}")
     
     for entity in entities:
@@ -343,7 +343,7 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     db.flush()
 
     # Step 2: Reconcile relationships
-    relationships = db.query(ExtractedRelationship).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
+    relationships = db.query(ExtractedRelationship).join(ExtractionJob).filter(ExtractionJob.ingestion_run_id == run.id).all()
     logger.info(f"[Reconciler] Found {len(relationships)} relationships to reconcile for run {run.id}")
     for rel in relationships:
         reconcile_relationship(db, rel, run)
@@ -351,7 +351,7 @@ def reconcile_all(db: Session, run: PipelineRun, pipeline) -> dict:
     db.flush()
 
     # Step 3: Auto-link to pipeline's cohort
-    cohort_id = pipeline.program_cohort_id
+    cohort_id = pipeline.program_cohort_id if pipeline else None
     if cohort_id:
         org_entities = [e for e in entities if e.entity_type == "ORGANIZATION"]
         for entity in org_entities:

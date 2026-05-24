@@ -3,7 +3,7 @@ import json
 from market_comps.db.session import get_db
 import pandas as pd
 from market_comps.db.models import (
-    Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship,
+    Pipeline, IngestionRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship,
     Organization, ProgramProfile, ProgramCohort, FundProfile, EntityMatch
 )
 from market_comps.ingestion.pipeline_runner import run_pipeline
@@ -81,10 +81,7 @@ with tab1:
     
     st.divider()
     st.subheader("Existing Pipelines")
-    pipelines = db.query(Pipeline).filter(
-        Pipeline.schedule_type != "UPLOAD",
-        ~Pipeline.pipeline_name.startswith("Upload:")
-    ).order_by(Pipeline.created_at.desc()).all()
+    pipelines = db.query(Pipeline).order_by(Pipeline.created_at.desc()).all()
     if pipelines:
         for p in pipelines:
             cfg = p.config_json or {}
@@ -128,11 +125,7 @@ with tab1:
 # --- TAB 2: RUN PIPELINE ---
 with tab2:
     st.subheader("Run Pipeline")
-    pipelines = db.query(Pipeline).filter(
-        Pipeline.is_active == True, 
-        Pipeline.schedule_type != "UPLOAD",
-        ~Pipeline.pipeline_name.startswith("Upload:")
-    ).all()
+    pipelines = db.query(Pipeline).filter(Pipeline.is_active == True).all()
     if not pipelines:
         st.warning("Create a pipeline first.")
     else:
@@ -147,7 +140,7 @@ with tab2:
                     st.success(f"Pipeline completed! Processed {run.records_processed} entities, created {run.records_created} records.")
                     
                     # Show extracted entities
-                    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
+                    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.ingestion_run_id == run.id).all()
                     if entities:
                         st.subheader("Extracted Entities")
                         for e in entities:
@@ -167,10 +160,7 @@ with tab2:
 # --- TAB 3: PIPELINE RUNS ---
 with tab3:
     st.subheader("Recent Pipeline Runs")
-    runs = db.query(PipelineRun).join(Pipeline).filter(
-        Pipeline.schedule_type != "UPLOAD",
-        ~Pipeline.pipeline_name.startswith("Upload:")
-    ).order_by(PipelineRun.started_at.desc()).limit(20).all()
+    runs = db.query(IngestionRun).filter(IngestionRun.pipeline_id.isnot(None)).order_by(IngestionRun.started_at.desc()).limit(20).all()
     if runs:
         run_data = []
         for r in runs:
@@ -191,13 +181,13 @@ with tab3:
         run_ids = [r.id for r in runs]
         selected_run_id = st.selectbox("View run details", run_ids)
         if selected_run_id:
-            selected_run = db.query(PipelineRun).filter_by(id=selected_run_id).first()
+            selected_run = db.query(IngestionRun).filter_by(id=selected_run_id).first()
             if selected_run and selected_run.logs_json:
                 with st.expander("📋 Run Logs", expanded=True):
                     st.json(selected_run.logs_json)
                     
             # Show source content
-            raw_data = db.query(DocumentText).join(SourceDocument).filter(SourceDocument.pipeline_run_id == selected_run_id).all()
+            raw_data = db.query(DocumentText).join(SourceDocument).filter(SourceDocument.ingestion_run_id == selected_run_id).all()
             if raw_data:
                 with st.expander(f"📄 Source Content ({len(raw_data)} pages)"):
                     for rd in raw_data:

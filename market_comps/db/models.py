@@ -239,14 +239,14 @@ class Pipeline(Base, TimestampMixin):
     program = relationship("ProgramProfile")
     program_cohort = relationship("ProgramCohort")
     fund = relationship("FundProfile")
-    runs = relationship("PipelineRun", back_populates="pipeline", order_by="PipelineRun.started_at.desc()")
+    runs = relationship("IngestionRun", back_populates="pipeline", order_by="IngestionRun.started_at.desc()")
 
 
-class PipelineRun(Base):
-    __tablename__ = 'pipeline_runs'
+class IngestionRun(Base):
+    __tablename__ = 'ingestion_runs'
 
     id = Column(Integer, primary_key=True, index=True)
-    pipeline_id = Column(Integer, ForeignKey('pipelines.id'), nullable=False)
+    pipeline_id = Column(Integer, ForeignKey('pipelines.id'), nullable=True)
 
     run_status = Column(String) # RUNNING, SUCCESS, FAILED
 
@@ -264,15 +264,15 @@ class PipelineRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     pipeline = relationship("Pipeline", back_populates="runs")
-    source_documents = relationship("SourceDocument", back_populates="pipeline_run")
-    extraction_jobs = relationship("ExtractionJob", back_populates="pipeline_run")
+    source_documents = relationship("SourceDocument", back_populates="ingestion_run")
+    extraction_jobs = relationship("ExtractionJob", back_populates="ingestion_run")
 
 
 class SourceDocument(Base, TimestampMixin):
     __tablename__ = 'source_documents'
 
     id = Column(Integer, primary_key=True, index=True)
-    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+    ingestion_run_id = Column(Integer, ForeignKey('ingestion_runs.id'), nullable=False)
 
     document_type = Column(String) # PDF, WEB_PAGE, IMAGE, API_RESPONSE, CSV_FILE, DOCSEND, etc.
     source_url = Column(String)
@@ -280,7 +280,7 @@ class SourceDocument(Base, TimestampMixin):
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
     content_hash = Column(String, index=True)
 
-    pipeline_run = relationship("PipelineRun", back_populates="source_documents")
+    ingestion_run = relationship("IngestionRun", back_populates="source_documents")
     document_texts = relationship("DocumentText", back_populates="source_document")
 
 
@@ -302,7 +302,7 @@ class ExtractionJob(Base, TimestampMixin):
     __tablename__ = 'extraction_jobs'
 
     id = Column(Integer, primary_key=True, index=True)
-    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+    ingestion_run_id = Column(Integer, ForeignKey('ingestion_runs.id'), nullable=False)
     document_text_id = Column(Integer, ForeignKey('document_texts.id'), nullable=False)
 
     schema_name = Column(String)
@@ -317,7 +317,7 @@ class ExtractionJob(Base, TimestampMixin):
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
 
-    pipeline_run = relationship("PipelineRun", back_populates="extraction_jobs")
+    ingestion_run = relationship("IngestionRun", back_populates="extraction_jobs")
     document_text = relationship("DocumentText", back_populates="extraction_jobs")
     extracted_entities = relationship("ExtractedEntity", back_populates="extraction_job")
     extracted_relationships = relationship("ExtractedRelationship", back_populates="extraction_job")
