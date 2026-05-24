@@ -168,8 +168,9 @@ def extract_entities_from_text(
     
     if is_dynamic:
         # Dynamic schema handling (Generic)
-        entities_list = parsed.get("entities", [])
-        if not isinstance(entities_list, list):
+        if "entities" in parsed and isinstance(parsed["entities"], list):
+            entities_list = parsed["entities"]
+        else:
             entities_list = [parsed]
             
         for entity_data in entities_list:
