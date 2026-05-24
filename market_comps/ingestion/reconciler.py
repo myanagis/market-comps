@@ -146,6 +146,43 @@ def reconcile_organization(
         if payload.get("founded_year") and not profile.founded_year:
             profile.founded_year = payload["founded_year"]
 
+    # Auto-parse founders if present in the payload (comma-separated string)
+    founders_str = payload.get("founders")
+    if founders_str and isinstance(founders_str, str):
+        founder_names = [f.strip() for f in founders_str.split(",") if f.strip()]
+        for fn in founder_names:
+            parts = fn.split(" ", 1)
+            fname = parts[0]
+            lname = parts[1] if len(parts) > 1 else ""
+            
+            person = db.query(Person).filter_by(first_name=fname, last_name=lname).first()
+            if not person:
+                person = Person(
+                    first_name=fname,
+                    last_name=lname,
+                    full_name=fn
+                )
+                db.add(person)
+                db.flush()
+                log_mutation(db, "PERSON", str(person.id), "CREATE", source="PIPELINE_AUTO_FOUNDER", extraction_job_id=job_id)
+            
+            # Link to org
+            existing_role = db.query(PersonOrganizationRole).filter_by(
+                person_id=person.id, organization_id=org.id, title="Founder"
+            ).first()
+            
+            if not existing_role:
+                role = PersonOrganizationRole(
+                    person_id=person.id,
+                    organization_id=org.id,
+                    title="Founder",
+                    start_date=None,
+                    is_current=True
+                )
+                db.add(role)
+                db.flush()
+                log_mutation(db, "PERSON_ROLE", str(role.id), "CREATE", source="PIPELINE_AUTO_FOUNDER", extraction_job_id=job_id)
+
     # Link extracted entity back using EntityMatch
     db.add(EntityMatch(
         extracted_entity_id=extracted_entity.id,
