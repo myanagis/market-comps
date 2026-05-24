@@ -1,0 +1,22 @@
+name = "legal_contract"
+version = "v1"
+description = "Extracted fields for legal contracts"
+enabled = true
+model_complexity = "medium"
+
+[[fields]]
+id = "contract_title"
+type = "string"
+required = true
+description = "The title of the contract"
+
+[[fields]]
+id = "effective_date"
+type = "string"
+required = false
+
+[[fields]]
+id = "parties"
+type = "string"
+required = false
+description = "Comma separated list of parties involved"

@@ -1,0 +1,23 @@
+name = "investor_portfolio_page"
+version = "v1"
+description = "Investor, accelerator, incubator, or venture portfolio page listing startups and related people"
+enabled = true
+model_complexity = "easy"
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the participating company"
+
+[[fields]]
+id = "program_name"
+type = "string"
+required = false
+description = "The name of the program, accelerator, or incubator (e.g., Y Combinator, Techstars)"
+
+[[fields]]
+id = "cohort_name"
+type = "string"
+required = false
+description = "The specific cohort or batch the company participated in (e.g., W24, Summer 2023)"
+

@@ -1,0 +1,23 @@
+name = "market_research_report"
+version = "v1"
+description = "Extracted fields for market research"
+enabled = true
+model_complexity = "medium"
+
+[[fields]]
+id = "market_name"
+type = "string"
+required = true
+description = "Name of the market or industry"
+
+[[fields]]
+id = "tam"
+type = "string"
+required = false
+description = "Total addressable market size"
+
+[[fields]]
+id = "key_players"
+type = "string"
+required = false
+description = "Comma separated list of key competitors or players"

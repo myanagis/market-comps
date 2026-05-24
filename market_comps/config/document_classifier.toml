@@ -1,277 +1,75 @@
-# ============================================================================
-# DOCUMENT CLASSIFIER CONFIG
-# ============================================================================
-#
-# Purpose:
-# - Define document classes
-# - Route documents to extraction schemas
-# - Configure extraction behavior
-# - Keep orchestration declarative and versioned
-#
-# Runtime classifier output should look like:
-#
-# {
-#   "document_type": "startup_pitch_deck",
-#   "confidence": 0.91,
-#   "candidate_classes": [...]
-# }
-#
-# ============================================================================
-
 name = "document_classifier"
 version = "v1"
-
 description = "General-purpose document routing classifier"
-
 enabled = true
-
 allow_multiple_labels = true
 allow_unknown = true
-
-# ============================================================================
-# STARTUP PITCH DECK
-# ============================================================================
-
 [[classes]]
-
 id = "startup_pitch_deck"
-
 enabled = true
-
 description = "Investor fundraising presentation for a startup company"
-
-examples = [
-  "Series A investor presentation",
-  "Seed fundraising deck",
-  "Company pitch deck",
-  "Investor update deck"
-]
-
-recommended_schemas = [
-  "company_overview",
-  "company_market",
-  "company_financials",
-  "company_fundraising",
-  "company_management_team",
-  "company_revenue_metrics"
-]
-
-optional_schemas = [
-  "company_ip",
-  "company_customer_quotes"
-]
-
+examples = [ "Series A investor presentation", "Seed fundraising deck", "Company pitch deck", "Investor update deck",]
+recommended_schemas = [ "startup_pitch_deck",]
 extraction_complexity = "medium"
-
 auto_run_threshold = 0.85
-human_review_threshold = 0.60
-
-# ============================================================================
-# INVESTOR PORTFOLIO PAGE
-# ============================================================================
+human_review_threshold = 0.6
 
 [[classes]]
-
 id = "investor_portfolio_page"
-
 enabled = true
-
 description = "Investor, accelerator, incubator, or venture portfolio page listing startups and related people"
-
-examples = [
-  "VC portfolio page",
-  "Accelerator company list",
-  "Startup cohort page",
-  "Investment portfolio page",
-  "Program participant directory"
-]
-
-recommended_schemas = [
-  "portfolio_companies",
-  "portfolio_people",
-  "portfolio_emails",
-  "portfolio_company_relationships",
-  "program_memberships"
-]
-
-optional_schemas = [
-  "company_industries",
-  "company_locations",
-  "company_funding_rounds"
-]
-
+examples = [ "VC portfolio page", "Accelerator company list", "Startup cohort page", "Investment portfolio page", "Program participant directory",]
+recommended_schemas = [ "investor_portfolio_page",]
 extraction_complexity = "easy"
-
-auto_run_threshold = 0.90
-human_review_threshold = 0.70
-
-# ============================================================================
-# GENERAL COMPANY DUE DILIGENCE
-# ============================================================================
+auto_run_threshold = 0.9
+human_review_threshold = 0.7
 
 [[classes]]
-
 id = "company_due_diligence"
-
 enabled = true
-
 description = "General company diligence materials including memos, reports, research, financial analysis, and customer or market diligence"
-
-examples = [
-  "Investment memo",
-  "Commercial diligence report",
-  "Technical diligence document",
-  "Customer diligence notes",
-  "Market diligence report"
-]
-
-recommended_schemas = [
-  "company_overview",
-  "company_market",
-  "company_competition",
-  "company_management_team",
-  "company_financials",
-  "company_revenue_metrics",
-  "company_risks",
-  "company_customers"
-]
-
-optional_schemas = [
-  "company_mna_activity",
-  "company_public_comps",
-  "company_ip",
-  "company_regulatory"
-]
-
+examples = [ "Investment memo", "Commercial diligence report", "Technical diligence document", "Customer diligence notes", "Market diligence report",]
+recommended_schemas = [ "company_due_diligence",]
 extraction_complexity = "hard"
-
-auto_run_threshold = 0.80
+auto_run_threshold = 0.8
 human_review_threshold = 0.55
 
-# ============================================================================
-# LEGAL CONTRACT
-# ============================================================================
-
 [[classes]]
-
 id = "legal_contract"
-
 enabled = true
-
 description = "Legal agreement or contract"
-
-examples = [
-  "Master Service Agreement",
-  "Statement of Work",
-  "Referral Agreement",
-  "Non-Disclosure Agreement"
-]
-
-recommended_schemas = [
-  "legal_parties",
-  "legal_payment_terms",
-  "legal_dates",
-  "legal_obligations"
-]
-
-optional_schemas = [
-  "legal_audit_rights",
-  "legal_indemnification"
-]
-
+examples = [ "Master Service Agreement", "Statement of Work", "Referral Agreement", "Non-Disclosure Agreement",]
+recommended_schemas = [ "legal_contract",]
 extraction_complexity = "medium"
-
-auto_run_threshold = 0.90
+auto_run_threshold = 0.9
 human_review_threshold = 0.75
 
-# ============================================================================
-# MARKET RESEARCH REPORT
-# ============================================================================
-
 [[classes]]
-
 id = "market_research_report"
-
 enabled = true
-
 description = "Industry, market, TAM, or competitive analysis report"
-
-examples = [
-  "Industry report",
-  "Market landscape",
-  "Competitive analysis",
-  "Sector overview"
-]
-
-recommended_schemas = [
-  "market_size",
-  "competition",
-  "industry_tailwinds"
-]
-
-optional_schemas = [
-  "public_comps",
-  "mna_activity"
-]
-
+examples = [ "Industry report", "Market landscape", "Competitive analysis", "Sector overview",]
+recommended_schemas = [ "market_research_report",]
 extraction_complexity = "medium"
-
-auto_run_threshold = 0.80
+auto_run_threshold = 0.8
 human_review_threshold = 0.55
 
-# ============================================================================
-# REVENUE / FINANCIAL DOCUMENT
-# ============================================================================
-
 [[classes]]
-
 id = "company_financial_document"
-
 enabled = true
-
 description = "Financial statements, KPI summaries, revenue reports, or operating metrics documents"
-
-examples = [
-  "Income statement",
-  "Revenue summary",
-  "Financial model",
-  "Board financials",
-  "Monthly KPI report"
-]
-
-recommended_schemas = [
-  "company_revenue_metrics",
-  "company_financials",
-  "company_growth_metrics"
-]
-
-optional_schemas = [
-  "company_burn_rate",
-  "company_unit_economics"
-]
-
+examples = [ "Income statement", "Revenue summary", "Financial model", "Board financials", "Monthly KPI report",]
+recommended_schemas = [ "company_financial_document",]
 extraction_complexity = "hard"
-
 auto_run_threshold = 0.92
-human_review_threshold = 0.70
-
-# ============================================================================
-# UNKNOWN / FALLBACK
-# ============================================================================
+human_review_threshold = 0.7
 
 [[classes]]
-
 id = "unknown"
-
 enabled = true
-
 description = "Document could not confidently be classified"
-
-recommended_schemas = []
-
-optional_schemas = []
-
+recommended_schemas = [ "unknown",]
 extraction_complexity = "easy"
+auto_run_threshold = 1.0
+human_review_threshold = 1.0
 
-auto_run_threshold = 1.00
-human_review_threshold = 1.00

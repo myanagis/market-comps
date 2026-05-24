@@ -1,18 +1,37 @@
-name = "company_financials"
+name = "company_financial_document"
 version = "v1"
-
-description = "Extract high-level financial metrics and projections for a startup"
-
+description = "Financial statements, KPI summaries, revenue reports, or operating metrics documents"
 enabled = true
-model_complexity = "medium"
-
+model_complexity = "hard"
 [[fields]]
 id = "company_name"
 type = "string"
 required = true
-description = "The name of the startup company"
+description = "The name of the company these metrics belong to"
 
-# ----------------------------------------------------------------------------
+[[fields]]
+id = "annual_revenue"
+type = "currency"
+required = false
+description = "Most recent annual revenue figure"
+
+[[fields]]
+id = "arr"
+type = "currency"
+required = false
+description = "Annual recurring revenue"
+
+[[fields]]
+id = "revenue_growth_percent"
+type = "float"
+required = false
+description = "Revenue growth percentage"
+
+[[fields]]
+id = "revenue_year"
+type = "integer"
+required = false
+description = "Year associated with revenue metrics"
 
 [[fields]]
 id = "current_arr"
@@ -20,15 +39,11 @@ type = "currency"
 required = false
 description = "Current Annual Recurring Revenue (ARR) or run rate"
 
-# ----------------------------------------------------------------------------
-
 [[fields]]
 id = "gross_margin_percent"
 type = "float"
 required = false
 description = "Current or target gross margin percentage (e.g., 75.0)"
-
-# ----------------------------------------------------------------------------
 
 [[fields]]
 id = "monthly_burn_rate"
@@ -36,18 +51,15 @@ type = "currency"
 required = false
 description = "Average monthly cash burn rate"
 
-# ----------------------------------------------------------------------------
-
 [[fields]]
 id = "runway_months"
 type = "integer"
 required = false
 description = "Months of runway remaining based on current cash and burn"
 
-# ----------------------------------------------------------------------------
-
 [[fields]]
 id = "ltv_cac_ratio"
 type = "float"
 required = false
 description = "LTV to CAC ratio, if mentioned"
+

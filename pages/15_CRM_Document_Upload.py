@@ -176,82 +176,62 @@ if submitted:
                     schemas_to_run = ["DOCUMENT_ENTITIES"]
                     class_usage = None
                 
-                # 4. Run LLM Extraction for each schema
+                # 4. Run LLM Extraction
                 total_entities_extracted = 0
-                all_jobs = []
-                total_usage_dict = {
-                    "total_prompt_tokens": 0,
-                    "total_completion_tokens": 0,
-                    "total_tokens": 0,
-                    "estimated_cost_usd": 0.0,
-                    "call_count": 0,
-                    "traces": []
-                }
                 
-                for schema_idx, schema_name in enumerate(schemas_to_run):
-                    st.info(f"🤖 [{schema_idx+1}/{len(schemas_to_run)}] Running schema: **{schema_name}**...")
-                    
-                    job = ExtractionJob(
-                        ingestion_run_id=run.id,
-                        document_text_id=doc_text.id,
-                        schema_name=schema_name,
-                        status="IN_PROGRESS",
-                        started_at=datetime.utcnow()
+                # Use the first recommended schema, which should match the doc class
+                schema_name = schemas_to_run[0] if schemas_to_run else "DOCUMENT_ENTITIES"
+                
+                st.info(f"🤖 Running extraction schema: **{schema_name}**...")
+                
+                job = ExtractionJob(
+                    ingestion_run_id=run.id,
+                    document_text_id=doc_text.id,
+                    schema_name=schema_name,
+                    status="IN_PROGRESS",
+                    started_at=datetime.utcnow()
+                )
+                db.add(job)
+                db.flush()
+                
+                try:
+                    extraction_result = extract_entities_from_text(
+                        db, run, job, doc_text, schema_name, {"llm_instruction": final_instructions}
                     )
-                    db.add(job)
-                    db.flush()
-                    all_jobs.append(job)
                     
-                    try:
-                        extraction_result = extract_entities_from_text(
-                            db, run, job, doc_text, schema_name, {"llm_instruction": final_instructions}
-                        )
+                    total_entities_extracted += extraction_result["entities_extracted"]
+                    job_usage = extraction_result["llm_usage"]
+                    
+                    from market_comps.models import LLMUsage
+                    usage_obj = LLMUsage(**job_usage)
+                    if transcription_usage:
+                        usage_obj.total_prompt_tokens += transcription_usage.total_prompt_tokens
+                        usage_obj.total_completion_tokens += transcription_usage.total_completion_tokens
+                        usage_obj.total_tokens += transcription_usage.total_tokens
+                        usage_obj.estimated_cost_usd += transcription_usage.estimated_cost_usd
+                        usage_obj.call_count += transcription_usage.call_count
+                        usage_obj.traces = transcription_usage.traces + usage_obj.traces
+                    if class_usage:
+                        usage_obj.total_prompt_tokens += class_usage.total_prompt_tokens
+                        usage_obj.total_completion_tokens += class_usage.total_completion_tokens
+                        usage_obj.total_tokens += class_usage.total_tokens
+                        usage_obj.estimated_cost_usd += class_usage.estimated_cost_usd
+                        usage_obj.call_count += class_usage.call_count
+                        usage_obj.traces = class_usage.traces + usage_obj.traces
                         
-                        total_entities_extracted += extraction_result["entities_extracted"]
-                        
-                        job_usage = extraction_result["llm_usage"]
-                        
-                        if schema_idx == 0:
-                            from market_comps.models import LLMUsage
-                            first_usage = LLMUsage(**job_usage)
-                            if transcription_usage:
-                                first_usage.total_prompt_tokens += transcription_usage.total_prompt_tokens
-                                first_usage.total_completion_tokens += transcription_usage.total_completion_tokens
-                                first_usage.total_tokens += transcription_usage.total_tokens
-                                first_usage.estimated_cost_usd += transcription_usage.estimated_cost_usd
-                                first_usage.call_count += transcription_usage.call_count
-                                first_usage.traces = transcription_usage.traces + first_usage.traces
-                            if class_usage:
-                                first_usage.total_prompt_tokens += class_usage.total_prompt_tokens
-                                first_usage.total_completion_tokens += class_usage.total_completion_tokens
-                                first_usage.total_tokens += class_usage.total_tokens
-                                first_usage.estimated_cost_usd += class_usage.estimated_cost_usd
-                                first_usage.call_count += class_usage.call_count
-                                first_usage.traces = class_usage.traces + first_usage.traces
-                            job_usage = first_usage.model_dump(mode="json")
-                        else:
-                            # Defensively parse and dump for subsequent schemas in case of stale imports
-                            from market_comps.models import LLMUsage
-                            job_usage = LLMUsage(**job_usage).model_dump(mode="json")
-                            
-                        total_usage_dict["total_prompt_tokens"] += job_usage.get("total_prompt_tokens", 0)
-                        total_usage_dict["total_completion_tokens"] += job_usage.get("total_completion_tokens", 0)
-                        total_usage_dict["total_tokens"] += job_usage.get("total_tokens", 0)
-                        total_usage_dict["estimated_cost_usd"] += job_usage.get("estimated_cost_usd", 0.0)
-                        total_usage_dict["call_count"] += job_usage.get("call_count", 0)
-                        total_usage_dict["traces"] += job_usage.get("traces", [])
-                        
-                        import json
-                        job.llm_usage_json = json.loads(json.dumps(job_usage, default=str))
-                        job.status = "SUCCESS"
-                        job.completed_at = datetime.utcnow()
-                        db.flush()
-                    except Exception as e:
-                        job.status = "FAILED"
-                        job.error_message = str(e)
-                        job.completed_at = datetime.utcnow()
-                        db.flush()
-                        st.error(f"Schema {schema_name} failed: {e}")
+                    job_usage = usage_obj.model_dump(mode="json")
+                    
+                    import json
+                    job.llm_usage_json = json.loads(json.dumps(job_usage, default=str))
+                    job.status = "SUCCESS"
+                    job.completed_at = datetime.utcnow()
+                    db.flush()
+                except Exception as e:
+                    job.status = "FAILED"
+                    job.error_message = str(e)
+                    job.completed_at = datetime.utcnow()
+                    db.flush()
+                    st.error(f"Extraction failed: {e}")
                 
                 # 5. Reconcile
                 st.info("🔄 Reconciling combined results against CRM...")

@@ -1,0 +1,233 @@
+name = "company_due_diligence"
+version = "v1"
+description = "General company diligence materials including memos, reports, research, financial analysis, and customer or market diligence"
+enabled = true
+model_complexity = "hard"
+[[fields]]
+id = "company_name"
+type = "string"
+required = true
+description = "The name of the startup company"
+
+[[fields]]
+id = "company_description"
+type = "text"
+required = false
+description = "A short paragraph describing what the company does and its core value proposition"
+
+[[fields]]
+id = "industry"
+type = "string"
+required = false
+description = "The primary industry or vertical the company operates in (e.g., SaaS, FinTech, Healthcare)"
+
+[[fields]]
+id = "founded_year"
+type = "integer"
+required = false
+description = "The year the company was founded"
+
+[[fields]]
+id = "website"
+type = "string"
+required = false
+description = "The company's website URL"
+
+[[fields]]
+id = "headquarters"
+type = "string"
+required = false
+description = "The city and state/country where the company is headquartered"
+
+[[fields]]
+id = "target_market"
+type = "string"
+required = false
+description = "A description of the company's target market or ideal customer profile"
+
+[[fields]]
+id = "tam_usd"
+type = "currency"
+required = false
+description = "Total Addressable Market (TAM) size in USD, if mentioned"
+
+[[fields]]
+id = "sam_usd"
+type = "currency"
+required = false
+description = "Serviceable Available Market (SAM) size in USD, if mentioned"
+
+[[fields]]
+id = "som_usd"
+type = "currency"
+required = false
+description = "Serviceable Obtainable Market (SOM) size in USD, if mentioned"
+
+[[fields]]
+id = "competitors"
+type = "text"
+required = false
+description = "A comma-separated list of key competitors mentioned in the document"
+
+[[fields]]
+id = "direct_competitors"
+type = "text"
+required = false
+description = "A comma-separated list of direct competitors"
+
+[[fields]]
+id = "indirect_competitors"
+type = "text"
+required = false
+description = "A comma-separated list of indirect or legacy competitors"
+
+[[fields]]
+id = "competitive_advantage"
+type = "text"
+required = false
+description = "A summary of the company's competitive advantage or economic moat"
+
+[[fields]]
+id = "founders"
+type = "text"
+required = false
+description = "A comma-separated list of the founders' names"
+
+[[fields]]
+id = "team_size"
+type = "integer"
+required = false
+description = "Total number of employees or team members"
+
+[[fields]]
+id = "key_advisors"
+type = "text"
+required = false
+description = "A comma-separated list of key advisors or board members"
+
+[[fields]]
+id = "open_roles"
+type = "text"
+required = false
+description = "A comma-separated list of key roles the company is looking to hire"
+
+[[fields]]
+id = "current_arr"
+type = "currency"
+required = false
+description = "Current Annual Recurring Revenue (ARR) or run rate"
+
+[[fields]]
+id = "gross_margin_percent"
+type = "float"
+required = false
+description = "Current or target gross margin percentage (e.g., 75.0)"
+
+[[fields]]
+id = "monthly_burn_rate"
+type = "currency"
+required = false
+description = "Average monthly cash burn rate"
+
+[[fields]]
+id = "runway_months"
+type = "integer"
+required = false
+description = "Months of runway remaining based on current cash and burn"
+
+[[fields]]
+id = "ltv_cac_ratio"
+type = "float"
+required = false
+description = "LTV to CAC ratio, if mentioned"
+
+[[fields]]
+id = "annual_revenue"
+type = "currency"
+required = false
+description = "Most recent annual revenue figure"
+
+[[fields]]
+id = "arr"
+type = "currency"
+required = false
+description = "Annual recurring revenue"
+
+[[fields]]
+id = "revenue_growth_percent"
+type = "float"
+required = false
+description = "Revenue growth percentage"
+
+[[fields]]
+id = "revenue_year"
+type = "integer"
+required = false
+description = "Year associated with revenue metrics"
+
+[[fields]]
+id = "key_risks"
+type = "text"
+required = false
+description = "A comma-separated list or summary of the primary risks identified in the document"
+
+[[fields]]
+id = "mitigants"
+type = "text"
+required = false
+description = "Summary of factors mitigating the identified risks"
+
+[[fields]]
+id = "customer_segments"
+type = "string"
+required = false
+description = "Description of the primary customer segments (e.g., Enterprise, SMB, B2C)"
+
+[[fields]]
+id = "notable_clients"
+type = "text"
+required = false
+description = "A comma-separated list of marquee or notable customers mentioned"
+
+[[fields]]
+id = "acquisitions"
+type = "text"
+required = false
+description = "A comma-separated list of companies acquired by this company"
+
+[[fields]]
+id = "potential_acquirers"
+type = "text"
+required = false
+description = "A comma-separated list of potential strategic or sponsor acquirers"
+
+[[fields]]
+id = "public_comps"
+type = "text"
+required = false
+description = "A comma-separated list of public comparable companies used for valuation benchmarking"
+
+[[fields]]
+id = "patents_granted"
+type = "integer"
+required = false
+description = "Number of granted patents, if explicitly stated"
+
+[[fields]]
+id = "ip_summary"
+type = "text"
+required = false
+description = "Summary of the company's proprietary technology or intellectual property moat"
+
+[[fields]]
+id = "regulatory_bodies"
+type = "text"
+required = false
+description = "A comma-separated list of relevant regulatory bodies (e.g., FDA, SEC, EPA)"
+
+[[fields]]
+id = "compliance_status"
+type = "text"
+required = false
+description = "Summary of the company's compliance status or regulatory hurdles"
+
