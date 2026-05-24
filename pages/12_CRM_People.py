@@ -36,47 +36,45 @@ def display_person_details(person_id):
     with st.container(border=True):
         st.subheader(f"👤 {person.full_name or person.first_name + ' ' + person.last_name}")
         
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("#### Basic Information")
-            st.write(f"**Name:** {person.full_name or 'N/A'}")
-            st.write(f"**LinkedIn:** {person.linkedin_url or 'N/A'}")
-            st.write(f"**Twitter/X:** {person.twitter_url or 'N/A'}")
-            st.write(f"**Location:** {person.city or 'N/A'}, {person.state or 'N/A'}, {person.country or 'N/A'}")
-            if person.bio:
-                st.info(person.bio)
+        st.markdown("#### Basic Information")
+        st.write(f"**Name:** {person.full_name or 'N/A'}")
+        st.write(f"**LinkedIn:** {person.linkedin_url or 'N/A'}")
+        st.write(f"**Twitter/X:** {person.twitter_url or 'N/A'}")
+        st.write(f"**Location:** {person.city or 'N/A'}, {person.state or 'N/A'}, {person.country or 'N/A'}")
+        if person.bio:
+            st.info(person.bio)
+            
+        if person.emails:
+            st.divider()
+            st.markdown("#### Email Addresses")
+            for e in person.emails:
+                primary_badge = "🌟 [Primary]" if e.is_primary else ""
+                st.write(f"- 📨 **{e.email}** ({e.email_type or 'Work'}) {primary_badge}")
                 
-            if person.emails:
-                st.divider()
-                st.markdown("#### Email Addresses")
-                for e in person.emails:
-                    primary_badge = "🌟 [Primary]" if e.is_primary else ""
-                    st.write(f"- 📨 **{e.email}** ({e.email_type or 'Work'}) {primary_badge}")
-                    
-        with col2:
-            st.markdown("#### Roles & Organizations")
-            if person.roles:
-                for role in person.roles:
-                    org = role.organization
-                    if org:
-                        with st.expander(f"🏢 {org.name} — {role.title or 'No Title'}"):
-                            st.write(f"**Title:** {role.title or 'No Title'}")
+        st.divider()
+        st.subheader("🏢 Organizations & Roles")
+        if person.roles:
+            for role in person.roles:
+                org = role.organization
+                if org:
+                    with st.expander(f"🏢 {org.name} — {role.title or 'No Title'}"):
+                        st.write(f"**Title:** {role.title or 'No Title'}")
+                        
+                        years = ""
+                        if role.start_date:
+                            start_str = role.start_date.strftime("%Y")
+                            end_str = role.end_date.strftime("%Y") if role.end_date else "Present"
+                            years = f"{start_str} - {end_str}"
+                        elif role.end_date:
+                            years = f"Until {role.end_date.strftime('%Y')}"
                             
-                            years = ""
-                            if role.start_date:
-                                start_str = role.start_date.strftime("%Y")
-                                end_str = role.end_date.strftime("%Y") if role.end_date else "Present"
-                                years = f"{start_str} - {end_str}"
-                            elif role.end_date:
-                                years = f"Until {role.end_date.strftime('%Y')}"
-                                
-                            st.write(f"**Years:** {years}")
-                            st.write(f"**Seniority:** {role.seniority_level or 'N/A'}")
-                            st.write(f"**Role Type:** {role.role_type or 'N/A'}")
-                            st.write(f"**Current:** {role.is_current}")
-                            st.write(f"**Source:** {role.source or 'N/A'}")
-            else:
-                st.info("No organizations linked to this person.")
+                        st.write(f"**Years:** {years}")
+                        st.write(f"**Seniority:** {role.seniority_level or 'N/A'}")
+                        st.write(f"**Role Type:** {role.role_type or 'N/A'}")
+                        st.write(f"**Current:** {role.is_current}")
+                        st.write(f"**Source:** {role.source or 'N/A'}")
+        else:
+            st.info("No organizations linked to this person.")
 
         # Linked Source Documents
         st.divider()

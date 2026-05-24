@@ -36,61 +36,61 @@ def display_company_details(company_id):
     with st.container(border=True):
         st.subheader(f"🏢 {org.name}")
         
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("#### Basic Information")
-            st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url}")
-            st.write(f"**LinkedIn:** {org.linkedin_url}")
-            st.write(f"**Location:** {org.city}, {org.state}, {org.country}")
-            st.write(f"**Status:** {org.status}")
-            if org.description:
-                st.info(org.description)
-                
-            if org.company_profile:
-                st.divider()
-                st.markdown("#### Company Profile")
-                st.write(f"**Industry:** {org.company_profile.industry} | **Stage:** {org.company_profile.company_stage}")
-                st.write(f"**Sub-Industry:** {org.company_profile.subindustry} | **Founded:** {org.company_profile.founded_year}")
-                
-        with col2:
-            if org.program_memberships:
-                st.markdown("#### Program Memberships")
-                for m in org.program_memberships:
-                    if m.cohort and m.cohort.program:
-                        st.write(f"- 🎯 **{m.cohort.program.program_name}** — {m.cohort.cohort_name}")
-                    elif m.cohort:
-                        st.write(f"- 🎯 {m.cohort.cohort_name}")
-                    else:
-                        st.write("- 🎯 (Unlinked Membership)")
-                        
-            if org.fund_profiles:
-                st.markdown("#### Fund Profiles")
-                for fund in org.fund_profiles:
-                    with st.expander(f"💰 {fund.fund_name}"):
-                        st.write(f"**Vintage:** {fund.vintage_year} | **Size:** {fund.fund_size}")
-                        st.write(f"**Type:** {fund.fund_type} | **Status:** {fund.status}")
-                        if fund.description:
-                            st.caption(fund.description)
+        st.markdown("#### Basic Information")
+        st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url}")
+        st.write(f"**LinkedIn:** {org.linkedin_url}")
+        st.write(f"**Location:** {org.city}, {org.state}, {org.country}")
+        st.write(f"**Status:** {org.status}")
+        if org.description:
+            st.info(org.description)
+            
+        if org.company_profile:
+            st.divider()
+            st.markdown("#### Company Profile")
+            st.write(f"**Industry:** {org.company_profile.industry} | **Stage:** {org.company_profile.company_stage}")
+            st.write(f"**Sub-Industry:** {org.company_profile.subindustry} | **Founded:** {org.company_profile.founded_year}")
+            
+        if org.program_memberships:
+            st.divider()
+            st.markdown("#### Program Memberships")
+            for m in org.program_memberships:
+                if m.cohort and m.cohort.program:
+                    st.write(f"- 🎯 **{m.cohort.program.program_name}** — {m.cohort.cohort_name}")
+                elif m.cohort:
+                    st.write(f"- 🎯 {m.cohort.cohort_name}")
+                else:
+                    st.write("- 🎯 (Unlinked Membership)")
+                    
+        if org.fund_profiles:
+            st.divider()
+            st.markdown("#### Fund Profiles")
+            for fund in org.fund_profiles:
+                with st.expander(f"💰 {fund.fund_name}"):
+                    st.write(f"**Vintage:** {fund.vintage_year} | **Size:** {fund.fund_size}")
+                    st.write(f"**Type:** {fund.fund_type} | **Status:** {fund.status}")
+                    if fund.description:
+                        st.caption(fund.description)
 
-            if org.program_profiles:
-                st.markdown("#### Programs & Cohorts")
-                for prog in org.program_profiles:
-                    with st.expander(f"🎯 {prog.program_name} ({prog.program_type or 'Program'})"):
-                        st.write(f"**Status:** {prog.status or 'N/A'}")
-                        if prog.description:
-                            st.write(prog.description)
-                        
-                        if prog.cohorts:
-                            st.write("**Cohorts:**")
-                            for cohort in prog.cohorts:
-                                date_str = ""
-                                if cohort.start_date:
-                                    date_str = f" ({cohort.start_date.strftime('%b %Y')} - {cohort.end_date.strftime('%b %Y') if cohort.end_date else 'Present'})"
-                                st.write(f"- 📦 **{cohort.cohort_name}**{date_str}")
-                                if cohort.description:
-                                    st.caption(f"  {cohort.description}")
-                        else:
-                            st.caption("No cohorts defined.")
+        if org.program_profiles:
+            st.divider()
+            st.markdown("#### Programs & Cohorts")
+            for prog in org.program_profiles:
+                with st.expander(f"🎯 {prog.program_name} ({prog.program_type or 'Program'})"):
+                    st.write(f"**Status:** {prog.status or 'N/A'}")
+                    if prog.description:
+                        st.write(prog.description)
+                    
+                    if prog.cohorts:
+                        st.write("**Cohorts:**")
+                        for cohort in prog.cohorts:
+                            date_str = ""
+                            if cohort.start_date:
+                                date_str = f" ({cohort.start_date.strftime('%b %Y')} - {cohort.end_date.strftime('%b %Y') if cohort.end_date else 'Present'})"
+                            st.write(f"- 📦 **{cohort.cohort_name}**{date_str}")
+                            if cohort.description:
+                                st.caption(f"  {cohort.description}")
+                    else:
+                        st.caption("No cohorts defined.")
 
         # People & Roles
         st.divider()
