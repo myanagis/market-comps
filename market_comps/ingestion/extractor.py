@@ -118,23 +118,32 @@ def extract_entities_from_text(
     text = doc_text.raw_content or ""
     custom_instruction = config.get("llm_instruction", "")
     
+    provided_schema = config.get("schema")
+    provided_desc = config.get("schema_description", "")
+    
     from market_comps.ingestion.schema_builder import load_toml_schema_as_json, get_schema_description
     
-    # Check if it's a hardcoded schema or dynamic TOML
     is_dynamic = False
-    schema = SCHEMA_BY_TYPE.get(pipeline_type)
-    if not schema:
-        schema = load_toml_schema_as_json(pipeline_type)
-        if schema:
-            is_dynamic = True
-            
-    if not schema:
-        schema = PROGRAM_COMPANY_SCHEMA
-        pipeline_type = "PROGRAM_COMPANY_PAGE"
+    
+    if provided_schema:
+        schema = provided_schema
+        desc = provided_desc
+        is_dynamic = True
+    else:
+        # Check if it's a hardcoded schema or dynamic TOML
+        schema = SCHEMA_BY_TYPE.get(pipeline_type)
+        if not schema:
+            schema = load_toml_schema_as_json(pipeline_type)
+            if schema:
+                is_dynamic = True
+                desc = get_schema_description(pipeline_type)
+                
+        if not schema:
+            schema = PROGRAM_COMPANY_SCHEMA
+            pipeline_type = "PROGRAM_COMPANY_PAGE"
 
     # Build the prompt
     if is_dynamic:
-        desc = get_schema_description(pipeline_type)
         prompt = f"Extract all entities from this document based on the provided schema. {desc}"
         if custom_instruction:
             prompt += f"\n\nADDITIONAL INSTRUCTIONS: {custom_instruction}"

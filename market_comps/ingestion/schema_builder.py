@@ -87,3 +87,66 @@ def get_schema_description(schema_name: str) -> str:
             return config.get("description", "")
     except Exception:
         return ""
+
+def build_aggregated_schema(schema_names: list[str]) -> tuple[Optional[Dict[str, Any]], str]:
+    """
+    Load multiple TOML schemas and merge them into a single comprehensive JSON Schema.
+    Returns (json_schema, combined_description)
+    """
+    properties = {}
+    required = set()
+    descriptions = []
+    
+    for schema_name in schema_names:
+        file_path = os.path.join(SCHEMAS_DIR, f"{schema_name}.toml")
+        if not os.path.exists(file_path):
+            continue
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                config = toml.load(f)
+        except Exception as e:
+            logger.error(f"Failed to parse TOML schema {file_path}: {e}")
+            continue
+            
+        desc = config.get("description")
+        if desc:
+            descriptions.append(desc)
+            
+        for field in config.get("fields", []):
+            field_id = field.get("id")
+            if not field_id:
+                continue
+                
+            field_type = field.get("type", "string")
+            js_type = _type_mapping(field_type)
+            
+            prop_def = {"type": js_type}
+            if "description" in field:
+                prop_def["description"] = field["description"]
+                
+            properties[field_id] = prop_def
+            
+            if field.get("required", False):
+                required.add(field_id)
+                
+    if not properties:
+        return None, ""
+        
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": list(required)
+                }
+            }
+        },
+        "required": ["entities"]
+    }
+    
+    combined_desc = " ".join(descriptions)
+    return json_schema, combined_desc
