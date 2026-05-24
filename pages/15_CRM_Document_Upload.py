@@ -62,10 +62,25 @@ if submitted:
     if not uploaded_file:
         st.error("Please upload a file.")
     else:
+        st.session_state["start_processing"] = True
+        st.session_state["upload_file_name"] = uploaded_file.name
+        st.session_state["upload_file_bytes"] = uploaded_file.read()
+        st.session_state["upload_pdf_method"] = pdf_method
+        st.session_state["upload_custom_instructions"] = custom_instructions
+        st.session_state["upload_linked_org_id"] = linked_org_id
+
+if st.session_state.get("start_processing"):
+    st.session_state["start_processing"] = False  # Clear to prevent infinite loops
+    
+    file_name = st.session_state["upload_file_name"]
+    file_bytes = st.session_state["upload_file_bytes"]
+    pdf_method = st.session_state["upload_pdf_method"]
+    custom_instructions = st.session_state["upload_custom_instructions"]
+    linked_org_id = st.session_state["upload_linked_org_id"]
+    
+    if True: # Keep indentation
         with st.spinner("Processing document..."):
             # 1. Read file content
-            file_name = uploaded_file.name
-            file_bytes = uploaded_file.read()
             text_content = ""
             transcription_usage = None
             
@@ -80,6 +95,9 @@ if submitted:
                         method=pdf_method, 
                         model=DEFAULT_LLM_MODEL
                     )
+                    
+                    import gc
+                    gc.collect()
                 except Exception as e:
                     st.error(f"Failed to parse PDF: {e}")
                     st.stop()
