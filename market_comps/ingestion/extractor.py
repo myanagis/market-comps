@@ -144,7 +144,7 @@ def extract_entities_from_text(
 
     # Build the prompt
     if is_dynamic:
-        prompt = f"Extract all entities from this document based on the provided schema. {desc}"
+        prompt = f"Extract all entities from this document based on the provided schema. Return the results as a valid JSON object. {desc}"
         if custom_instruction:
             prompt += f"\n\nADDITIONAL INSTRUCTIONS: {custom_instruction}"
     else:
