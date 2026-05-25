@@ -39,13 +39,19 @@ def log_mutation(
     created_by: str = None,
 ):
     """Write a single mutation entry."""
+    import json
+    def safe_str(val):
+        if val is None: return None
+        if isinstance(val, (list, dict)): return json.dumps(val)
+        return str(val)
+        
     db.add(CanonicalMutation(
         canonical_entity_type=entity_type,
         canonical_entity_id=str(entity_id),
         mutation_type=action,
         field_name=field_name,
-        old_value=old_value,
-        new_value=new_value,
+        old_value=safe_str(old_value),
+        new_value=safe_str(new_value),
         source=source,
         extraction_job_id=extraction_job_id,
         created_by=created_by or "SYSTEM",
@@ -148,8 +154,13 @@ def reconcile_organization(
             db.flush()
             log_mutation(db, "COMPANY_PROFILE", str(profile.id), "CREATE", source="PIPELINE_AUTO_CREATE", extraction_job_id=job_id)
         if payload.get("industry") and not profile.industry:
-            profile.industry = payload["industry"]
-            log_mutation(db, "COMPANY_PROFILE", str(profile.id), "UPDATE", field_name="industry", new_value=payload["industry"], source="PIPELINE_FILL", extraction_job_id=job_id)
+            ind = payload["industry"]
+            if isinstance(ind, list):
+                ind = ", ".join([str(x) for x in ind])
+            elif not isinstance(ind, str):
+                ind = str(ind)
+            profile.industry = ind
+            log_mutation(db, "COMPANY_PROFILE", str(profile.id), "UPDATE", field_name="industry", new_value=ind, source="PIPELINE_FILL", extraction_job_id=job_id)
         if payload.get("founded_year") and not profile.founded_year:
             profile.founded_year = payload["founded_year"]
             log_mutation(db, "COMPANY_PROFILE", str(profile.id), "UPDATE", field_name="founded_year", new_value=str(payload["founded_year"]), source="PIPELINE_FILL", extraction_job_id=job_id)

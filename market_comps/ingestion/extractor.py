@@ -152,6 +152,13 @@ def extract_entities_from_text(
         
     prompt += f"\n\nTEXT:\n{text[:50000]}"
 
+    # Inject document_date into the schema
+    if isinstance(schema, dict) and "properties" in schema:
+        schema["properties"]["document_date"] = {
+            "type": "string",
+            "description": "Extract the date associated with this document (e.g. published date, pitch deck date) like 'May 2026' or '2024-05-12'. If not found, return null."
+        }
+
     # Call the LLM
     from market_comps.config import DEFAULT_LLM_MODEL
     llm = LLMClient()
@@ -162,6 +169,15 @@ def extract_entities_from_text(
         model=DEFAULT_LLM_MODEL,
         step_name="entity_extraction"
     )
+
+    # Save document_date if found
+    if parsed and isinstance(parsed, dict) and parsed.get("document_date"):
+        from market_comps.db.models import SourceDocument
+        doc = db.query(SourceDocument).filter_by(ingestion_run_id=job.ingestion_run_id).first()
+        if doc:
+            doc.document_date = str(parsed["document_date"])
+            db.add(doc)
+            db.flush()
 
     entity_count = 0
     relationship_count = 0

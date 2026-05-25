@@ -13,6 +13,7 @@ from market_comps.llm_client import LLMClient
 from market_comps.ingestion.extractor import extract_entities_from_text
 
 text_content = """
+Company Update - May 24, 2025
 This is a startup pitch deck for Acme Corp.
 We are a B2B SaaS company that helps restaurants manage inventory.
 We are raising $5M in a Seed round.

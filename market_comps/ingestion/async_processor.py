@@ -126,6 +126,8 @@ def run_document_ingestion_background(run_id: int, text_content: str, final_inst
                 run_failed.run_status = "FAILED"
                 run_failed.error_message = f"{str(e)}\n\n{traceback.format_exc()}"
                 run_failed.completed_at = datetime.utcnow()
+                if 'logs' in locals():
+                    run_failed.logs_json = logs
                 db.commit()
         except Exception as inner_e:
             logger.error(f"Failed to log error to DB for run {run_id}: {inner_e}")

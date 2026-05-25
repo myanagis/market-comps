@@ -277,6 +277,7 @@ class SourceDocument(Base, TimestampMixin):
     document_type = Column(String) # PDF, WEB_PAGE, IMAGE, API_RESPONSE, CSV_FILE, DOCSEND, etc.
     document_class = Column(String) # startup_pitch_deck, legal_contract, etc.
     classification_result_json = Column(JSON)
+    document_date = Column(String, nullable=True)
     
     source_url = Column(String)
     file_path = Column(String)

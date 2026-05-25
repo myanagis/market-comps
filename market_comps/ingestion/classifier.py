@@ -63,7 +63,8 @@ def classify_document(text_content: str, llm_client: LLMClient) -> Tuple[Dict[st
         '  "document_type": "string (the class id)",\n'
         '  "confidence": 0.95,\n'
         '  "candidate_classes": ["other_class", "another_class"],\n'
-        '  "reasoning": "string"\n'
+        '  "reasoning": "string",\n'
+        '  "document_summary": "string"\n'
         "}\n"
         "Do not include any other keys. 'document_type' is required and must be the exact Class ID."
     )
@@ -94,9 +95,13 @@ def classify_document(text_content: str, llm_client: LLMClient) -> Tuple[Dict[st
             "reasoning": {
                 "type": "string",
                 "description": "Brief explanation of why this class was chosen."
+            },
+            "document_summary": {
+                "type": "string",
+                "description": "A brief description of the document contents, STRICTLY less than 20 words."
             }
         },
-        "required": ["document_type", "confidence", "candidate_classes"]
+        "required": ["document_type", "confidence", "candidate_classes", "document_summary"]
     }
     
     result, usage = llm_client.structured_output(

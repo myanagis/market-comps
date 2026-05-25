@@ -124,6 +124,8 @@ class LLMClient:
             "Always respond with valid JSON that matches the requested schema. "
             "Do not include markdown code fences or any text outside the JSON."
         )
+        if json_schema:
+            system += f"\n\nEXPECTED JSON SCHEMA:\n{json.dumps(json_schema, indent=2)}"
 
         messages = [
             {"role": "system", "content": system},

@@ -6,7 +6,7 @@ from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, CanonicalMutation,
-    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, DocumentText, SourceDocument
+    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, IngestionRun, DocumentText, SourceDocument
 )
 from market_comps.ingestion.reconciler import log_mutation
 
@@ -49,7 +49,7 @@ def edit_company_dialog(org):
             subind = st.text_input("Sub-Industry", value=prof.subindustry if prof else "")
         with col4:
             stage = st.text_input("Company Stage", value=prof.company_stage if prof else "")
-            founded = st.number_input("Founded Year", value=prof.founded_year if prof and prof.founded_year else 2000, step=1)
+            founded = st.number_input("Founded Year", value=prof.founded_year if prof and prof.founded_year else None, step=1, placeholder="YYYY")
             
         if st.form_submit_button("Save Changes"):
             user = st.session_state.get("user_email", "SYSTEM")
@@ -269,20 +269,28 @@ def display_company_details(company_id):
         if role_ids:
             filters.append((CanonicalMutation.canonical_entity_type == "PERSON_ROLE") & (CanonicalMutation.canonical_entity_id.in_(role_ids)))
             
-        audit = db.query(CanonicalMutation).filter(
+        audit = db.query(CanonicalMutation).options(
+            joinedload(CanonicalMutation.extraction_job).joinedload(ExtractionJob.ingestion_run).joinedload(IngestionRun.source_documents)
+        ).filter(
             or_(*filters)
         ).order_by(CanonicalMutation.created_at.desc()).limit(20).all()
         
         if audit:
             audit_data = []
             for a in audit:
+                source_str = a.source or ""
+                if source_str == "PIPELINE" and a.extraction_job and a.extraction_job.ingestion_run:
+                    docs = a.extraction_job.ingestion_run.source_documents
+                    if docs and docs[0].document_date:
+                        source_str += f" (Doc: {docs[0].document_date})"
+                        
                 audit_data.append({
                     "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
                     "Action": a.mutation_type,
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
                     "New Value": a.new_value or "",
-                    "Source": a.source or "",
+                    "Source": source_str,
                     "User": a.created_by or "SYSTEM"
                 })
             st.dataframe(pd.DataFrame(audit_data), use_container_width=True, hide_index=True)

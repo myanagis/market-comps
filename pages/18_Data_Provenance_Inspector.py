@@ -35,6 +35,9 @@ if selected_doc_id:
     
     with tab1:
         st.subheader("Raw File Viewer")
+        if doc.document_date:
+            st.markdown(f"**Document Date:** `{doc.document_date}`")
+            
         if doc.file_path and supabase_client:
             try:
                 from market_comps.config import settings
@@ -53,6 +56,8 @@ if selected_doc_id:
             st.subheader("Document Classification")
             cls_res = doc.classification_result_json
             st.markdown(f"**Classified As:** `{doc.document_class}` (Confidence: {cls_res.get('confidence', 0):.2f})")
+            if "document_summary" in cls_res:
+                st.markdown(f"**Summary:** {cls_res['document_summary']}")
             if "reasoning" in cls_res:
                 st.info(f"**Reasoning:** {cls_res['reasoning']}")
             with st.expander("Raw Classification Output"):

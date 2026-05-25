@@ -182,9 +182,13 @@ with tab3:
         selected_run_id = st.selectbox("View run details", run_ids)
         if selected_run_id:
             selected_run = db.query(IngestionRun).filter_by(id=selected_run_id).first()
-            if selected_run and selected_run.logs_json:
-                with st.expander("📋 Run Logs", expanded=True):
-                    st.json(selected_run.logs_json)
+            if selected_run:
+                if selected_run.run_status == "FAILED" and selected_run.error_message:
+                    st.error(f"**Pipeline Error:**\n\n```\n{selected_run.error_message}\n```")
+                
+                if selected_run.logs_json:
+                    with st.expander("📋 Run Logs", expanded=True):
+                        st.json(selected_run.logs_json)
                     
             # Show source content
             raw_data = db.query(DocumentText).join(SourceDocument).filter(SourceDocument.ingestion_run_id == selected_run_id).all()

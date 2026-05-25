@@ -185,6 +185,10 @@ if "last_doc_upload_run_id" in st.session_state:
         source_doc = db.query(SourceDocument).filter_by(ingestion_run_id=last_run.id).first()
         if source_doc and source_doc.document_class:
             st.info(f"🏷️ Document classified as: **{source_doc.document_class}**")
+            if source_doc.classification_result_json:
+                summary = source_doc.classification_result_json.get("document_summary")
+                if summary:
+                    st.markdown(f"**Summary:** {summary}")
             
         jobs = db.query(ExtractionJob).filter_by(ingestion_run_id=last_run.id).all()
         for job in jobs:

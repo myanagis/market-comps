@@ -42,7 +42,7 @@ if entity_type == "Company":
         
         st.subheader("Company Profile")
         col3, col4 = st.columns(2)
-        founded = col3.number_input("Founded Year", min_value=1800, max_value=2100, value=2024)
+        founded = col3.number_input("Founded Year", min_value=1800, max_value=2100, value=None, placeholder="YYYY")
         industry = col4.text_input("Industry")
         stage = col3.text_input("Company Stage")
         
