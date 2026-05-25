@@ -56,7 +56,14 @@ def edit_firm_dialog(org):
             
             def check_and_update(entity_type, entity_id, field_name, old_val, new_val, obj):
                 if str(old_val) != str(new_val) and (old_val or new_val):
-                    log_mutation(db, entity_type, entity_id, "UPDATE", field_name, str(old_val), str(new_val), "USER_EDIT", None, user)
+                    log_mutation(
+                        db, entity_type, entity_id, "UPDATE",
+                        field_name=field_name,
+                        old_value=str(old_val),
+                        new_value=str(new_val),
+                        source="USER_EDIT",
+                        created_by=user
+                    )
                     setattr(obj, field_name, new_val)
                     
             check_and_update("ORGANIZATION", org.id, "name", org.name, name, org)
@@ -73,7 +80,10 @@ def edit_firm_dialog(org):
                 prof = InvestorProfile(organization_id=org.id)
                 db.add(prof)
                 db.flush()
-                log_mutation(db, "INVESTOR_PROFILE", prof.id, "CREATE", None, None, None, "USER_EDIT", None, user)
+                log_mutation(
+                    db, "INVESTOR_PROFILE", prof.id, "CREATE",
+                    source="USER_EDIT", created_by=user
+                )
                 org.investor_profile = prof
                 
             check_and_update("INVESTOR_PROFILE", prof.id, "investor_type", prof.investor_type, investor_type, prof)
