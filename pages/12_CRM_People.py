@@ -8,6 +8,7 @@ from market_comps.db.models import (
     Person, PersonEmail, PersonOrganizationRole, CanonicalMutation,
     EntityMatch, ExtractedEntity, ExtractionJob, DocumentText, SourceDocument
 )
+from market_comps.ingestion.reconciler import log_mutation
 
 st.set_page_config(page_title="People Directory", page_icon="👤", layout="wide")
 st.title("👤 People Directory")
@@ -18,6 +19,46 @@ try:
 except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
+
+@st.dialog("Edit Person")
+def edit_person_dialog(person):
+    with st.form("edit_person"):
+        st.write(f"Edit details for **{person.full_name or person.first_name + ' ' + person.last_name}**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            first_name = st.text_input("First Name", value=person.first_name or "")
+            last_name = st.text_input("Last Name", value=person.last_name or "")
+            linkedin = st.text_input("LinkedIn URL", value=person.linkedin_url or "")
+            twitter = st.text_input("Twitter URL", value=person.twitter_url or "")
+        with col2:
+            city = st.text_input("City", value=person.city or "")
+            state = st.text_input("State", value=person.state or "")
+            country = st.text_input("Country", value=person.country or "")
+            
+        bio = st.text_area("Bio", value=person.bio or "")
+            
+        if st.form_submit_button("Save Changes"):
+            user = st.session_state.get("user_email", "SYSTEM")
+            
+            def check_and_update(entity_type, entity_id, field_name, old_val, new_val, obj):
+                if str(old_val) != str(new_val) and (old_val or new_val):
+                    log_mutation(db, entity_type, entity_id, "UPDATE", field_name, str(old_val), str(new_val), "USER_EDIT", None, user)
+                    setattr(obj, field_name, new_val)
+                    
+            check_and_update("PERSON", str(person.id), "first_name", person.first_name, first_name, person)
+            check_and_update("PERSON", str(person.id), "last_name", person.last_name, last_name, person)
+            full_name = f"{first_name} {last_name}".strip()
+            check_and_update("PERSON", str(person.id), "full_name", person.full_name, full_name, person)
+            check_and_update("PERSON", str(person.id), "linkedin_url", person.linkedin_url, linkedin, person)
+            check_and_update("PERSON", str(person.id), "twitter_url", person.twitter_url, twitter, person)
+            check_and_update("PERSON", str(person.id), "city", person.city, city, person)
+            check_and_update("PERSON", str(person.id), "state", person.state, state, person)
+            check_and_update("PERSON", str(person.id), "country", person.country, country, person)
+            check_and_update("PERSON", str(person.id), "bio", person.bio, bio, person)
+            
+            db.commit()
+            st.rerun()
 
 # Helper to render person details below the table
 def display_person_details(person_id):
@@ -34,7 +75,12 @@ def display_person_details(person_id):
         return
 
     with st.container(border=True):
-        st.subheader(f"👤 {person.full_name or person.first_name + ' ' + person.last_name}")
+        col_h1, col_h2 = st.columns([5, 1])
+        with col_h1:
+            st.subheader(f"👤 {person.full_name or person.first_name + ' ' + person.last_name}")
+        with col_h2:
+            if st.button("✏️ Edit", key=f"edit_person_{person.id}", use_container_width=True):
+                edit_person_dialog(person)
         
         st.markdown("#### Basic Information")
         st.write(f"**Name:** {person.full_name or 'N/A'}")
@@ -128,7 +174,8 @@ def display_person_details(person_id):
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
                     "New Value": a.new_value or "",
-                    "Source": a.source or ""
+                    "Source": a.source or "",
+                    "User": a.created_by or "SYSTEM"
                 })
             st.dataframe(pd.DataFrame(audit_data), use_container_width=True, hide_index=True)
         else:

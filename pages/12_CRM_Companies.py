@@ -8,6 +8,7 @@ from market_comps.db.models import (
     ProgramMembership, PersonOrganizationRole, CanonicalMutation,
     ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, DocumentText, SourceDocument
 )
+from market_comps.ingestion.reconciler import log_mutation
 
 st.set_page_config(page_title="Companies Directory", page_icon="🏢", layout="wide")
 st.title("🏢 Companies Directory")
@@ -18,6 +19,70 @@ try:
 except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
+
+@st.dialog("Edit Company")
+def edit_company_dialog(org):
+    with st.form("edit_company"):
+        st.write(f"Edit details for **{org.name}**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            name = st.text_input("Name", value=org.name or "")
+            domain = st.text_input("Domain", value=org.primary_domain or "")
+            website = st.text_input("Website URL", value=org.website_url or "")
+            linkedin = st.text_input("LinkedIn URL", value=org.linkedin_url or "")
+        with col2:
+            city = st.text_input("City", value=org.city or "")
+            state = st.text_input("State", value=org.state or "")
+            country = st.text_input("Country", value=org.country or "")
+            status_opts = ["ACTIVE", "INACTIVE", "ACQUIRED", "DEFUNCT"]
+            status = st.selectbox("Status", status_opts, index=status_opts.index(org.status) if org.status in status_opts else 0)
+            
+        desc = st.text_area("Description", value=org.description or "")
+        
+        st.divider()
+        st.write("Company Profile")
+        col3, col4 = st.columns(2)
+        prof = org.company_profile
+        with col3:
+            industry = st.text_input("Industry", value=prof.industry if prof else "")
+            subind = st.text_input("Sub-Industry", value=prof.subindustry if prof else "")
+        with col4:
+            stage = st.text_input("Company Stage", value=prof.company_stage if prof else "")
+            founded = st.number_input("Founded Year", value=prof.founded_year if prof and prof.founded_year else 2000, step=1)
+            
+        if st.form_submit_button("Save Changes"):
+            user = st.session_state.get("user_email", "SYSTEM")
+            
+            def check_and_update(entity_type, entity_id, field_name, old_val, new_val, obj):
+                if str(old_val) != str(new_val) and (old_val or new_val):
+                    log_mutation(db, entity_type, entity_id, "UPDATE", field_name, str(old_val), str(new_val), "USER_EDIT", None, user)
+                    setattr(obj, field_name, new_val)
+                    
+            check_and_update("ORGANIZATION", org.id, "name", org.name, name, org)
+            check_and_update("ORGANIZATION", org.id, "primary_domain", org.primary_domain, domain, org)
+            check_and_update("ORGANIZATION", org.id, "website_url", org.website_url, website, org)
+            check_and_update("ORGANIZATION", org.id, "linkedin_url", org.linkedin_url, linkedin, org)
+            check_and_update("ORGANIZATION", org.id, "city", org.city, city, org)
+            check_and_update("ORGANIZATION", org.id, "state", org.state, state, org)
+            check_and_update("ORGANIZATION", org.id, "country", org.country, country, org)
+            check_and_update("ORGANIZATION", org.id, "status", org.status, status, org)
+            check_and_update("ORGANIZATION", org.id, "description", org.description, desc, org)
+            
+            if not prof:
+                prof = CompanyProfile(organization_id=org.id)
+                db.add(prof)
+                db.flush()
+                log_mutation(db, "COMPANY_PROFILE", prof.id, "CREATE", None, None, None, "USER_EDIT", None, user)
+                org.company_profile = prof
+                
+            check_and_update("COMPANY_PROFILE", prof.id, "industry", prof.industry, industry, prof)
+            check_and_update("COMPANY_PROFILE", prof.id, "subindustry", prof.subindustry, subind, prof)
+            check_and_update("COMPANY_PROFILE", prof.id, "company_stage", prof.company_stage, stage, prof)
+            check_and_update("COMPANY_PROFILE", prof.id, "founded_year", prof.founded_year, founded if founded else None, prof)
+            
+            db.commit()
+            st.rerun()
 
 # Helper to render company details below the table
 def display_company_details(company_id):
@@ -34,7 +99,12 @@ def display_company_details(company_id):
         return
 
     with st.container(border=True):
-        st.subheader(f"🏢 {org.name}")
+        col_h1, col_h2 = st.columns([5, 1])
+        with col_h1:
+            st.subheader(f"🏢 {org.name}")
+        with col_h2:
+            if st.button("✏️ Edit", key=f"edit_org_{org.id}", use_container_width=True):
+                edit_company_dialog(org)
         
         st.markdown("#### Basic Information")
         st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url}")
@@ -202,7 +272,8 @@ def display_company_details(company_id):
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
                     "New Value": a.new_value or "",
-                    "Source": a.source or ""
+                    "Source": a.source or "",
+                    "User": a.created_by or "SYSTEM"
                 })
             st.dataframe(pd.DataFrame(audit_data), use_container_width=True, hide_index=True)
         else:

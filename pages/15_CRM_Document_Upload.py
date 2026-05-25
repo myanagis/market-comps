@@ -13,7 +13,7 @@ from market_comps.ingestion.reconciler import reconcile_all
 from market_comps.config import supabase_client
 
 st.set_page_config(page_title="Document Upload", page_icon="📄", layout="wide")
-st.title("📄 Upload CRM Document")
+st.title("📄 Document Upload")
 st.write("Upload a document to automatically extract and link companies, people, and other entities to the CRM.")
 
 try:

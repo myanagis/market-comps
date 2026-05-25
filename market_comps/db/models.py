@@ -421,6 +421,7 @@ class CanonicalMutation(Base, TimestampMixin):
     new_value = Column(String, nullable=True)
     
     source = Column(String) # PIPELINE, USER_EDIT
+    created_by = Column(String, nullable=True) # User email or SYSTEM
     extraction_job_id = Column(Integer, ForeignKey('extraction_jobs.id'), nullable=True)
     
     extraction_job = relationship("ExtractionJob")

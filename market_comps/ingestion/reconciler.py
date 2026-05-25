@@ -36,6 +36,7 @@ def log_mutation(
     new_value: str = None,
     source: str = None,
     extraction_job_id: int = None,
+    created_by: str = None,
 ):
     """Write a single mutation entry."""
     db.add(CanonicalMutation(
@@ -47,6 +48,7 @@ def log_mutation(
         new_value=new_value,
         source=source,
         extraction_job_id=extraction_job_id,
+        created_by=created_by or "SYSTEM",
     ))
 
 
