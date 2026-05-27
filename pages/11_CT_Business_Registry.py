@@ -205,23 +205,20 @@ with col_btn2:
     augment_clicked = st.button("✨ Augment with AI", key="btn_augment", disabled=not has_data)
     
 if fetch_clicked:
-    if not naics_selected:
-        st.warning("Please select at least one NAICS prefix.")
+    with st.spinner("Fetching from CT Open Data..."):
+        start_iso = start_date.strftime("%Y-%m-%dT00:00:00")
+        end_iso = end_date.strftime("%Y-%m-%dT23:59:59")
+        
+        recent_df = fetch_recent_ct_businesses(start_iso, end_iso, name_filter.strip(), exclude_filter.strip(), exclude_generic_emails)
+        
+    if recent_df.is_empty():
+        st.info("No new businesses found in this date range.")
     else:
-        with st.spinner("Fetching from CT Open Data..."):
-            start_iso = start_date.strftime("%Y-%m-%dT00:00:00")
-            end_iso = end_date.strftime("%Y-%m-%dT23:59:59")
-            
-            recent_df = fetch_recent_ct_businesses(start_iso, end_iso, name_filter.strip(), exclude_filter.strip(), exclude_generic_emails)
-            
-        if recent_df.is_empty():
-            st.info("No new businesses found in this date range.")
-        else:
-            st.session_state["recent_df"] = recent_df
-            # Clear previous augmentation
-            for key in ["aug_df", "aug_usage", "aug_time", "aug_errors"]:
-                st.session_state.pop(key, None)
-            st.rerun()
+        st.session_state["recent_df"] = recent_df
+        # Clear previous augmentation
+        for key in ["aug_df", "aug_usage", "aug_time", "aug_errors"]:
+            st.session_state.pop(key, None)
+        st.rerun()
 
 # Display single dataframe (either augmented or raw) BEFORE augment block
 if "aug_df" in st.session_state:
