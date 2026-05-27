@@ -43,10 +43,10 @@ class AugmentedBatch(BaseModel):
 
 # --- Helper Functions ---
 @st.cache_data(show_spinner=False, ttl=3600)
-def fetch_recent_ct_businesses(start: str, end: str, prefixes: list[str], name_filter: str) -> pl.DataFrame:
-    """Fetch recently registered CT businesses based on NAICS code prefixes."""
+def fetch_recent_ct_businesses(start: str, end: str, name_filter: str, exclude_filter: str = None, exclude_generic_emails: bool = False) -> pl.DataFrame:
+    """Fetch recently registered CT businesses."""
     try:
-        return CTBusinessRegistryClient.fetch_recent(start, end, prefixes, name_filter)
+        return CTBusinessRegistryClient.fetch_recent(start, end, name_filter, exclude_filter, exclude_generic_emails)
     except Exception as e:
         st.error(f"API Error: {e}")
         return pl.DataFrame()
@@ -82,6 +82,8 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
     
     progress_bar = st.progress(0, text="Starting LLM Augmentation...")
     
+    aug_errors = []
+    
     for i in range(0, len(context_list), batch_size):
         chunk = context_list[i:i+batch_size]
         prompt = f"""
@@ -93,9 +95,6 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
         
         Companies:
         {json.dumps(chunk, indent=2)}
-        
-        JSON SCHEMA:
-        {json.dumps(schema, indent=2)}
         """
         
         try:
@@ -104,25 +103,15 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
                 text=f"Augmenting batch {i//batch_size + 1}/{(len(context_list) + batch_size - 1)//batch_size}..."
             )
             
-            content, usage = client.chat_completion(
-                messages=[
-                    {"role": "system", "content": "You are an expert VC/PE analyst. Find data about these private companies. Return valid JSON matching the provided schema."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
+            result, usage = client.structured_output(
+                prompt=prompt,
+                json_schema=schema,
+                system_prompt="You are an expert VC/PE analyst. Find data about these private companies. Return valid JSON matching the provided schema.",
+                step_name="ct_business_registry_augmentation"
             )
             
-            stripped = content.strip()
-            if stripped.startswith("```"):
-                stripped = stripped.split("```")[1]
-                if stripped.startswith("json"):
-                    stripped = stripped[4:]
-                stripped = stripped.rsplit("```", 1)[0].strip()
-                
-            result = json.loads(stripped)
-            
-            total_usage.total_prompt_tokens += usage.total_prompt_tokens
-            total_usage.total_completion_tokens += usage.total_completion_tokens
+            total_usage.total_prompt_tokens += usage.prompt_tokens
+            total_usage.total_completion_tokens += usage.completion_tokens
             total_usage.total_tokens += usage.total_tokens
             total_usage.estimated_cost_usd += usage.estimated_cost_usd
             total_usage.call_count += 1
@@ -132,12 +121,17 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
                 augmented_rows.extend(result["companies"])
             
         except Exception as e:
-            st.warning(f"Error augmenting batch {i//batch_size + 1}: {e}")
+            err_msg = f"Error augmenting batch {i//batch_size + 1}: {e}"
+            logger.error(err_msg)
+            aug_errors.append(err_msg)
             # Insert dummy empty entries for failed rows to maintain alignment if we join by id
             for c in chunk:
-                augmented_rows.append({"id": c["id"], "name": c["name"]})
+                augmented_rows.append({"id": str(c["id"]), "name": c["name"]})
 
     progress_bar.progress(1.0, text="Augmentation complete.")
+    
+    if aug_errors:
+        st.session_state["aug_errors"] = aug_errors
     
     # Convert LLM results to dataframe
     if not augmented_rows:
@@ -167,7 +161,7 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
 st.title("CT Business Registry")
 st.markdown("Query the CT registry for recently formed businesses matching specific NAICS codes.")
 
-col_a, col_b, col_c = st.columns(3)
+col_a, col_b, col_c, col_d = st.columns(4)
 with col_a:
     default_start = datetime.now() - timedelta(days=180)
     start_date = st.date_input("Start Date", value=default_start)
@@ -175,23 +169,12 @@ with col_b:
     end_date = st.date_input("End Date", value=datetime.now())
 with col_c:
     name_filter = st.text_input("Name Filter (Optional)", placeholder="e.g. Acme Corp")
+with col_d:
+    exclude_filter = st.text_input("Exclude Words (Optional)", placeholder="e.g. Salon, Spa")
+
+exclude_generic_emails = st.checkbox("Exclude generic emails (e.g. gmail.com, yahoo.com)", value=True)
     
-with st.expander("Settings (NAICS & LLM Options)", expanded=False):
-    DEFAULT_NAICS = [
-        "5112", "5182", "5191", "5415", "5416", "3341", "5417", "3254", "3391", 
-        "5223", "5222", "5239", "5242", "4541", "5111", "7139", "4885", "3345", 
-        "3339", "3364", "2211", "2213", "2371", "5173", "5239"
-    ]
-    
-    naics_selected = st.multiselect(
-        "NAICS Code Prefixes",
-        options=list(set(DEFAULT_NAICS + ["All"])),
-        default=DEFAULT_NAICS,
-        help="Filters for Tech, Biotech, Finance, Logistics, etc."
-    )
-    
-    st.markdown("---")
-    st.markdown("**LLM Augmentation Settings**")
+with st.expander("Settings (LLM Options)", expanded=False):
     
     def format_model(m: str) -> str:
         in_price, out_price = settings.get_model_pricing(m)
@@ -229,14 +212,14 @@ if fetch_clicked:
             start_iso = start_date.strftime("%Y-%m-%dT00:00:00")
             end_iso = end_date.strftime("%Y-%m-%dT23:59:59")
             
-            recent_df = fetch_recent_ct_businesses(start_iso, end_iso, naics_selected, name_filter.strip())
+            recent_df = fetch_recent_ct_businesses(start_iso, end_iso, name_filter.strip(), exclude_filter.strip(), exclude_generic_emails)
             
         if recent_df.is_empty():
             st.info("No new businesses found in this date range.")
         else:
             st.session_state["recent_df"] = recent_df
             # Clear previous augmentation
-            for key in ["aug_df", "aug_usage", "aug_time"]:
+            for key in ["aug_df", "aug_usage", "aug_time", "aug_errors"]:
                 st.session_state.pop(key, None)
             st.rerun()
 
@@ -247,6 +230,12 @@ if "aug_df" in st.session_state:
     elapsed = st.session_state["aug_time"]
     
     st.success(f"Augmentation complete in {elapsed:.1f}s! Used ~{usage.total_tokens} tokens (Est. Cost: ${usage.estimated_cost_usd:.4f})")
+    
+    if "aug_errors" in st.session_state:
+        with st.expander("⚠️ Augmentation Errors Occurred", expanded=True):
+            for err in st.session_state["aug_errors"]:
+                st.error(err)
+                
     st.dataframe(aug_df.to_pandas(), use_container_width=True)
     
     st.download_button(

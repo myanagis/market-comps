@@ -45,25 +45,33 @@ class CTBusinessRegistryClient:
             raise
 
     @classmethod
-    def fetch_recent(cls, start: str, end: str, prefixes: list[str], name_filter: str | None = None) -> pl.DataFrame:
-        """Fetch recently registered CT businesses based on NAICS code prefixes and optional name filter."""
+    def fetch_recent(cls, start: str, end: str, name_filter: str | None = None, exclude_filter: str | None = None, exclude_generic_emails: bool = False) -> pl.DataFrame:
+        """Fetch recently registered CT businesses."""
         batches = []
         offset = 0
         limit = 50000
 
-        naics_filter = " OR ".join([f"naics_code LIKE '{p}%'" for p in prefixes])
-        
         where_clauses = [
             "business_type='Stock'",
             "status='Active'",
-            f"date_registration BETWEEN '{start}' AND '{end}'",
-            f"({naics_filter})"
+            f"date_registration BETWEEN '{start}' AND '{end}'"
         ]
         
         if name_filter:
             clean_name = name_filter.replace("'", "''")
             where_clauses.append(f"upper(name) LIKE upper('%{clean_name}%')")
             
+        if exclude_filter:
+            exclude_words = [w.strip() for w in exclude_filter.split(",") if w.strip()]
+            for w in exclude_words:
+                clean_w = w.replace("'", "''")
+                where_clauses.append(f"upper(name) NOT LIKE upper('%{clean_w}%')")
+                
+        if exclude_generic_emails:
+            generics = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com"]
+            for g in generics:
+                where_clauses.append(f"business_email_address NOT LIKE '%@{g}'")
+                
         where_str = " AND ".join(where_clauses)
 
         while True:
