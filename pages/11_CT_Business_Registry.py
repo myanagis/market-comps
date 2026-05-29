@@ -161,12 +161,31 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
 st.title("CT Business Registry")
 st.markdown("Query the CT registry for recently formed businesses matching specific NAICS codes.")
 
+if "start_date" not in st.session_state:
+    st.session_state["start_date"] = (datetime.now() - timedelta(days=180)).date()
+if "end_date" not in st.session_state:
+    st.session_state["end_date"] = datetime.now().date()
+
+st.caption("Quick Date Selectors:")
+c1, c2, c3, _ = st.columns([1, 1, 1, 3])
+with c1:
+    if st.button("Last Week", use_container_width=True):
+        st.session_state["start_date"] = (datetime.now() - timedelta(days=7)).date()
+        st.session_state["end_date"] = datetime.now().date()
+with c2:
+    if st.button("Last Month", use_container_width=True):
+        st.session_state["start_date"] = (datetime.now() - timedelta(days=30)).date()
+        st.session_state["end_date"] = datetime.now().date()
+with c3:
+    if st.button("Last 2 Months", use_container_width=True):
+        st.session_state["start_date"] = (datetime.now() - timedelta(days=60)).date()
+        st.session_state["end_date"] = datetime.now().date()
+
 col_a, col_b, col_c, col_d = st.columns(4)
 with col_a:
-    default_start = datetime.now() - timedelta(days=180)
-    start_date = st.date_input("Start Date", value=default_start)
+    start_date = st.date_input("Start Date", key="start_date")
 with col_b:
-    end_date = st.date_input("End Date", value=datetime.now())
+    end_date = st.date_input("End Date", key="end_date")
 with col_c:
     name_filter = st.text_input("Name Filter (Optional)", placeholder="e.g. Acme Corp")
 with col_d:
