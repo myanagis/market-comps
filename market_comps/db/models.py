@@ -75,7 +75,8 @@ class FundProfile(Base, TimestampMixin):
     fund_name = Column(String, nullable=False)
     fund_type = Column(String)
     vintage_year = Column(Integer)
-    fund_size = Column(String)
+    fund_size_raised = Column(String)
+    fund_size_target = Column(String)
     status = Column(String)
     description = Column(String)
 
@@ -194,10 +195,12 @@ class Investment(Base, TimestampMixin):
     round_type = Column(String) # e.g., Seed, Series A
     amount = Column(String) # e.g., $5M
     is_lead = Column(Boolean, default=False)
+    fund_id = Column(Integer, ForeignKey('fund_profiles.id'), nullable=True)
     metadata_json = Column(JSON)
 
     investor = relationship("Organization", foreign_keys=[investor_organization_id], back_populates="investments_made")
     company = relationship("Organization", foreign_keys=[company_organization_id], back_populates="investments_received")
+    fund = relationship("FundProfile")
 
 
 # ==============================================================================

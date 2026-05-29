@@ -29,7 +29,9 @@ if search_query:
         joinedload(Organization.company_profile),
         joinedload(Organization.investor_profile),
         joinedload(Organization.investments_made).joinedload(Investment.company),
-        joinedload(Organization.investments_received).joinedload(Investment.investor)
+        joinedload(Organization.investments_made).joinedload(Investment.fund),
+        joinedload(Organization.investments_received).joinedload(Investment.investor),
+        joinedload(Organization.investments_received).joinedload(Investment.fund)
     ).filter(
         or_(
             Organization.name.ilike(search_filter),
@@ -68,13 +70,10 @@ if search_query:
                     st.caption(f"Domain: {c.primary_domain or 'N/A'} | Stage: {stage} | Industry: {ind}")
                     
                     if c.investments_received:
-                        invs = []
+                        st.markdown("**Investments Received:**")
                         for inv in c.investments_received:
-                            inv_str = f"{inv.investor.name if inv.investor else 'Unknown'}"
-                            if inv.amount: inv_str += f" ({inv.amount})"
-                            if inv.round_type: inv_str += f" [{inv.round_type}]"
-                            invs.append(inv_str)
-                        st.write(f"**Investors:** {', '.join(invs)}")
+                            fund_str = f" via {inv.fund.fund_name}" if inv.fund else ""
+                            st.write(f"- **{inv.investor.name if inv.investor else 'Unknown'}**{fund_str} ({inv.round_type or 'Unknown Round'})")
                     else:
                         st.write("**Investors:** None recorded")
 
@@ -90,10 +89,11 @@ if search_query:
                     st.caption(f"Domain: {i.primary_domain or 'N/A'} | Type: {itype} | Pref Stage: {pstage}")
                     
                     if i.investments_made:
-                        st.write("**Recent Investments:**")
+                        st.markdown("**Sample Investments Made:**")
                         for inv in i.investments_made[:5]: # show up to 5
+                            fund_str = f" (via {inv.fund.fund_name})" if inv.fund else ""
                             comp_name = inv.company.name if inv.company else "Unknown"
-                            inv_str = f"- **{comp_name}**"
+                            inv_str = f"- **{comp_name}**{fund_str}"
                             if inv.investment_date: inv_str += f" on {inv.investment_date.strftime('%Y-%m-%d')}"
                             if inv.amount: inv_str += f" ({inv.amount})"
                             st.write(inv_str)

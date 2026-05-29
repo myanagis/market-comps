@@ -229,7 +229,8 @@ elif entity_type in ["Fund", "Program"]:
             if entity_type == "Fund":
                 f_type = col2.text_input("Fund Type (e.g. Flagship, Opportunity)")
                 vintage = col1.number_input("Vintage Year", min_value=1980, max_value=2100, value=2024)
-                size = col2.text_input("Fund Size (e.g. 500M)")
+                size_raised = col1.text_input("Fund Size Raised (e.g. 500M)")
+                size_target = col2.text_input("Fund Size Target (e.g. 750M)")
             else:
                 p_type = col2.text_input("Program Type (e.g. ACCELERATOR, GRANT)")
                 
@@ -242,7 +243,7 @@ elif entity_type in ["Fund", "Program"]:
                 else:
                     try:
                         if entity_type == "Fund":
-                            record = FundProfile(parent_organization_id=parent_id, fund_name=name, fund_type=f_type, vintage_year=vintage, fund_size=size, description=desc)
+                            record = FundProfile(parent_organization_id=parent_id, fund_name=name, fund_type=f_type, vintage_year=vintage, fund_size_raised=size_raised, fund_size_target=size_target, description=desc)
                         else:
                             record = ProgramProfile(parent_organization_id=parent_id, program_name=name, program_type=p_type, description=desc)
                         

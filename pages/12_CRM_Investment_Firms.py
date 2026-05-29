@@ -144,7 +144,7 @@ def display_investor_details(investor_id):
             st.markdown("#### Fund Profiles")
             for fund in org.fund_profiles:
                 with st.expander(f"💰 {fund.fund_name}"):
-                    st.write(f"**Vintage:** {fund.vintage_year} | **Size:** {fund.fund_size}")
+                    st.write(f"**Vintage:** {fund.vintage_year} | **Raised:** {fund.fund_size_raised} | **Target:** {fund.fund_size_target}")
                     st.write(f"**Type:** {fund.fund_type} | **Status:** {fund.status}")
                     if fund.description:
                         st.caption(fund.description)
