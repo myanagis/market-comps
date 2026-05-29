@@ -110,8 +110,8 @@ def augment_businesses(companies_df: pl.DataFrame, client: LLMClient, max_rows: 
                 step_name="ct_business_registry_augmentation"
             )
             
-            total_usage.total_prompt_tokens += usage.prompt_tokens
-            total_usage.total_completion_tokens += usage.completion_tokens
+            total_usage.total_prompt_tokens += usage.total_prompt_tokens
+            total_usage.total_completion_tokens += usage.total_completion_tokens
             total_usage.total_tokens += usage.total_tokens
             total_usage.estimated_cost_usd += usage.estimated_cost_usd
             total_usage.call_count += 1
