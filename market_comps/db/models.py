@@ -27,6 +27,9 @@ class Organization(Base, TimestampMixin):
     city = Column(String)
     state = Column(String)
     country = Column(String)
+    street1 = Column(String)
+    street2 = Column(String)
+    zip_code = Column(String)
     organization_type = Column(String)
     description = Column(String)
     status = Column(String)
@@ -74,11 +77,20 @@ class FundProfile(Base, TimestampMixin):
     parent_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     fund_name = Column(String, nullable=False)
     fund_type = Column(String)
+    investment_fund_type = Column(String) # e.g. Venture Capital, Hedge Fund (from SEC Form D)
     vintage_year = Column(Integer)
     fund_size_raised = Column(String)
     fund_size_target = Column(String)
     status = Column(String)
     description = Column(String)
+
+    # Address fields
+    street1 = Column(String)
+    street2 = Column(String)
+    city = Column(String)
+    state = Column(String)
+    country = Column(String)
+    zip_code = Column(String)
 
     parent_organization = relationship("Organization", back_populates="fund_profiles")
 

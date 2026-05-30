@@ -58,6 +58,12 @@ class Settings:
     supabase_storage_bucket: str = field(
         default_factory=lambda: _get_secret("SUPABASE_STORAGE_BUCKET", "documents")
     )
+    sec_edgar_user_agent: str = field(
+        default_factory=lambda: _get_secret("SEC_EDGAR_USER_AGENT", "market-comps myanagis@example.com")
+    )
+    sec_edgar_rate_limit_delay: float = field(
+        default_factory=lambda: float(_get_secret("SEC_EDGAR_RATE_LIMIT_DELAY", "0.25"))
+    )
 
     # OpenRouter model pricing (per 1M tokens) — used for cost estimation.
     # Keys match model IDs; values are (input_price_usd, output_price_usd).

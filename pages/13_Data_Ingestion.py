@@ -17,13 +17,11 @@ except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
 
-PIPELINE_TYPES = [
-    "PROGRAM_COMPANY_PAGE",
-    "INVESTOR_PORTFOLIO_PAGE",
-    "API_COMPANY_SEARCH",
-    "CSV_IMPORT",
-    "INVESTOR_PEOPLE_PAGE",
-]
+from market_comps.ingestion.registry import FETCHERS, PREPARERS, EXTRACTORS, NORMALIZERS
+
+CONNECTOR_TYPES = list(FETCHERS.keys())
+PARSER_TYPES = list(PREPARERS.keys())
+NORMALIZER_TYPES = list(NORMALIZERS.keys())
 
 tab1, tab2, tab3, tab4 = st.tabs(["Pipelines", "Run Pipeline", "Pipeline Runs", "Extracted Data"])
 
@@ -33,8 +31,13 @@ with tab1:
     with st.form("new_pipeline_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         pipeline_name = col1.text_input("Pipeline Name *")
-        connector_type = col2.selectbox("Pipeline Type", PIPELINE_TYPES)
-        source_url = st.text_input("Source URL *")
+        connector_type = col2.selectbox("Connector (Fetch)", CONNECTOR_TYPES)
+        
+        col_p, col_n = st.columns(2)
+        parser_type = col_p.selectbox("Parser (Extract)", PARSER_TYPES)
+        normalizer_type = col_n.selectbox("Normalizer (Map)", NORMALIZER_TYPES)
+
+        source_url = st.text_input("Source URL (Optional for SEC)")
         
         # Context links
         st.caption("Optional: Link this pipeline to an existing CRM record")
@@ -67,6 +70,8 @@ with tab1:
                 p = Pipeline(
                     pipeline_name=pipeline_name,
                     connector_type=connector_type,
+                    parser_type=parser_type,
+                    normalizer_type=normalizer_type,
                     source_url=source_url,
                     organization_id=org_id if org_id else None,
                     program_cohort_id=cohort_id if cohort_id else None,
@@ -92,7 +97,12 @@ with tab1:
                 with st.form(f"edit_pipe_{p.id}"):
                     col1, col2 = st.columns(2)
                     new_name = col1.text_input("Name", value=p.pipeline_name, key=f"name_{p.id}")
-                    new_type = col2.selectbox("Type", PIPELINE_TYPES, index=PIPELINE_TYPES.index(p.connector_type) if p.connector_type in PIPELINE_TYPES else 0, key=f"type_{p.id}")
+                    new_conn = col2.selectbox("Connector", CONNECTOR_TYPES, index=CONNECTOR_TYPES.index(p.connector_type) if p.connector_type in CONNECTOR_TYPES else 0, key=f"conn_{p.id}")
+                    
+                    col_p, col_n = st.columns(2)
+                    new_parser = col_p.selectbox("Parser", PARSER_TYPES, index=PARSER_TYPES.index(p.parser_type) if p.parser_type in PARSER_TYPES else 0, key=f"pars_{p.id}")
+                    new_norm = col_n.selectbox("Normalizer", NORMALIZER_TYPES, index=NORMALIZER_TYPES.index(p.normalizer_type) if p.normalizer_type in NORMALIZER_TYPES else 0, key=f"norm_{p.id}")
+
                     new_url = st.text_input("Source URL", value=p.source_url or "", key=f"url_{p.id}")
                     
                     new_instr = st.text_area("LLM Instruction", value=cfg.get("llm_instruction", ""), key=f"instr_{p.id}")
@@ -108,7 +118,9 @@ with tab1:
                     
                     if st.form_submit_button("💾 Save"):
                         p.pipeline_name = new_name
-                        p.connector_type = new_type
+                        p.connector_type = new_conn
+                        p.parser_type = new_parser
+                        p.normalizer_type = new_norm
                         p.source_url = new_url
                         p.program_cohort_id = new_cohort if new_cohort else None
                         new_cfg = dict(cfg)

@@ -50,199 +50,114 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
     )
     db.add(run)
     db.commit()
-    db.refresh(run)
-
     try:
-        url = pipeline.source_url or ""
-        is_deep_scrape = config.get("deep_scrape", False)
+        from market_comps.ingestion.registry import get_fetcher, get_preparer, get_extractor, get_normalizer, get_updater
 
-        # --- STEP 2: EXTRACT — Fetch raw content ---
-        logger.info(f"[Pipeline {pipeline.id}] Step 2: Fetching {url}")
-        
+        config = pipeline.config_json or {}
+
+        # 1. FETCH
+        logger.info(f"[Pipeline {pipeline.id}] Step 1: Fetching (connector={pipeline.connector_type})")
         fetch_step = PipelineRunStep(
-            pipeline_run_id=run.id,
-            step_order=1,
-            step_name="FETCH_WEB_PAGE",
-            step_type="FETCH",
-            method=pipeline.connector_type,
-            started_at=datetime.utcnow(),
-            status="RUNNING"
+            pipeline_run_id=run.id, step_order=1, step_name="FETCH",
+            step_type="FETCH", method=pipeline.connector_type,
+            started_at=datetime.utcnow(), status="RUNNING"
         )
         db.add(fetch_step)
         db.flush()
 
-        text_content = fetch_page_text(url)
-        
+        fetcher = get_fetcher(pipeline.connector_type)
+        raw_data = fetcher.fetch_data(db, run, pipeline)
+
         fetch_step.completed_at = datetime.utcnow()
         fetch_step.status = "SUCCESS"
-        fetch_step.output_count = 1
         db.add(fetch_step)
-
-        content_hash = hashlib.sha256(text_content.encode()).hexdigest()
-        
-        source_doc = SourceDocument(
-            pipeline_run_id=run.id,
-            document_type="WEB_PAGE",
-            source_url=url,
-            content_hash=content_hash,
-        )
-        db.add(source_doc)
         db.flush()
 
-        doc_text = DocumentText(
-            source_document_id=source_doc.id,
-            data_type="PAGE_TEXT",
-            raw_content=text_content,
-            content_hash=content_hash,
+        # 2. PREPARE
+        logger.info(f"[Pipeline {pipeline.id}] Step 2: Prepare (parser={pipeline.parser_type})")
+        prep_step = PipelineRunStep(
+            pipeline_run_id=run.id, step_order=2, step_name="PREPARE",
+            step_type="PREPARE", method=pipeline.parser_type,
+            started_at=datetime.utcnow(), status="RUNNING"
         )
-        db.add(doc_text)
+        db.add(prep_step)
         db.flush()
 
-        job = ExtractionJob(
-            pipeline_run_id=run.id,
-            document_text_id=doc_text.id,
-            schema_name="PROGRAM_COMPANY_SCHEMA",
-            status="IN_PROGRESS",
-            started_at=datetime.utcnow()
+        preparer = get_preparer(pipeline.parser_type)
+        prepared_data = preparer.prepare_raw_data(db, run, pipeline, raw_data)
+
+        prep_step.completed_at = datetime.utcnow()
+        prep_step.status = "SUCCESS"
+        db.add(prep_step)
+        db.flush()
+
+        # 3. EXTRACT
+        logger.info(f"[Pipeline {pipeline.id}] Step 3: Extract (parser={pipeline.parser_type})")
+        ext_step = PipelineRunStep(
+            pipeline_run_id=run.id, step_order=3, step_name="EXTRACT",
+            step_type="ATTRIBUTE_EXTRACTION", method=pipeline.parser_type,
+            started_at=datetime.utcnow(), status="RUNNING"
         )
-        db.add(job)
+        db.add(ext_step)
+        db.flush()
+
+        extractor = get_extractor(pipeline.parser_type)
+        extracted_data = extractor.extract_attributes(db, run, pipeline, prepared_data)
+
+        ext_step.completed_at = datetime.utcnow()
+        ext_step.status = "SUCCESS"
+        db.add(ext_step)
+        db.flush()
+
+        # 4. NORMALIZE
+        logger.info(f"[Pipeline {pipeline.id}] Step 4: Normalize (normalizer={pipeline.normalizer_type})")
+        norm_step = PipelineRunStep(
+            pipeline_run_id=run.id, step_order=4, step_name="NORMALIZE",
+            step_type="NORMALIZATION", method=pipeline.normalizer_type,
+            started_at=datetime.utcnow(), status="RUNNING"
+        )
+        db.add(norm_step)
+        db.flush()
+
+        normalizer = get_normalizer(pipeline.normalizer_type)
+        normalized_data = normalizer.normalize_data(db, run, pipeline, extracted_data)
+
+        norm_step.completed_at = datetime.utcnow()
+        norm_step.status = "SUCCESS"
+        db.add(norm_step)
+        db.flush()
+
+        # 5. UPDATE
+        # Note: the generic updater handles reconciliation logic currently.
+        # We assume the config specifies updater type if we decouple it entirely in the future.
+        updater_type = config.get("updater_type", "RECORD_UPDATER")
+        logger.info(f"[Pipeline {pipeline.id}] Step 5: Update (updater={updater_type})")
+        upd_step = PipelineRunStep(
+            pipeline_run_id=run.id, step_order=5, step_name="UPDATE",
+            step_type="UPDATE", method=updater_type,
+            started_at=datetime.utcnow(), status="RUNNING"
+        )
+        db.add(upd_step)
+        db.flush()
+
+        updater = get_updater(updater_type)
+        update_stats = updater.update_records(db, run, pipeline, normalized_data)
+
+        upd_step.completed_at = datetime.utcnow()
+        upd_step.status = "SUCCESS"
+        db.add(upd_step)
         db.flush()
 
         all_logs = {"steps": []}
+        all_logs["steps"].append({"reconciliation": update_stats})
+        if isinstance(extracted_data, dict) and "deep_logs" in extracted_data:
+            all_logs["steps"].append({"step": "deep_scrape", "profiles": extracted_data["deep_logs"]})
 
-        # --- STEP 3: TRANSFORM — LLM extraction ---
-        logger.info(f"[Pipeline {pipeline.id}] Step 3: LLM extraction (type={pipeline.connector_type})")
-        
-        extract_step = PipelineRunStep(
-            pipeline_run_id=run.id,
-            step_order=2,
-            step_name="LLM_EXTRACTION",
-            step_type="ATTRIBUTE_EXTRACTION",
-            method=pipeline.parser_type,
-            started_at=datetime.utcnow(),
-            status="RUNNING"
-        )
-        db.add(extract_step)
-        db.flush()
-
-        extraction_result = extract_entities_from_text(
-            db, run, job, doc_text, pipeline.connector_type, config
-        )
-        
-        extract_step.completed_at = datetime.utcnow()
-        extract_step.status = "SUCCESS"
-        extract_step.output_count = extraction_result.get("entities_extracted", 0)
-        db.add(extract_step)
-        all_logs["steps"].append({
-            "step": "extract_directory",
-            "entities": extraction_result["entities_extracted"],
-            "relationships": extraction_result["relationships_extracted"],
-            "llm_usage": extraction_result["llm_usage"]
-        })
-
-        # Deep scrape: visit profile pages for enrichment
-        if is_deep_scrape:
-            companies_raw = extraction_result.get("companies_raw", [])
-            deep_logs = []
-
-            for i, c in enumerate(companies_raw):
-                if not isinstance(c, dict):
-                    continue
-                profile_path = c.get("profile_path") or c.get("detail_page_path") or ""
-                if not profile_path:
-                    deep_logs.append({"company": c.get("name"), "status": "no_profile_path"})
-                    continue
-
-                profile_url = urljoin(url, profile_path)
-                logger.info(f"[Pipeline {pipeline.id}] Deep scrape ({i+1}/{len(companies_raw)}): {profile_url}")
-
-                try:
-                    profile_text = fetch_page_text(profile_url)
-                    profile_hash = hashlib.sha256(profile_text.encode()).hexdigest()
-
-                    profile_doc = SourceDocument(
-                        pipeline_run_id=run.id,
-                        document_type="WEB_PAGE",
-                        source_url=profile_url,
-                        content_hash=profile_hash,
-                    )
-                    db.add(profile_doc)
-                    db.flush()
-
-                    profile_text_obj = DocumentText(
-                        source_document_id=profile_doc.id,
-                        data_type="PROFILE_TEXT",
-                        raw_content=profile_text,
-                        content_hash=profile_hash,
-                    )
-                    db.add(profile_text_obj)
-                    db.flush()
-
-                    profile_job = ExtractionJob(
-                        pipeline_run_id=run.id,
-                        document_text_id=profile_text_obj.id,
-                        schema_name="PROFILE_DETAIL_SCHEMA",
-                        status="IN_PROGRESS",
-                        started_at=datetime.utcnow()
-                    )
-                    db.add(profile_job)
-                    db.flush()
-
-                    detail_result = extract_profile_detail(
-                        db, run, profile_job, profile_text_obj, c.get("name", "Unknown")
-                    )
-                    deep_logs.append({
-                        "company": c.get("name"),
-                        "profile_url": profile_url,
-                        "status": "success",
-                        "detail": detail_result.get("detail"),
-                        "llm_usage": detail_result.get("llm_usage"),
-                        "text_preview": profile_text[:1500]
-                    })
-
-                    # Merge detail into the matching ExtractedEntity
-                    _merge_profile_into_entity(db, run, profile_job, c.get("name"), detail_result.get("detail", {}))
-
-                except Exception as e:
-                    deep_logs.append({
-                        "company": c.get("name"),
-                        "profile_url": profile_url,
-                        "status": "error",
-                        "error": str(e)
-                    })
-                    logger.warning(f"[Pipeline] Deep scrape failed for {profile_url}: {e}")
-
-            all_logs["steps"].append({"step": "deep_scrape", "profiles": deep_logs})
-
-        # --- STEP 4: LOAD — Reconcile ---
-        logger.info(f"[Pipeline {pipeline.id}] Step 4: Reconciling into CRM")
-        
-        write_step = PipelineRunStep(
-            pipeline_run_id=run.id,
-            step_order=3,
-            step_name="CANONICAL_WRITE",
-            step_type="NORMALIZATION",
-            method=pipeline.normalizer_type,
-            started_at=datetime.utcnow(),
-            status="RUNNING"
-        )
-        db.add(write_step)
-        db.flush()
-
-        recon_stats = reconcile_all(db, run, pipeline)
-        
-        write_step.completed_at = datetime.utcnow()
-        write_step.status = "SUCCESS"
-        write_step.records_created = recon_stats.get("orgs_created", 0) + recon_stats.get("people_created", 0)
-        db.add(write_step)
-
-        all_logs["steps"].append({"reconciliation": recon_stats})
-
-        # --- STEP 5: Complete ---
-        total_created = recon_stats.get("orgs_created", 0) + recon_stats.get("people_created", 0)
+        # --- STEP 6: Complete ---
+        total_created = update_stats.get("orgs_created", 0) + update_stats.get("people_created", 0) + update_stats.get("funds_created", 0)
         run.run_status = "SUCCESS"
         run.completed_at = datetime.utcnow()
-        run.records_processed = extraction_result["entities_extracted"]
+        run.records_processed = 0 # Placeholder for total processed records
         run.records_created = total_created
         run.logs_json = all_logs
 
