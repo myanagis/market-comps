@@ -383,6 +383,13 @@ with tab_funds:
                 "Raised": f.fund_size_raised or "",
                 "Target": f.fund_size_target or "",
                 "Status": f.status or "",
+                "Street 1": f.street1 or "",
+                "Street 2": f.street2 or "",
+                "City": f.city or "",
+                "State": f.state or "",
+                "Country": f.country or "",
+                "Zip Code": f.zip_code or "",
+                "Description": f.description or ""
             })
             
         import pandas as pd
