@@ -214,6 +214,11 @@ with tab3:
                 if selected_run.run_status == "FAILED" and selected_run.error_message:
                     st.error(f"**Pipeline Error:**\n\n```\n{selected_run.error_message}\n```")
                 
+                # Show run config
+                run_cfg = selected_run.pipeline.config_json if selected_run.pipeline else {}
+                with st.expander("⚙️ Pipeline Configuration", expanded=False):
+                    st.json(run_cfg)
+                
                 # 1. Show Run Steps
                 if selected_run.steps:
                     st.markdown("#### 1. Pipeline Execution Steps (`PipelineRunStep`)")

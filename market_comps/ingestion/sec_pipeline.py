@@ -31,45 +31,60 @@ def sec_get(url: str) -> requests.Response:
 class SECFormDFetcher(BaseFetcher):
     def fetch_data(self, db: Session, run: PipelineRun, pipeline: Pipeline) -> list[dict]:
         config = pipeline.config_json or {}
-        count = config.get("days_back", 7) * 50 # Just grab recent filings (e.g. 50 per day approx)
-        if count > 200: count = 200
-
-        url = f"{SEC_BASE}/cgi-bin/browse-edgar?action=getcurrent&type=D&owner=include&count={count}"
-        logger.info(f"Requesting recent Form D filings: {url}")
-
-        html = sec_get(url).text
-        soup = BeautifulSoup(html, "html.parser")
-
+        days_back = config.get("days_back", 7)
+        total_target = days_back * 50 # Approx 50 per day
+        
         filings = []
-        for row in soup.select("tr"):
-            row_text = " ".join(row.get_text(" ", strip=True).split())
-            if "Accession Number:" not in row_text:
-                continue
+        start_idx = 0
+        
+        while len(filings) < total_target:
+            fetch_count = min(100, total_target - len(filings))
+            url = f"{SEC_BASE}/cgi-bin/browse-edgar?action=getcurrent&type=D&owner=include&count={fetch_count}&start={start_idx}"
+            logger.info(f"Requesting recent Form D filings: {url}")
 
-            accession_match = re.search(r"Accession Number:\s*([0-9-]+)", row_text)
-            filing_date_match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", row_text)
+            html = sec_get(url).text
+            soup = BeautifulSoup(html, "html.parser")
 
-            accession_number = accession_match.group(1) if accession_match else None
-            filing_date = filing_date_match.group(1) if filing_date_match else None
+            rows = soup.select("tr")
+            if not rows or len(rows) < 2:
+                break # No more results
 
-            filing_url = None
-            for link in row.find_all("a", href=True):
-                href = link["href"]
-                if "Archives/edgar/data" in href:
-                    filing_url = urljoin(SEC_BASE, href)
-                    break
+            added_this_page = 0
+            for row in rows:
+                row_text = " ".join(row.get_text(" ", strip=True).split())
+                if "Accession Number:" not in row_text:
+                    continue
 
-            form_type = "D/A" if "D/A" in row_text else "D"
-            issuer_guess = row_text.split("Accession Number:")[0].strip()
+                accession_match = re.search(r"Accession Number:\s*([0-9-]+)", row_text)
+                filing_date_match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", row_text)
 
-            if accession_number and filing_url:
-                filings.append({
-                    "accession_number": accession_number,
-                    "filing_date": filing_date,
-                    "form_type": form_type,
-                    "issuer_guess": issuer_guess,
-                    "filing_url": filing_url,
-                })
+                accession_number = accession_match.group(1) if accession_match else None
+                filing_date = filing_date_match.group(1) if filing_date_match else None
+
+                filing_url = None
+                for link in row.find_all("a", href=True):
+                    href = link["href"]
+                    if "Archives/edgar/data" in href:
+                        filing_url = urljoin(SEC_BASE, href)
+                        break
+
+                form_type = "D/A" if "D/A" in row_text else "D"
+                issuer_guess = row_text.split("Accession Number:")[0].strip()
+
+                if accession_number and filing_url:
+                    filings.append({
+                        "accession_number": accession_number,
+                        "filing_date": filing_date,
+                        "form_type": form_type,
+                        "issuer_guess": issuer_guess,
+                        "filing_url": filing_url
+                    })
+                    added_this_page += 1
+            
+            if added_this_page == 0:
+                break # We paginated but found no valid Form D rows
+                
+            start_idx += 100
 
         # dedupe
         seen = set()
