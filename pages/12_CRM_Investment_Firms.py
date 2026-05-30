@@ -13,7 +13,9 @@ from market_comps.ingestion.reconciler import log_mutation
 st.set_page_config(page_title="Investment Firms Directory", page_icon="🏦", layout="wide")
 
 st.title("🏦 Investment Firms Directory")
-st.markdown("Browse and search investment firms in the CRM.")
+st.markdown("Browse and search investment firms and their funds in the CRM.")
+
+tab_firms, tab_funds = st.tabs(["Investment Firms", "Fund Profiles"])
 
 # Get database session
 try:
@@ -295,68 +297,94 @@ def display_investor_details(investor_id):
         else:
             st.info("No mutation entries found.")
 
-# Fetch and query data
-search_query = st.text_input("Search Investors...", placeholder="Search by name, domain, or website...")
+with tab_firms:
+    search_query = st.text_input("Search Investors...", placeholder="Search by name, domain, or website...")
 
-q = db.query(Organization).options(
-    joinedload(Organization.investor_profile)
-).filter(Organization.organization_type == "INVESTOR")
+    q = db.query(Organization).options(
+        joinedload(Organization.investor_profile)
+    ).filter(Organization.organization_type == "INVESTOR")
 
-if search_query:
-    search_filter = f"%{search_query}%"
-    q = q.filter(
-        or_(
-            Organization.name.ilike(search_filter),
-            Organization.normalized_name.ilike(search_filter),
-            Organization.primary_domain.ilike(search_filter)
+    if search_query:
+        search_filter = f"%{search_query}%"
+        q = q.filter(
+            or_(
+                Organization.name.ilike(search_filter),
+                Organization.normalized_name.ilike(search_filter),
+                Organization.primary_domain.ilike(search_filter)
+            )
         )
-    )
 
-orgs = q.order_by(Organization.created_at.desc()).limit(200).all()
+    orgs = q.order_by(Organization.created_at.desc()).limit(200).all()
 
-# Prepare Dataframe
-data = []
-for o in orgs:
-    row = {
-        "ID": o.id,
-        "Name": o.name,
-        "Domain": o.primary_domain,
-        "Website": o.website_url,
-        "City": o.city,
-        "Status": o.status,
-        "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
-    }
-    if o.investor_profile:
-        row["Inv Type"] = o.investor_profile.investor_type
-        row["Pref Stage"] = o.investor_profile.preferred_stage
-    data.append(row)
-
-df = pd.DataFrame(data)
-
-if df.empty:
-    st.info("No investor records found.")
-else:
-    st.write("👆 *Select an investor row below to inspect full details.*")
-    
-    event = st.dataframe(
-        df,
-        key="grid_investors",
-        on_select="rerun",
-        selection_mode="single-row",
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "ID": None, # Hide ID
-            "Website": st.column_config.LinkColumn("Website"),
-            "Created": st.column_config.DateColumn("Created")
+    # Prepare Dataframe
+    data = []
+    for o in orgs:
+        row = {
+            "ID": o.id,
+            "Name": o.name,
+            "Domain": o.primary_domain,
+            "Website": o.website_url,
+            "City": o.city,
+            "Status": o.status,
+            "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
         }
-    )
+        if o.investor_profile:
+            row["Inv Type"] = o.investor_profile.investor_type
+            row["Pref Stage"] = o.investor_profile.preferred_stage
+        data.append(row)
+
+    df = pd.DataFrame(data)
+
+    if df.empty:
+        st.info("No investor records found.")
+    else:
+        st.write("👆 *Select an investor row below to inspect full details.*")
+        
+        event = st.dataframe(
+            df,
+            key="grid_investors",
+            on_select="rerun",
+            selection_mode="single-row",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "ID": None, # Hide ID
+                "Website": st.column_config.LinkColumn("Website"),
+                "Created": st.column_config.DateColumn("Created")
+            }
+        )
+        
+        selection = event.get("selection", {})
+        rows = selection.get("rows", [])
+        
+        if rows:
+            st.divider()
+            selected_row_idx = rows[0]
+            selected_investor_id = df.iloc[selected_row_idx]["ID"]
+            display_investor_details(selected_investor_id)
+
+with tab_funds:
+    st.subheader("💰 All Fund Profiles")
     
-    selection = event.get("selection", {})
-    rows = selection.get("rows", [])
+    fund_q = db.query(FundProfile).join(Organization).order_by(FundProfile.created_at.desc())
+    funds = fund_q.all()
     
-    if rows:
-        st.divider()
-        selected_row_idx = rows[0]
-        selected_investor_id = df.iloc[selected_row_idx]["ID"]
-        display_investor_details(selected_investor_id)
+    if not funds:
+        st.info("No funds found in the CRM.")
+    else:
+        fund_data = []
+        for f in funds:
+            fund_data.append({
+                "Fund ID": f.id,
+                "Investment Firm": f.parent_organization.name if f.parent_organization else "Unknown",
+                "Fund Name": f.fund_name,
+                "Fund Type": f.fund_type or f.investment_fund_type or "",
+                "Vintage": str(f.vintage_year) if f.vintage_year else "",
+                "Raised": f.fund_size_raised or "",
+                "Target": f.fund_size_target or "",
+                "Status": f.status or "",
+            })
+            
+        import pandas as pd
+        fund_df = pd.DataFrame(fund_data)
+        st.dataframe(fund_df, use_container_width=True, hide_index=True)
