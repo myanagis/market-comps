@@ -111,7 +111,7 @@ class SECFormDXMLPreparer(BasePreparer):
     def prepare_raw_data(self, db: Session, run: PipelineRun, pipeline: Pipeline, raw_data: list[dict]) -> list[DocumentText]:
         doc_texts = []
         # For cost/time, limit to a small number unless explicitly overriden
-        limit = pipeline.config_json.get("max_filings_to_process", 10) if pipeline.config_json else 10
+        limit = pipeline.config_json.get("max_filings_to_process", 50) if pipeline.config_json else 50
         
         for filing in raw_data[:limit]:
             try:

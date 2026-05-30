@@ -55,9 +55,10 @@ with tab1:
         
         # Config
         llm_instr = st.text_area("LLM Instruction (optional)", help="Custom instructions for the LLM extraction step")
-        col_c1, col_c2 = st.columns(2)
+        col_c1, col_c2, col_c3 = st.columns(3)
         deep_scrape = col_c1.checkbox("Enable Deep Scrape", help="Visit each company's profile page for rich data")
-        days_back = col_c2.number_input("Days Back (SEC only)", min_value=1, max_value=365, value=7, help="How many days of SEC Form D filings to fetch")
+        days_back = col_c2.number_input("Days Back (SEC)", min_value=1, max_value=365, value=7, help="How many days of SEC Form D filings to fetch")
+        max_filings = col_c3.number_input("Max Filings (SEC)", min_value=1, max_value=1000, value=50, help="Maximum number of filings to actually process per run (to limit cost)")
         
         if st.form_submit_button("Create Pipeline"):
             if not pipeline_name or not source_url:
@@ -70,6 +71,8 @@ with tab1:
                     config["deep_scrape"] = True
                 if days_back != 7:
                     config["days_back"] = days_back
+                if max_filings != 10:
+                    config["max_filings_to_process"] = max_filings
                     
                 p = Pipeline(
                     pipeline_name=pipeline_name,
@@ -110,9 +113,10 @@ with tab1:
                     new_url = st.text_input("Source URL", value=p.source_url or "", key=f"url_{p.id}")
                     
                     new_instr = st.text_area("LLM Instruction", value=cfg.get("llm_instruction", ""), key=f"instr_{p.id}")
-                    col_cfg1, col_cfg2 = st.columns(2)
+                    col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
                     new_deep = col_cfg1.checkbox("Deep Scrape", value=cfg.get("deep_scrape", False), key=f"deep_{p.id}")
-                    new_days = col_cfg2.number_input("Days Back (SEC)", min_value=1, max_value=365, value=cfg.get("days_back", 7), key=f"days_{p.id}")
+                    new_days = col_cfg2.number_input("Days Back", min_value=1, max_value=365, value=cfg.get("days_back", 7), key=f"days_{p.id}")
+                    new_max = col_cfg3.number_input("Max Filings", min_value=1, max_value=1000, value=cfg.get("max_filings_to_process", 10), key=f"max_{p.id}")
                     
                     # Cohort selector
                     cohort_opts_edit = {0: "-- None --"}
@@ -134,6 +138,7 @@ with tab1:
                         elif "llm_instruction" in new_cfg: del new_cfg["llm_instruction"]
                         new_cfg["deep_scrape"] = new_deep
                         new_cfg["days_back"] = new_days
+                        new_cfg["max_filings_to_process"] = new_max
                         p.config_json = new_cfg
                         db.commit()
                         st.success(f"Updated: {new_name}")
