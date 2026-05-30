@@ -148,7 +148,9 @@ def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
         db.add(upd_step)
         db.flush()
 
-        all_logs = {"steps": []}
+        all_logs = run.logs_json or {}
+        if "steps" not in all_logs:
+            all_logs["steps"] = []
         all_logs["steps"].append({"reconciliation": update_stats})
         if isinstance(extracted_data, dict) and "deep_logs" in extracted_data:
             all_logs["steps"].append({"step": "deep_scrape", "profiles": extracted_data["deep_logs"]})
