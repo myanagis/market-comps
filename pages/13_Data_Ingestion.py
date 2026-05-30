@@ -204,8 +204,8 @@ with tab3:
             from sqlalchemy.orm import joinedload
             selected_run = db.query(PipelineRun).options(
                 joinedload(PipelineRun.steps),
-                joinedload(PipelineRun.source_documents).joinedload(SourceDocument.texts),
-                joinedload(PipelineRun.extraction_jobs).joinedload(ExtractionJob.entities)
+                joinedload(PipelineRun.source_documents).joinedload(SourceDocument.document_texts),
+                joinedload(PipelineRun.extraction_jobs).joinedload(ExtractionJob.extracted_entities)
             ).filter_by(id=selected_run_id).first()
             
             if selected_run:
@@ -247,7 +247,7 @@ with tab3:
                     
                     with st.expander("📄 View Raw Document Texts"):
                         for doc in selected_run.source_documents:
-                            for t in doc.texts:
+                            for t in doc.document_texts:
                                 st.caption(f"**Doc {doc.id} | Text {t.id} | {t.data_type}**")
                                 st.code((t.raw_content or "")[:1500] + ("..." if len(t.raw_content or "") > 1500 else ""), language=None)
                 else:
@@ -262,14 +262,14 @@ with tab3:
                             "Job ID": job.id,
                             "Schema": job.schema_name,
                             "Status": job.status,
-                            "LLM Tokens": job.tokens_used,
-                            "Entities Found": len(job.entities)
+                            "LLM Tokens": job.tokens_used if hasattr(job, "tokens_used") else 0,
+                            "Entities Found": len(job.extracted_entities)
                         })
                     st.dataframe(pd.DataFrame(job_data), use_container_width=True, hide_index=True)
                     
                     with st.expander("🧠 View Raw Extracted Entities"):
                         for job in selected_run.extraction_jobs:
-                            for ent in job.entities:
+                            for ent in job.extracted_entities:
                                 st.markdown(f"**Entity {ent.id} | {ent.entity_type} | {ent.raw_name}**")
                                 st.json(ent.extracted_payload_json)
                 else:
