@@ -36,10 +36,12 @@ class SECFormDFetcher(BaseFetcher):
         
         filings = []
         start_idx = 0
+        urls_fetched = []
         
         while len(filings) < total_target:
             fetch_count = min(100, total_target - len(filings))
             url = f"{SEC_BASE}/cgi-bin/browse-edgar?action=getcurrent&type=D&owner=include&count={fetch_count}&start={start_idx}"
+            urls_fetched.append(url)
             logger.info(f"Requesting recent Form D filings: {url}")
 
             html = sec_get(url).text
@@ -88,13 +90,22 @@ class SECFormDFetcher(BaseFetcher):
 
         # dedupe
         seen = set()
-        unique = []
+        unique_filings = []
         for f in filings:
             if f["accession_number"] not in seen:
                 seen.add(f["accession_number"])
-                unique.append(f)
+                unique_filings.append(f)
                 
-        return unique
+        # Log to the run for troubleshooting
+        current_logs = run.logs_json or {}
+        current_logs["sec_fetch_urls"] = urls_fetched
+        current_logs["sec_days_back"] = days_back
+        current_logs["sec_total_fetched"] = len(unique_filings)
+        run.logs_json = current_logs
+        db.add(run)
+        db.flush()
+
+        return unique_filings
 
 class SECFormDXMLPreparer(BasePreparer):
     def prepare_raw_data(self, db: Session, run: PipelineRun, pipeline: Pipeline, raw_data: list[dict]) -> list[DocumentText]:
