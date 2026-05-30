@@ -83,6 +83,7 @@ class FundProfile(Base, TimestampMixin):
     fund_size_target = Column(String)
     status = Column(String)
     description = Column(String)
+    accession_number = Column(String)
 
     # Address fields
     street1 = Column(String)

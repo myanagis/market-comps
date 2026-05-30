@@ -173,19 +173,23 @@ class SECFormDExtractor(BaseExtractor):
                     lname = pf("lastName")
                     mname = pf("middleName")
                     full = " ".join(x for x in [fname, mname, lname] if x)
+                    rel = pf("relationship")
+                    clarif = pf("relationshipClarification")
+                    rel_full = f"{rel} ({clarif})" if rel and clarif else (rel or clarif)
+                    
                     people.append({
                         "name": full or pf("relatedPersonName"),
                         "first_name": fname,
                         "last_name": lname,
-                        "relationship": pf("relationship"),
+                        "relationship": rel_full,
                         "city": pf("city"),
                         "state": pf("stateOrCountry"),
                     })
 
                 data = {
-                    "xml_url": doc.source_document.source_url,
+                    "accession_number": doc.source_document.source_url.split("/")[-1].replace(".xml", ""),
                     "issuer_name": first_text("issuerName"),
-                    "industry_group": first_text("industryGroupType"),
+                    "industry_group": ", ".join(all_texts("investmentFundType")) or first_text("industryGroupType"),
                     "total_offering_amount": first_text("totalOfferingAmount"),
                     "total_amount_sold": first_text("totalAmountSold"),
                     "issuer_address": address,
@@ -196,26 +200,45 @@ class SECFormDExtractor(BaseExtractor):
                 logger.error(f"Failed to extract {doc.id}: {e}")
                 
         return results
+from market_comps.llm_client import LLMClient
+import json
 
 class SECFormDNormalizer(BaseNormalizer):
     def normalize_data(self, db: Session, run: PipelineRun, pipeline: Pipeline, extracted_data: list[dict]) -> list[dict]:
-        # Form D mapping logic
-        # For each filing, map to a dict that the updater can easily upsert
         normalized = []
+        llm = LLMClient()
+        
         for filing in extracted_data:
             issuer_name = filing.get("issuer_name")
             if not issuer_name:
                 continue
 
-            # Strip suffix to guess Firm name (e.g., XYZ Fund II, L.P. -> XYZ)
-            # A simplistic heuristic for the Firm name:
-            firm_name = issuer_name.split(" Fund ")[0].split(" LLC")[0].split(" L.P.")[0].split(" LP")[0]
-            
             addr = filing.get("issuer_address", {})
+            people = filing.get("related_persons", [])
+            
+            # Use LLM to deduce firm name
+            prompt = f"""Given the following SEC Form D filing data for an investment fund, deduce the likely name of the overarching parent Investment Management Firm.
+For example, if the fund is "PUMA Venture Capital Fund II, LP", the firm is likely "PUMA Venture Capital".
+If the fund is "Sequoia Capital U.S. Growth Fund VIII, L.P.", the firm is likely "Sequoia Capital".
+
+Fund Name: {issuer_name}
+Fund Address: {addr.get('city')}, {addr.get('state_or_country')}
+Related People/Entities: {[p.get('name') for p in people]}
+
+Respond ONLY with the deduced firm name. Do not include any other text."""
+            
+            try:
+                firm_name_raw, usage = llm.chat_completion([{"role": "user", "content": prompt}], step_name="deduce_firm_name")
+                firm_name = firm_name_raw.strip('"').strip()
+            except Exception as e:
+                logger.error(f"LLM deduction failed for firm name: {e}")
+                firm_name = issuer_name.split(" Fund ")[0].split(" LLC")[0].split(" L.P.")[0].split(" LP")[0]
+            
             fund_data = {
+                "accession_number": filing.get("accession_number"),
                 "firm_name": firm_name,
                 "fund_name": issuer_name,
-                "fund_type": "Venture" if "Venture" in (filing.get("industry_group") or "") else filing.get("industry_group"),
+                "fund_type": filing.get("industry_group"),
                 "fund_size_raised": filing.get("total_amount_sold"),
                 "fund_size_target": filing.get("total_offering_amount"),
                 "street1": addr.get("street1"),
@@ -268,6 +291,7 @@ class SECFormDUpdater(BaseUpdater):
                     state=data.get("state"),
                     country=data.get("country"),
                     zip_code=data.get("zip_code"),
+                    accession_number=data.get("accession_number")
                 )
                 db.add(fund)
                 db.flush()

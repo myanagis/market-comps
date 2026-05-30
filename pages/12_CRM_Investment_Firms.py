@@ -378,6 +378,7 @@ with tab_funds:
                 "Fund ID": f.id,
                 "Investment Firm": f.parent_organization.name if f.parent_organization else "Unknown",
                 "Fund Name": f.fund_name,
+                "Accession Number": f.accession_number or "",
                 "Fund Type": f.fund_type or f.investment_fund_type or "",
                 "Vintage": str(f.vintage_year) if f.vintage_year else "",
                 "Raised": f.fund_size_raised or "",
