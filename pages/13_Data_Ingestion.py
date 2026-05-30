@@ -55,7 +55,9 @@ with tab1:
         
         # Config
         llm_instr = st.text_area("LLM Instruction (optional)", help="Custom instructions for the LLM extraction step")
-        deep_scrape = st.checkbox("Enable Deep Scrape", help="Visit each company's profile page for rich data")
+        col_c1, col_c2 = st.columns(2)
+        deep_scrape = col_c1.checkbox("Enable Deep Scrape", help="Visit each company's profile page for rich data")
+        days_back = col_c2.number_input("Days Back (SEC only)", min_value=1, max_value=365, value=7, help="How many days of SEC Form D filings to fetch")
         
         if st.form_submit_button("Create Pipeline"):
             if not pipeline_name or not source_url:
@@ -66,6 +68,8 @@ with tab1:
                     config["llm_instruction"] = llm_instr
                 if deep_scrape:
                     config["deep_scrape"] = True
+                if days_back != 7:
+                    config["days_back"] = days_back
                     
                 p = Pipeline(
                     pipeline_name=pipeline_name,
@@ -106,7 +110,9 @@ with tab1:
                     new_url = st.text_input("Source URL", value=p.source_url or "", key=f"url_{p.id}")
                     
                     new_instr = st.text_area("LLM Instruction", value=cfg.get("llm_instruction", ""), key=f"instr_{p.id}")
-                    new_deep = st.checkbox("Deep Scrape", value=cfg.get("deep_scrape", False), key=f"deep_{p.id}")
+                    col_cfg1, col_cfg2 = st.columns(2)
+                    new_deep = col_cfg1.checkbox("Deep Scrape", value=cfg.get("deep_scrape", False), key=f"deep_{p.id}")
+                    new_days = col_cfg2.number_input("Days Back (SEC)", min_value=1, max_value=365, value=cfg.get("days_back", 7), key=f"days_{p.id}")
                     
                     # Cohort selector
                     cohort_opts_edit = {0: "-- None --"}
@@ -124,8 +130,10 @@ with tab1:
                         p.source_url = new_url
                         p.program_cohort_id = new_cohort if new_cohort else None
                         new_cfg = dict(cfg)
-                        new_cfg["llm_instruction"] = new_instr
+                        if new_instr: new_cfg["llm_instruction"] = new_instr
+                        elif "llm_instruction" in new_cfg: del new_cfg["llm_instruction"]
                         new_cfg["deep_scrape"] = new_deep
+                        new_cfg["days_back"] = new_days
                         p.config_json = new_cfg
                         db.commit()
                         st.success(f"Updated: {new_name}")
