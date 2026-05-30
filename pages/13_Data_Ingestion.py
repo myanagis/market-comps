@@ -3,7 +3,7 @@ import json
 from market_comps.db.session import get_db
 import pandas as pd
 from market_comps.db.models import (
-    Pipeline, IngestionRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship,
+    Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship,
     Organization, ProgramProfile, ProgramCohort, FundProfile, EntityMatch
 )
 from market_comps.ingestion.pipeline_runner import run_pipeline
@@ -33,7 +33,7 @@ with tab1:
     with st.form("new_pipeline_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         pipeline_name = col1.text_input("Pipeline Name *")
-        pipeline_type = col2.selectbox("Pipeline Type", PIPELINE_TYPES)
+        connector_type = col2.selectbox("Pipeline Type", PIPELINE_TYPES)
         source_url = st.text_input("Source URL *")
         
         # Context links
@@ -66,7 +66,7 @@ with tab1:
                     
                 p = Pipeline(
                     pipeline_name=pipeline_name,
-                    pipeline_type=pipeline_type,
+                    connector_type=connector_type,
                     source_url=source_url,
                     organization_id=org_id if org_id else None,
                     program_cohort_id=cohort_id if cohort_id else None,
@@ -88,11 +88,11 @@ with tab1:
             deep_flag = "🔍" if cfg.get("deep_scrape") else ""
             cohort_label = f" → {p.program_cohort.program.program_name} / {p.program_cohort.cohort_name}" if p.program_cohort else ""
             
-            with st.expander(f"{deep_flag} **{p.pipeline_name}** ({p.pipeline_type}){cohort_label}"):
+            with st.expander(f"{deep_flag} **{p.pipeline_name}** ({p.connector_type}){cohort_label}"):
                 with st.form(f"edit_pipe_{p.id}"):
                     col1, col2 = st.columns(2)
                     new_name = col1.text_input("Name", value=p.pipeline_name, key=f"name_{p.id}")
-                    new_type = col2.selectbox("Type", PIPELINE_TYPES, index=PIPELINE_TYPES.index(p.pipeline_type) if p.pipeline_type in PIPELINE_TYPES else 0, key=f"type_{p.id}")
+                    new_type = col2.selectbox("Type", PIPELINE_TYPES, index=PIPELINE_TYPES.index(p.connector_type) if p.connector_type in PIPELINE_TYPES else 0, key=f"type_{p.id}")
                     new_url = st.text_input("Source URL", value=p.source_url or "", key=f"url_{p.id}")
                     
                     new_instr = st.text_area("LLM Instruction", value=cfg.get("llm_instruction", ""), key=f"instr_{p.id}")
@@ -108,7 +108,7 @@ with tab1:
                     
                     if st.form_submit_button("💾 Save"):
                         p.pipeline_name = new_name
-                        p.pipeline_type = new_type
+                        p.connector_type = new_type
                         p.source_url = new_url
                         p.program_cohort_id = new_cohort if new_cohort else None
                         new_cfg = dict(cfg)
@@ -129,7 +129,7 @@ with tab2:
     if not pipelines:
         st.warning("Create a pipeline first.")
     else:
-        pipe_opts = {p.id: f"{p.pipeline_name} ({p.pipeline_type})" for p in pipelines}
+        pipe_opts = {p.id: f"{p.pipeline_name} ({p.connector_type})" for p in pipelines}
         selected_id = st.selectbox("Select Pipeline", options=list(pipe_opts.keys()), format_func=lambda x: pipe_opts[x])
         
         if st.button("▶️ Run Pipeline", type="primary"):
@@ -140,7 +140,7 @@ with tab2:
                     st.success(f"Pipeline completed! Processed {run.records_processed} entities, created {run.records_created} records.")
                     
                     # Show extracted entities
-                    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.ingestion_run_id == run.id).all()
+                    entities = db.query(ExtractedEntity).join(ExtractionJob).filter(ExtractionJob.pipeline_run_id == run.id).all()
                     if entities:
                         st.subheader("Extracted Entities")
                         for e in entities:
@@ -160,14 +160,14 @@ with tab2:
 # --- TAB 3: PIPELINE RUNS ---
 with tab3:
     st.subheader("Recent Ingestion Runs")
-    runs = db.query(IngestionRun).order_by(IngestionRun.started_at.desc()).limit(20).all()
+    runs = db.query(PipelineRun).order_by(PipelineRun.started_at.desc()).limit(20).all()
     if runs:
         run_data = []
         for r in runs:
             run_data.append({
                 "Run ID": r.id,
                 "Source": r.pipeline.pipeline_name if r.pipeline else "Document Upload",
-                "Type": r.pipeline.pipeline_type if r.pipeline else "DOCUMENT",
+                "Type": r.pipeline.connector_type if r.pipeline else "DOCUMENT",
                 "Status": r.run_status,
                 "Started": r.started_at,
                 "Completed": r.completed_at,
@@ -181,7 +181,7 @@ with tab3:
         run_ids = [r.id for r in runs]
         selected_run_id = st.selectbox("View run details", run_ids)
         if selected_run_id:
-            selected_run = db.query(IngestionRun).filter_by(id=selected_run_id).first()
+            selected_run = db.query(PipelineRun).filter_by(id=selected_run_id).first()
             if selected_run:
                 if selected_run.run_status == "FAILED" and selected_run.error_message:
                     st.error(f"**Pipeline Error:**\n\n```\n{selected_run.error_message}\n```")
@@ -191,7 +191,7 @@ with tab3:
                         st.json(selected_run.logs_json)
                     
             # Show source content
-            raw_data = db.query(DocumentText).join(SourceDocument).filter(SourceDocument.ingestion_run_id == selected_run_id).all()
+            raw_data = db.query(DocumentText).join(SourceDocument).filter(SourceDocument.pipeline_run_id == selected_run_id).all()
             if raw_data:
                 with st.expander(f"📄 Source Content ({len(raw_data)} pages)"):
                     for rd in raw_data:

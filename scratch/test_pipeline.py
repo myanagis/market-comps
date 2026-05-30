@@ -7,7 +7,7 @@ import hashlib
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from market_comps.db.session import get_db
-from market_comps.db.models import IngestionRun, SourceDocument, DocumentText, ExtractionJob
+from market_comps.db.models import PipelineRun, SourceDocument, DocumentText, ExtractionJob
 from market_comps.ingestion.classifier import classify_document, get_recommended_schemas
 from market_comps.llm_client import LLMClient
 from market_comps.ingestion.extractor import extract_entities_from_text
@@ -40,7 +40,7 @@ try:
     print(f"Started ingestion run {run_id}. Waiting for completion...")
     
     while True:
-        run = db.query(IngestionRun).get(run_id)
+        run = db.query(PipelineRun).get(run_id)
         db.refresh(run)
         if run.run_status != "RUNNING":
             print(f"Run finished with status: {run.run_status}")

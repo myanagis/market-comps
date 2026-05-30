@@ -212,13 +212,11 @@ class Pipeline(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     pipeline_name = Column(String, nullable=False)
-    pipeline_type = Column(String, nullable=False)
-    # Pipeline types:
-    #   PROGRAM_COMPANY_PAGE — extracts companies, people/emails, creates program memberships + people-company links
-    #   INVESTOR_PORTFOLIO_PAGE — extracts companies, creates investment relationships + people-company links
-    #   API_COMPANY_SEARCH — extracts companies from an API response
-    #   CSV_IMPORT — imports entities from a CSV file
-    #   INVESTOR_PEOPLE_PAGE — extracts people/emails from an investor's team page
+    
+    # Categories for pipeline execution strategy
+    connector_type = Column(String)     # HOW TO FETCH (e.g. SEC_DAILY_INDEX, WEB_PAGE)
+    parser_type = Column(String)        # HOW TO PARSE (e.g. SEC_FORM_D_XML, HTML_TO_MARKDOWN)
+    normalizer_type = Column(String)    # HOW TO MAP TO CANONICAL (e.g. SEC_FORM_D_TO_ORGS, PORTFOLIO_TO_INVESTMENTS)
 
     source_url = Column(String)
 
@@ -242,11 +240,11 @@ class Pipeline(Base, TimestampMixin):
     program = relationship("ProgramProfile")
     program_cohort = relationship("ProgramCohort")
     fund = relationship("FundProfile")
-    runs = relationship("IngestionRun", back_populates="pipeline", order_by="IngestionRun.started_at.desc()")
+    runs = relationship("PipelineRun", back_populates="pipeline", order_by="PipelineRun.started_at.desc()")
 
 
-class IngestionRun(Base):
-    __tablename__ = 'ingestion_runs'
+class PipelineRun(Base):
+    __tablename__ = 'pipeline_runs'
 
     id = Column(Integer, primary_key=True, index=True)
     pipeline_id = Column(Integer, ForeignKey('pipelines.id'), nullable=True)
@@ -267,15 +265,41 @@ class IngestionRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     pipeline = relationship("Pipeline", back_populates="runs")
-    source_documents = relationship("SourceDocument", back_populates="ingestion_run")
-    extraction_jobs = relationship("ExtractionJob", back_populates="ingestion_run")
+    source_documents = relationship("SourceDocument", back_populates="pipeline_run")
+    extraction_jobs = relationship("ExtractionJob", back_populates="pipeline_run")
+    steps = relationship("PipelineRunStep", back_populates="pipeline_run", order_by="PipelineRunStep.step_order.asc()")
+
+
+class PipelineRunStep(Base, TimestampMixin):
+    __tablename__ = 'pipeline_run_steps'
+
+    id = Column(Integer, primary_key=True, index=True)
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+    
+    step_order = Column(Integer, nullable=False)
+    step_name = Column(String, nullable=False)
+    step_type = Column(String) # FETCH, FILTER, PARSE, EXTRACT, NORMALIZE, CANONICAL_WRITE
+    method = Column(String)
+    
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    
+    output_count = Column(Integer, default=0)
+    records_created = Column(Integer, default=0)
+    records_updated = Column(Integer, default=0)
+    records_failed = Column(Integer, default=0)
+    
+    status = Column(String) # SUCCESS, FAILED, RUNNING
+    error_message = Column(String)
+
+    pipeline_run = relationship("PipelineRun", back_populates="steps")
 
 
 class SourceDocument(Base, TimestampMixin):
     __tablename__ = 'source_documents'
 
     id = Column(Integer, primary_key=True, index=True)
-    ingestion_run_id = Column(Integer, ForeignKey('ingestion_runs.id'), nullable=False)
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
 
     document_type = Column(String) # PDF, WEB_PAGE, IMAGE, API_RESPONSE, CSV_FILE, DOCSEND, etc.
     document_class = Column(String) # startup_pitch_deck, legal_contract, etc.
@@ -287,7 +311,7 @@ class SourceDocument(Base, TimestampMixin):
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
     content_hash = Column(String, index=True)
 
-    ingestion_run = relationship("IngestionRun", back_populates="source_documents")
+    pipeline_run = relationship("PipelineRun", back_populates="source_documents")
     document_texts = relationship("DocumentText", back_populates="source_document")
 
 
@@ -309,7 +333,7 @@ class ExtractionJob(Base, TimestampMixin):
     __tablename__ = 'extraction_jobs'
 
     id = Column(Integer, primary_key=True, index=True)
-    ingestion_run_id = Column(Integer, ForeignKey('ingestion_runs.id'), nullable=False)
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
     document_text_id = Column(Integer, ForeignKey('document_texts.id'), nullable=False)
 
     schema_name = Column(String)
@@ -324,7 +348,7 @@ class ExtractionJob(Base, TimestampMixin):
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
 
-    ingestion_run = relationship("IngestionRun", back_populates="extraction_jobs")
+    pipeline_run = relationship("PipelineRun", back_populates="extraction_jobs")
     document_text = relationship("DocumentText", back_populates="extraction_jobs")
     extracted_entities = relationship("ExtractedEntity", back_populates="extraction_job")
     extracted_relationships = relationship("ExtractedRelationship", back_populates="extraction_job")
@@ -410,8 +434,8 @@ class EntityAttributeEvidence(Base, TimestampMixin):
     extracted_entity = relationship("ExtractedEntity", back_populates="attribute_evidences")
 
 
-class CanonicalMutation(Base, TimestampMixin):
-    __tablename__ = 'canonical_mutations'
+class AuditTrail(Base, TimestampMixin):
+    __tablename__ = 'audit_trails'
 
     id = Column(Integer, primary_key=True, index=True)
     

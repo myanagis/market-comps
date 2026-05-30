@@ -5,7 +5,7 @@ Uses OpenRouter LLM to extract structured entities and relationships from raw te
 Writes to extracted_entities and extracted_relationships tables.
 No CRM reconciliation — that's the reconciler's job.
 
-Each pipeline_type has its own schema and prompt tuned for the expected page format.
+Each connector_type has its own schema and prompt tuned for the expected page format.
 """
 
 import logging
@@ -14,7 +14,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from market_comps.db.models import (
-    IngestionRun, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
+    PipelineRun, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
 )
 from market_comps.llm_client import LLMClient
 
@@ -103,10 +103,10 @@ SCHEMA_BY_TYPE = {
 
 def extract_entities_from_text(
     db: Session,
-    run: IngestionRun,
+    run: PipelineRun,
     job: ExtractionJob,
     doc_text: DocumentText,
-    pipeline_type: str,
+    connector_type: str,
     config: dict
 ) -> dict:
     """Use the LLM to extract structured entities from raw text content.
@@ -131,16 +131,16 @@ def extract_entities_from_text(
         is_dynamic = True
     else:
         # Check if it's a hardcoded schema or dynamic TOML
-        schema = SCHEMA_BY_TYPE.get(pipeline_type)
+        schema = SCHEMA_BY_TYPE.get(connector_type)
         if not schema:
-            schema = load_toml_schema_as_json(pipeline_type)
+            schema = load_toml_schema_as_json(connector_type)
             if schema:
                 is_dynamic = True
-                desc = get_schema_description(pipeline_type)
+                desc = get_schema_description(connector_type)
                 
         if not schema:
             schema = PROGRAM_COMPANY_SCHEMA
-            pipeline_type = "PROGRAM_COMPANY_PAGE"
+            connector_type = "PROGRAM_COMPANY_PAGE"
 
     # Build the prompt
     if is_dynamic:
@@ -148,7 +148,7 @@ def extract_entities_from_text(
         if custom_instruction:
             prompt += f"\n\nADDITIONAL INSTRUCTIONS: {custom_instruction}"
     else:
-        prompt = _build_extraction_prompt(pipeline_type, custom_instruction)
+        prompt = _build_extraction_prompt(connector_type, custom_instruction)
         
     prompt += f"\n\nTEXT:\n{text[:50000]}"
 
@@ -173,7 +173,7 @@ def extract_entities_from_text(
     # Save document_date if found
     if parsed and isinstance(parsed, dict) and parsed.get("document_date"):
         from market_comps.db.models import SourceDocument
-        doc = db.query(SourceDocument).filter_by(ingestion_run_id=job.ingestion_run_id).first()
+        doc = db.query(SourceDocument).filter_by(pipeline_run_id=job.pipeline_run_id).first()
         if doc:
             doc.document_date = str(parsed["document_date"])
             db.add(doc)
@@ -194,7 +194,7 @@ def extract_entities_from_text(
                 continue
                 
             # Default to the schema name as entity type (e.g. COMPANY_REVENUE_METRICS)
-            entity_type = pipeline_type.upper()
+            entity_type = connector_type.upper()
             raw_name = entity_data.get("company_name", "Unknown")
             
             # If the schema defines a company, we treat it as an organization payload
@@ -289,7 +289,7 @@ def extract_entities_from_text(
 
 def extract_profile_detail(
     db: Session,
-    run: IngestionRun,
+    run: PipelineRun,
     job: ExtractionJob,
     doc_text: DocumentText,
     company_name: str
@@ -325,7 +325,7 @@ def extract_profile_detail(
 # HELPERS
 # ==============================================================================
 
-def _build_extraction_prompt(pipeline_type: str, custom_instruction: str) -> str:
+def _build_extraction_prompt(connector_type: str, custom_instruction: str) -> str:
     """Build a pipeline-type-specific extraction prompt."""
     base_prompts = {
         "PROGRAM_COMPANY_PAGE": (
@@ -352,7 +352,7 @@ def _build_extraction_prompt(pipeline_type: str, custom_instruction: str) -> str
         ),
     }
 
-    prompt = base_prompts.get(pipeline_type, base_prompts["PROGRAM_COMPANY_PAGE"])
+    prompt = base_prompts.get(connector_type, base_prompts["PROGRAM_COMPANY_PAGE"])
     if custom_instruction:
         prompt += f"\n\nADDITIONAL INSTRUCTIONS: {custom_instruction}"
     return prompt

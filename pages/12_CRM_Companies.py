@@ -5,8 +5,8 @@ from sqlalchemy import or_
 from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
-    ProgramMembership, PersonOrganizationRole, CanonicalMutation,
-    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, IngestionRun, DocumentText, SourceDocument
+    ProgramMembership, PersonOrganizationRole, AuditTrail,
+    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument
 )
 from market_comps.ingestion.reconciler import log_mutation
 
@@ -260,27 +260,27 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("📜 Audit Trail")
         filters = [
-            (CanonicalMutation.canonical_entity_type == "ORGANIZATION") & (CanonicalMutation.canonical_entity_id == str(org.id))
+            (AuditTrail.canonical_entity_type == "ORGANIZATION") & (AuditTrail.canonical_entity_id == str(org.id))
         ]
         if org.company_profile:
-            filters.append((CanonicalMutation.canonical_entity_type == "COMPANY_PROFILE") & (CanonicalMutation.canonical_entity_id == str(org.company_profile.id)))
+            filters.append((AuditTrail.canonical_entity_type == "COMPANY_PROFILE") & (AuditTrail.canonical_entity_id == str(org.company_profile.id)))
             
         role_ids = [str(role.id) for role in org.roles] if org.roles else []
         if role_ids:
-            filters.append((CanonicalMutation.canonical_entity_type == "PERSON_ROLE") & (CanonicalMutation.canonical_entity_id.in_(role_ids)))
+            filters.append((AuditTrail.canonical_entity_type == "PERSON_ROLE") & (AuditTrail.canonical_entity_id.in_(role_ids)))
             
-        audit = db.query(CanonicalMutation).options(
-            joinedload(CanonicalMutation.extraction_job).joinedload(ExtractionJob.ingestion_run).joinedload(IngestionRun.source_documents)
+        audit = db.query(AuditTrail).options(
+            joinedload(AuditTrail.extraction_job).joinedload(ExtractionJob.pipeline_run).joinedload(PipelineRun.source_documents)
         ).filter(
             or_(*filters)
-        ).order_by(CanonicalMutation.created_at.desc()).limit(20).all()
+        ).order_by(AuditTrail.created_at.desc()).limit(20).all()
         
         if audit:
             audit_data = []
             for a in audit:
                 source_str = a.source or ""
-                if source_str == "PIPELINE" and a.extraction_job and a.extraction_job.ingestion_run:
-                    docs = a.extraction_job.ingestion_run.source_documents
+                if source_str == "PIPELINE" and a.extraction_job and a.extraction_job.pipeline_run:
+                    docs = a.extraction_job.pipeline_run.source_documents
                     if docs and docs[0].document_date:
                         source_str += f" (Doc: {docs[0].document_date})"
                         

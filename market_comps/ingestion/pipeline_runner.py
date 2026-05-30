@@ -3,11 +3,11 @@ Pipeline Runner — Orchestrator
 ================================
 Top-level entry point that coordinates the ETL steps.
 
-    Step 1: Create IngestionRun record
+    Step 1: Create PipelineRun record
     Step 2: EXTRACT — Fetch raw content → save to extracted_data_raw
     Step 3: TRANSFORM — LLM extraction → save to extracted_entities + extracted_relationships
     Step 4: LOAD — Reconcile against CRM → write to organizations/people/etc. + entity_audit_trail
-    Step 5: Complete IngestionRun
+    Step 5: Complete PipelineRun
 """
 
 import hashlib
@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 
 from sqlalchemy.orm import Session
 
-from market_comps.db.models import Pipeline, IngestionRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
+from market_comps.db.models import Pipeline, PipelineRun, PipelineRunStep, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship
 from market_comps.ingestion.scraper import fetch_page_text
 from market_comps.ingestion.extractor import extract_entities_from_text, extract_profile_detail
 from market_comps.ingestion.reconciler import reconcile_all
@@ -25,15 +25,15 @@ from market_comps.ingestion.reconciler import reconcile_all
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
+def run_pipeline(db: Session, pipeline_id: int) -> PipelineRun:
     """Main entry point: runs a full pipeline.
 
     Steps:
-        1. Create IngestionRun record
+        1. Create PipelineRun record
         2. EXTRACT — Fetch raw content → ExtractedDataRaw
         3. TRANSFORM — LLM extraction → ExtractedEntity + ExtractedRelationship
         4. LOAD — Reconcile against CRM → Organization/Person/etc. + EntityAuditTrail
-        5. Complete IngestionRun
+        5. Complete PipelineRun
     """
     # --- STEP 1: Load pipeline, create run ---
     pipeline = db.query(Pipeline).filter(Pipeline.id == pipeline_id).first()
@@ -42,7 +42,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
 
     config = pipeline.config_json or {}
 
-    run = IngestionRun(
+    run = PipelineRun(
         pipeline_id=pipeline.id,
         run_status="RUNNING",
         started_at=datetime.utcnow(),
@@ -58,12 +58,30 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
 
         # --- STEP 2: EXTRACT — Fetch raw content ---
         logger.info(f"[Pipeline {pipeline.id}] Step 2: Fetching {url}")
+        
+        fetch_step = PipelineRunStep(
+            pipeline_run_id=run.id,
+            step_order=1,
+            step_name="FETCH_WEB_PAGE",
+            step_type="FETCH",
+            method=pipeline.connector_type,
+            started_at=datetime.utcnow(),
+            status="RUNNING"
+        )
+        db.add(fetch_step)
+        db.flush()
+
         text_content = fetch_page_text(url)
+        
+        fetch_step.completed_at = datetime.utcnow()
+        fetch_step.status = "SUCCESS"
+        fetch_step.output_count = 1
+        db.add(fetch_step)
 
         content_hash = hashlib.sha256(text_content.encode()).hexdigest()
         
         source_doc = SourceDocument(
-            ingestion_run_id=run.id,
+            pipeline_run_id=run.id,
             document_type="WEB_PAGE",
             source_url=url,
             content_hash=content_hash,
@@ -81,7 +99,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
         db.flush()
 
         job = ExtractionJob(
-            ingestion_run_id=run.id,
+            pipeline_run_id=run.id,
             document_text_id=doc_text.id,
             schema_name="PROGRAM_COMPANY_SCHEMA",
             status="IN_PROGRESS",
@@ -93,10 +111,28 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
         all_logs = {"steps": []}
 
         # --- STEP 3: TRANSFORM — LLM extraction ---
-        logger.info(f"[Pipeline {pipeline.id}] Step 3: LLM extraction (type={pipeline.pipeline_type})")
-        extraction_result = extract_entities_from_text(
-            db, run, job, doc_text, pipeline.pipeline_type, config
+        logger.info(f"[Pipeline {pipeline.id}] Step 3: LLM extraction (type={pipeline.connector_type})")
+        
+        extract_step = PipelineRunStep(
+            pipeline_run_id=run.id,
+            step_order=2,
+            step_name="LLM_EXTRACTION",
+            step_type="ATTRIBUTE_EXTRACTION",
+            method=pipeline.parser_type,
+            started_at=datetime.utcnow(),
+            status="RUNNING"
         )
+        db.add(extract_step)
+        db.flush()
+
+        extraction_result = extract_entities_from_text(
+            db, run, job, doc_text, pipeline.connector_type, config
+        )
+        
+        extract_step.completed_at = datetime.utcnow()
+        extract_step.status = "SUCCESS"
+        extract_step.output_count = extraction_result.get("entities_extracted", 0)
+        db.add(extract_step)
         all_logs["steps"].append({
             "step": "extract_directory",
             "entities": extraction_result["entities_extracted"],
@@ -125,7 +161,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
                     profile_hash = hashlib.sha256(profile_text.encode()).hexdigest()
 
                     profile_doc = SourceDocument(
-                        ingestion_run_id=run.id,
+                        pipeline_run_id=run.id,
                         document_type="WEB_PAGE",
                         source_url=profile_url,
                         content_hash=profile_hash,
@@ -143,7 +179,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
                     db.flush()
 
                     profile_job = ExtractionJob(
-                        ingestion_run_id=run.id,
+                        pipeline_run_id=run.id,
                         document_text_id=profile_text_obj.id,
                         schema_name="PROFILE_DETAIL_SCHEMA",
                         status="IN_PROGRESS",
@@ -178,13 +214,32 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
 
             all_logs["steps"].append({"step": "deep_scrape", "profiles": deep_logs})
 
-        # --- STEP 4: LOAD — Reconcile against CRM ---
-        logger.info(f"[Pipeline {pipeline.id}] Step 4: Reconciling entities against CRM")
-        reconcile_stats = reconcile_all(db, run, pipeline)
-        all_logs["steps"].append({"step": "reconcile", **reconcile_stats})
+        # --- STEP 4: LOAD — Reconcile ---
+        logger.info(f"[Pipeline {pipeline.id}] Step 4: Reconciling into CRM")
+        
+        write_step = PipelineRunStep(
+            pipeline_run_id=run.id,
+            step_order=3,
+            step_name="CANONICAL_WRITE",
+            step_type="NORMALIZATION",
+            method=pipeline.normalizer_type,
+            started_at=datetime.utcnow(),
+            status="RUNNING"
+        )
+        db.add(write_step)
+        db.flush()
+
+        recon_stats = reconcile_all(db, run, pipeline)
+        
+        write_step.completed_at = datetime.utcnow()
+        write_step.status = "SUCCESS"
+        write_step.records_created = recon_stats.get("orgs_created", 0) + recon_stats.get("people_created", 0)
+        db.add(write_step)
+
+        all_logs["steps"].append({"reconciliation": recon_stats})
 
         # --- STEP 5: Complete ---
-        total_created = reconcile_stats.get("orgs_reconciled", 0) + reconcile_stats.get("people_reconciled", 0)
+        total_created = recon_stats.get("orgs_created", 0) + recon_stats.get("people_created", 0)
         run.run_status = "SUCCESS"
         run.completed_at = datetime.utcnow()
         run.records_processed = extraction_result["entities_extracted"]
@@ -200,7 +255,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
         logger.error(f"Pipeline run failed: {e}", exc_info=True)
         db.rollback()
 
-        failed_run = db.query(IngestionRun).filter(IngestionRun.id == run.id).first()
+        failed_run = db.query(PipelineRun).filter(PipelineRun.id == run.id).first()
         if failed_run:
             failed_run.run_status = "FAILED"
             failed_run.error_message = str(e)
@@ -210,7 +265,7 @@ def run_pipeline(db: Session, pipeline_id: int) -> IngestionRun:
     return run
 
 
-def _merge_profile_into_entity(db: Session, run: IngestionRun, profile_job: ExtractionJob, company_name: str, detail: dict):
+def _merge_profile_into_entity(db: Session, run: PipelineRun, profile_job: ExtractionJob, company_name: str, detail: dict):
     """Merge deep-scraped profile detail into the matching ExtractedEntity's payload.
     
     Also creates ExtractedEntity (PERSON) and ExtractedRelationship (FOUNDER_OF)
@@ -221,7 +276,7 @@ def _merge_profile_into_entity(db: Session, run: IngestionRun, profile_job: Extr
         return
 
     entity = db.query(ExtractedEntity).join(ExtractionJob).filter(
-        ExtractionJob.ingestion_run_id == run.id,
+        ExtractionJob.pipeline_run_id == run.id,
         ExtractedEntity.entity_type == "ORGANIZATION",
         ExtractedEntity.normalized_name == company_name.lower()
     ).first()

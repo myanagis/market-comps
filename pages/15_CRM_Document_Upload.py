@@ -6,7 +6,7 @@ import io
 
 from market_comps.db.session import get_db
 from market_comps.db.models import (
-    Pipeline, IngestionRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship, Organization
+    Pipeline, PipelineRun, SourceDocument, DocumentText, ExtractionJob, ExtractedEntity, ExtractedRelationship, Organization
 )
 from market_comps.ingestion.extractor import extract_entities_from_text
 from market_comps.ingestion.reconciler import reconcile_all
@@ -161,7 +161,7 @@ if st.session_state.get("start_processing"):
 
 # --- Display Results Outside of Submit Block ---
 if "last_doc_upload_run_id" in st.session_state:
-    last_run = db.query(IngestionRun).get(st.session_state.last_doc_upload_run_id)
+    last_run = db.query(PipelineRun).get(st.session_state.last_doc_upload_run_id)
     if last_run:
         st.divider()
         st.subheader(f"Latest Upload Results (Run ID: {last_run.id})")
@@ -182,7 +182,7 @@ if "last_doc_upload_run_id" in st.session_state:
             st.rerun()
         
         # Look up document class
-        source_doc = db.query(SourceDocument).filter_by(ingestion_run_id=last_run.id).first()
+        source_doc = db.query(SourceDocument).filter_by(pipeline_run_id=last_run.id).first()
         if source_doc and source_doc.document_class:
             st.info(f"🏷️ Document classified as: **{source_doc.document_class}**")
             if source_doc.classification_result_json:
@@ -190,7 +190,7 @@ if "last_doc_upload_run_id" in st.session_state:
                 if summary:
                     st.markdown(f"**Summary:** {summary}")
             
-        jobs = db.query(ExtractionJob).filter_by(ingestion_run_id=last_run.id).all()
+        jobs = db.query(ExtractionJob).filter_by(pipeline_run_id=last_run.id).all()
         for job in jobs:
             entities = db.query(ExtractedEntity).filter_by(extraction_job_id=job.id).all()
             if entities:

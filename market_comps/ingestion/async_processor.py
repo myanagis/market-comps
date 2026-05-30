@@ -5,7 +5,7 @@ import json
 import traceback
 
 from market_comps.db.session import get_db
-from market_comps.db.models import IngestionRun, SourceDocument, DocumentText, ExtractionJob
+from market_comps.db.models import PipelineRun, SourceDocument, DocumentText, ExtractionJob
 from market_comps.ingestion.classifier import classify_document, get_recommended_schemas
 from market_comps.llm_client import LLMClient
 from market_comps.ingestion.extractor import extract_entities_from_text
@@ -21,12 +21,12 @@ def run_document_ingestion_background(run_id: int, text_content: str, final_inst
     db = next(get_db())
     
     try:
-        run = db.query(IngestionRun).get(run_id)
+        run = db.query(PipelineRun).get(run_id)
         if not run:
-            logger.error(f"IngestionRun {run_id} not found in background thread.")
+            logger.error(f"PipelineRun {run_id} not found in background thread.")
             return
 
-        source_doc = db.query(SourceDocument).filter_by(ingestion_run_id=run.id).first()
+        source_doc = db.query(SourceDocument).filter_by(pipeline_run_id=run.id).first()
         doc_text = db.query(DocumentText).filter_by(source_document_id=source_doc.id).first()
 
         # 3.5 Classify Document
@@ -56,7 +56,7 @@ def run_document_ingestion_background(run_id: int, text_content: str, final_inst
         logger.info(f"Running extraction schema: {schema_name}...")
         
         job = ExtractionJob(
-            ingestion_run_id=run.id,
+            pipeline_run_id=run.id,
             document_text_id=doc_text.id,
             schema_name=schema_name,
             status="IN_PROGRESS",
@@ -121,7 +121,7 @@ def run_document_ingestion_background(run_id: int, text_content: str, final_inst
         try:
             # Re-fetch the run in a new transaction to save the error state
             db.commit()
-            run_failed = db.query(IngestionRun).get(run_id)
+            run_failed = db.query(PipelineRun).get(run_id)
             if run_failed:
                 run_failed.run_status = "FAILED"
                 run_failed.error_message = f"{str(e)}\n\n{traceback.format_exc()}"
@@ -137,10 +137,10 @@ def run_document_ingestion_background(run_id: int, text_content: str, final_inst
 
 def start_document_ingestion(db, text_content: str, file_name: str, storage_path: str, content_hash: str, final_instructions: str, transcription_usage=None) -> int:
     """
-    Synchronously creates the IngestionRun and SourceDocument records, then spins up a background thread.
-    Returns the IngestionRun ID.
+    Synchronously creates the PipelineRun and SourceDocument records, then spins up a background thread.
+    Returns the PipelineRun ID.
     """
-    run = IngestionRun(
+    run = PipelineRun(
         pipeline_id=None,
         run_status="RUNNING",
         started_at=datetime.utcnow()
@@ -149,7 +149,7 @@ def start_document_ingestion(db, text_content: str, file_name: str, storage_path
     db.flush()
     
     source_doc = SourceDocument(
-        ingestion_run_id=run.id,
+        pipeline_run_id=run.id,
         document_type="PDF" if file_name.lower().endswith(".pdf") else "TEXT",
         source_url=file_name,
         file_path=storage_path,
