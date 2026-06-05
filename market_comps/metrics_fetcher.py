@@ -66,19 +66,31 @@ def _safe_float(value) -> Optional[float]:
         return None
 
 
+import time
+import random
+
 def _fetch_yfinance_info(ticker: str) -> dict:
     """Fetch yfinance info dict for a ticker. Returns empty dict on failure."""
-    try:
-        t = yf.Ticker(ticker)
-        info = t.info
-        # yfinance returns a minimal stub for unknown tickers
-        if not info or info.get("quoteType") is None:
-            logger.warning("yfinance returned empty info for %s", ticker)
+    for attempt in range(3):
+        try:
+            t = yf.Ticker(ticker)
+            info = t.info
+            # yfinance returns a minimal stub for unknown tickers
+            if not info or info.get("quoteType") is None:
+                logger.warning("yfinance returned empty info for %s", ticker)
+                return {}
+            return info
+        except Exception as exc:
+            err_msg = str(exc)
+            if "Too Many Requests" in err_msg or "Rate limited" in err_msg or "NoneType" in err_msg or "429" in err_msg:
+                if attempt < 2:
+                    delay = (attempt + 1) * 2.0 + random.random()
+                    logger.info("yfinance rate limited for %s. Sleeping %.1f seconds...", ticker, delay)
+                    time.sleep(delay)
+                    continue
+            logger.warning("yfinance fetch failed for %s: %s", ticker, exc)
             return {}
-        return info
-    except Exception as exc:
-        logger.warning("yfinance fetch failed for %s: %s", ticker, exc)
-        return {}
+    return {}
 
 
 def _estimate_ntm_revenue(info: dict) -> Optional[float]:

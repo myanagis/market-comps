@@ -128,13 +128,20 @@ if result is not None:
     data = result.data
     st.markdown(f"### Industry Classification: {data.get('industry_classification', 'N/A')}")
     
+    def format_df(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+        if df.empty: return df
+        format_cols = [c for c in columns if c in df.columns]
+        if format_cols:
+            return df.style.format(subset=format_cols, formatter="{:,.0f}", na_rep="")
+        return df
+
     tab_ma, tab_fund, tab_ipo, tab_comp, tab_logs = st.tabs(["🤝 M&A Events", "💸 Fundraising", "🚀 IPOs", "📈 Public Comps", "📋 Pipeline Logs"])
     
     with tab_ma:
         st.markdown('<div class="section-header">Recent M&A (36 months)</div>', unsafe_allow_html=True)
         ma_events = data.get("ma_events", [])
         if ma_events:
-            st.dataframe(pd.DataFrame(ma_events), use_container_width=True, hide_index=True)
+            st.dataframe(format_df(pd.DataFrame(ma_events), ["deal_value"]), use_container_width=True, hide_index=True)
         else:
             st.info("No M&A events found.")
             
@@ -142,7 +149,7 @@ if result is not None:
         st.markdown('<div class="section-header">Recent Fundraising (24 months)</div>', unsafe_allow_html=True)
         fund_events = data.get("fundraising_events", [])
         if fund_events:
-            st.dataframe(pd.DataFrame(fund_events), use_container_width=True, hide_index=True)
+            st.dataframe(format_df(pd.DataFrame(fund_events), ["amount", "post_money_valuation"]), use_container_width=True, hide_index=True)
         else:
             st.info("No fundraising events found.")
             
@@ -150,7 +157,7 @@ if result is not None:
         st.markdown('<div class="section-header">Recent IPOs (5 years)</div>', unsafe_allow_html=True)
         ipo_events = data.get("ipo_events", [])
         if ipo_events:
-            st.dataframe(pd.DataFrame(ipo_events), use_container_width=True, hide_index=True)
+            st.dataframe(format_df(pd.DataFrame(ipo_events), ["amount_raised", "valuation_at_ipo"]), use_container_width=True, hide_index=True)
         else:
             st.info("No IPO events found.")
             
@@ -166,7 +173,7 @@ if result is not None:
                     lm = row.pop("live_metrics")
                     row.update(lm)
                 flat_comps.append(row)
-            st.dataframe(pd.DataFrame(flat_comps), use_container_width=True, hide_index=True)
+            st.dataframe(format_df(pd.DataFrame(flat_comps), ["market_cap_usd", "ev_usd", "revenue_ttm_usd"]), use_container_width=True, hide_index=True)
         else:
             st.info("No public comps found.")
             
