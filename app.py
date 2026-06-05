@@ -149,7 +149,7 @@ pg = st.navigation({
         st.Page("pages/2_Data_Extraction.py", title="Data Extraction", icon="📄"),
     ],
     "Tools (Beta)": [
-        st.Page("pages/1_Public_Comps.py",      title="Public Comps",           icon="📊"),
+        st.Page("pages/1_Market_Intelligence.py",      title="Market Intelligence",           icon="📊"),
         st.Page("pages/2_Competition_Finder.py",title="Competition Finder",     icon="🏢"),
         st.Page("pages/3_LLM_Cross_Checker.py", title="Chorus of LLMs",         icon="🎼"),
         st.Page("pages/4_Company_Primer.py",    title="Company Primer",         icon="📚"),
