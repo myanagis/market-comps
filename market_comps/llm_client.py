@@ -142,11 +142,29 @@ class LLMClient:
 
         # Strip any accidental markdown fences
         stripped = content.strip()
-        if stripped.startswith("```"):
-            stripped = stripped.split("```")[1]
-            if stripped.startswith("json"):
-                stripped = stripped[4:]
-            stripped = stripped.rsplit("```", 1)[0].strip()
+        if "```json" in stripped:
+            stripped = stripped.split("```json")[1]
+            stripped = stripped.split("```")[0].strip()
+        elif "```" in stripped:
+            stripped = stripped.split("```")[1].strip()
+
+        # Some models return conversational text before/after JSON
+        if not (stripped.startswith("{") or stripped.startswith("[")):
+            first_brace = stripped.find("{")
+            first_bracket = stripped.find("[")
+            if first_brace != -1 and first_bracket != -1:
+                start_idx = min(first_brace, first_bracket)
+            else:
+                start_idx = max(first_brace, first_bracket)
+            if start_idx != -1:
+                stripped = stripped[start_idx:]
+                
+        if not (stripped.endswith("}") or stripped.endswith("]")):
+            last_brace = stripped.rfind("}")
+            last_bracket = stripped.rfind("]")
+            end_idx = max(last_brace, last_bracket)
+            if end_idx != -1:
+                stripped = stripped[:end_idx+1]
 
         try:
             parsed = json.loads(stripped)
