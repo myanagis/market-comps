@@ -10,7 +10,7 @@ from lxml import etree
 from sqlalchemy.orm import Session
 
 from market_comps.config import settings
-from market_comps.db.models import Pipeline, PipelineRun, SourceDocument, DocumentText, Organization, FundProfile, Person, PersonOrganizationRole, PersonEmail
+from market_comps.db.models import Pipeline, PipelineRun, SourceDocument, DocumentText, Organization, FundProfile, Person, PersonOrganizationRole, PersonEmail, InvestorProfile
 from market_comps.ingestion.interfaces import BaseFetcher, BasePreparer, BaseExtractor, BaseNormalizer, BaseUpdater
 
 logger = logging.getLogger(__name__)
@@ -296,10 +296,19 @@ class SECFormDUpdater(BaseUpdater):
                     street1=data.get("street1"),
                     street2=data.get("street2"),
                     zip_code=data.get("zip_code"),
+                    organization_type="INVESTOR"
                 )
                 db.add(firm)
                 db.flush()
                 stats["orgs_created"] += 1
+            elif not firm.organization_type or firm.organization_type != "INVESTOR":
+                firm.organization_type = "INVESTOR"
+                
+            prof = db.query(InvestorProfile).filter_by(organization_id=firm.id).first()
+            if not prof:
+                prof = InvestorProfile(organization_id=firm.id, investor_type="Fund Manager")
+                db.add(prof)
+                db.flush()
 
             # 2. UPSERT FundProfile
             fund_name = data["fund_name"]
@@ -355,3 +364,5 @@ class SECFormDUpdater(BaseUpdater):
 
         db.commit()
         return stats
+ 
+ 

@@ -23,7 +23,7 @@ CONNECTOR_TYPES = list(FETCHERS.keys())
 PARSER_TYPES = list(PREPARERS.keys())
 NORMALIZER_TYPES = list(NORMALIZERS.keys())
 
-tab1, tab2, tab3, tab4 = st.tabs(["Pipelines", "Run Pipeline", "Pipeline Runs", "Extracted Data"])
+tab1, tab2, tab3, tab4 = st.tabs(["Pipelines", "Run Pipeline", "Pipeline Run History", "Extracted Data"])
 
 # --- TAB 1: PIPELINES ---
 with tab1:
@@ -182,7 +182,7 @@ with tab2:
                     st.error(f"Pipeline failed: {run.error_message}")
 
 
-# --- TAB 3: PIPELINE RUNS ---
+# --- TAB 3: PIPELINE RUN HISTORY ---
 with tab3:
     st.subheader("Recent Ingestion Runs")
     runs = db.query(PipelineRun).order_by(PipelineRun.started_at.desc()).limit(20).all()
@@ -198,6 +198,7 @@ with tab3:
                 "Completed": r.completed_at,
                 "Processed": r.records_processed,
                 "Created": r.records_created,
+                "Updated": r.records_updated,
                 "Error": r.error_message or ""
             })
         st.dataframe(pd.DataFrame(run_data), use_container_width=True, hide_index=True)

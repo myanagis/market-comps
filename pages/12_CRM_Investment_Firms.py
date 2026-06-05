@@ -325,6 +325,7 @@ with tab_firms:
             "Domain": o.primary_domain,
             "Website": o.website_url,
             "City": o.city,
+            "State": o.state,
             "Status": o.status,
             "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
         }
