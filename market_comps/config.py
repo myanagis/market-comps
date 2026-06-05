@@ -89,8 +89,6 @@ class Settings:
             "openai/gpt-4o": (2.5000, 10.0000),
             "openai/gpt-4o-mini": (0.1500, 0.6000),
             "perplexity/llama-3.1-sonar-huge-128k-online": (5.0000, 5.0000),
-            "x-ai/grok-4": (3.0000, 15.0000),
-            "x-ai/grok-4-fast": (0.2000, 0.5000),
         }
     )
 
@@ -132,11 +130,11 @@ DEFAULT_LLM_MODEL: str = settings.default_model
 MODEL_OPTIONS: list[str] = list(settings.MODEL_PRICING.keys())
 
 DEFAULT_MODELS: list[str] = [
-    "deepseek/deepseek-chat",            
-    "x-ai/grok-4-fast",                  
-    "openai/gpt-4o-mini",                
-    "meta-llama/llama-3.3-70b-instruct", 
+    "anthropic/claude-3.5-haiku",
     "google/gemini-2.5-flash",
+    "openai/gpt-4o-mini",                
+    "meta-llama/llama-3.3-70b-instruct",
+    "deepseek/deepseek-chat",            
 ]
 
 DEFAULT_SUMMARY_MODEL: str = "openai/gpt-4o-mini"
