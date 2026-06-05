@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class IntelligenceResult:
     def __init__(self):
         self.data = {}
+        self.raw_extractions: dict[str, dict] = {}
         self.usage = LLMUsage()
         self.errors = []
 
@@ -63,6 +64,7 @@ def run_market_intelligence_pipeline(
             # We call the task. In a true async/dask runner these would run parallel.
             ext_data, ext_usage = retrieve_and_extract_events_task(query, search_queries, model)
             raw_extractions.append(ext_data)
+            result.raw_extractions[model] = ext_data
             result.usage.add(
                 prompt_tokens=ext_usage.total_prompt_tokens,
                 completion_tokens=ext_usage.total_completion_tokens,

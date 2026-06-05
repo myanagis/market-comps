@@ -135,7 +135,7 @@ if result is not None:
             return df.style.format(subset=format_cols, formatter="{:,.0f}", na_rep="")
         return df
 
-    tab_ma, tab_fund, tab_ipo, tab_comp, tab_logs = st.tabs(["🤝 M&A Events", "💸 Fundraising", "🚀 IPOs", "📈 Public Comps", "📋 Pipeline Logs"])
+    tab_ma, tab_fund, tab_ipo, tab_comp, tab_raw, tab_logs = st.tabs(["🤝 M&A Events", "💸 Fundraising", "🚀 IPOs", "📈 Public Comps", "🤖 Raw Extractions", "📋 Pipeline Logs"])
     
     with tab_ma:
         st.markdown('<div class="section-header">Recent M&A (36 months)</div>', unsafe_allow_html=True)
@@ -176,6 +176,16 @@ if result is not None:
             st.dataframe(format_df(pd.DataFrame(flat_comps), ["market_cap_usd", "ev_usd", "revenue_ttm_usd"]), use_container_width=True, hide_index=True)
         else:
             st.info("No public comps found.")
+            
+    with tab_raw:
+        st.markdown('<div class="section-header">Raw Discovery Agent Outputs</div>', unsafe_allow_html=True)
+        raw_exts = getattr(result, "raw_extractions", {})
+        if raw_exts:
+            for model_name, raw_json in raw_exts.items():
+                with st.expander(f"Agent: {model_name}", expanded=False):
+                    st.json(raw_json)
+        else:
+            st.info("No raw extractions available.")
             
     with tab_logs:
         st.markdown('<div class="section-header">Pipeline Execution Logs</div>', unsafe_allow_html=True)
