@@ -147,7 +147,8 @@ def display_investor_details(investor_id):
             for fund in org.fund_profiles:
                 with st.expander(f"💰 {fund.fund_name}"):
                     st.write(f"**Vintage:** {fund.vintage_year} | **Raised:** {fund.fund_size_raised} | **Target:** {fund.fund_size_target}")
-                    st.write(f"**Type:** {fund.fund_type} | **Status:** {fund.status}")
+                    type_display = fund.fund_type or fund.investment_fund_type or "N/A"
+                    st.write(f"**Type:** {type_display} | **Status:** {fund.status or 'N/A'}")
                     if fund.description:
                         st.caption(fund.description)
 

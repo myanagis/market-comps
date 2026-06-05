@@ -166,12 +166,21 @@ class SECFormDExtractor(BaseExtractor):
                 root = etree.fromstring(doc.raw_content.encode("utf-8"), parser=parser)
                 
                 def first_text(tag_name: str) -> str | None:
-                    res = root.xpath(f'//*[local-name()="{tag_name}"]/text()')
-                    return str(res[0]).strip() if res else None
+                    for elem in root.iter():
+                        local_name = etree.QName(elem).localname
+                        if local_name and local_name.lower() == tag_name.lower():
+                            if elem.text and elem.text.strip():
+                                return elem.text.strip()
+                    return None
 
                 def all_texts(tag_name: str) -> list[str]:
-                    res = root.xpath(f'//*[local-name()="{tag_name}"]/text()')
-                    return [str(x).strip() for x in res if str(x).strip()]
+                    res = []
+                    for elem in root.iter():
+                        local_name = etree.QName(elem).localname
+                        if local_name and local_name.lower() == tag_name.lower():
+                            if elem.text and elem.text.strip():
+                                res.append(elem.text.strip())
+                    return res
 
                 # Address
                 nodes = root.xpath('//*[local-name()="primaryIssuer"]')
@@ -331,6 +340,12 @@ class SECFormDUpdater(BaseUpdater):
                 db.add(fund)
                 db.flush()
                 stats["funds_created"] += 1
+            else:
+                # Update existing fund data if new data is present
+                if data.get("fund_type"): fund.investment_fund_type = data.get("fund_type")
+                if data.get("fund_size_raised"): fund.fund_size_raised = data.get("fund_size_raised")
+                if data.get("fund_size_target"): fund.fund_size_target = data.get("fund_size_target")
+                if data.get("accession_number"): fund.accession_number = data.get("accession_number")
 
             # 3. UPSERT People
             for p in data.get("people", []):
