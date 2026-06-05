@@ -32,7 +32,7 @@ st.markdown("""
 st.markdown("""
 <div class="main-header">
     <h1>📊 <span class="accent">Market</span> <span style="color:#64748b">Intelligence</span></h1>
-    <p>Comprehensive market research including M&A, Fundraising, IPOs, and Public Comps powered by a Prefect pipeline and AI agents.</p>
+    <p>Comprehensive market research including M&A, Fundraising, IPOs, and Public Comps powered by intelligent pipelines and AI agents.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -81,9 +81,10 @@ with st.expander("⚙️ Advanced Pipeline Options", expanded=False):
 run_clicked = st.button("🔍 Run Market Intelligence Pipeline", type="primary", disabled=not query.strip(), use_container_width=True)
 
 if run_clicked and query.strip():
-    progress = st.empty()
-    with progress.container():
-        st.info("🔄 Running Market Intelligence Prefect pipeline... (This involves multiple LLMs and takes up to 60 seconds)")
+    status = st.status("🔄 Running Market Intelligence pipeline... (This involves multiple LLMs and takes up to 60 seconds)")
+    
+    def on_progress(msg: str):
+        status.update(label=msg)
 
     log_capture_string = io.StringIO()
     ch = logging.StreamHandler(log_capture_string)
@@ -103,16 +104,18 @@ if run_clicked and query.strip():
             description=description.strip(),
             discovery_models=discovery_models,
             processing_model=processing_model,
-            verification_model=verification_model
+            verification_model=verification_model,
+            progress_callback=on_progress
         )
         st.session_state["mi_result"] = result
+        status.update(label="✅ Pipeline Completed!", state="complete")
     except Exception as e:
+        status.update(label=f"❌ Pipeline error: {e}", state="error")
         st.error(f"Pipeline error: {e}")
     finally:
         for lname in loggers_to_capture:
             logging.getLogger(lname).removeHandler(ch)
         st.session_state["mi_logs"] = log_capture_string.getvalue()
-        progress.empty()
 
 result = st.session_state.get("mi_result")
 if result is not None:
@@ -168,7 +171,7 @@ if result is not None:
             st.info("No public comps found.")
             
     with tab_logs:
-        st.markdown('<div class="section-header">Prefect Pipeline Execution Logs</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Pipeline Execution Logs</div>', unsafe_allow_html=True)
         if st.session_state["mi_logs"]:
             st.code(st.session_state["mi_logs"], language="text")
         else:

@@ -17,19 +17,27 @@ class IntelligenceResult:
         self.usage = LLMUsage()
         self.errors = []
 
+from typing import Callable, Optional
+
 @flow(name="market_intelligence_flow")
 def run_market_intelligence_pipeline(
     query: str, 
     description: str,
     discovery_models: list[str],
     processing_model: str,
-    verification_model: str
+    verification_model: str,
+    progress_callback: Optional[Callable[[str], None]] = None
 ) -> IntelligenceResult:
     logger.info(f"Starting Market Intelligence Flow for: {query}")
     result = IntelligenceResult()
     
+    def update_progress(msg: str):
+        if progress_callback:
+            progress_callback(msg)
+    
     try:
         # Step 1: Classify Market
+        update_progress("Step 1: Classifying market and identifying keywords...")
         classification, class_usage = classify_market_task(query, description, discovery_models[0])
         result.usage.add(
             prompt_tokens=class_usage.total_prompt_tokens,
@@ -39,6 +47,7 @@ def run_market_intelligence_pipeline(
         result.usage.estimated_cost_usd += class_usage.estimated_cost_usd
         
         # Step 2: Generate Queries
+        update_progress("Step 2: Generating optimal search queries for M&A, Fundraising, and IPOs...")
         search_queries, q_usage = generate_search_queries_task(classification, discovery_models[0])
         result.usage.add(
             prompt_tokens=q_usage.total_prompt_tokens,
@@ -47,7 +56,8 @@ def run_market_intelligence_pipeline(
         )
         result.usage.estimated_cost_usd += q_usage.estimated_cost_usd
 
-        # Step 3 & 4: Retrieve and Extract (Parallel using list comprehensions which Prefect handles nicely if wrapped or mapped)
+        # Step 3 & 4: Retrieve and Extract
+        update_progress("Step 3: Extracting deals from 3 parallel intelligence agents...")
         raw_extractions = []
         for model in discovery_models:
             # We call the task. In a true async/dask runner these would run parallel.
@@ -61,6 +71,7 @@ def run_market_intelligence_pipeline(
             result.usage.estimated_cost_usd += ext_usage.estimated_cost_usd
 
         # Step 5: Normalize and Dedupe
+        update_progress("Step 4: Merging and deduplicating records across all agents...")
         deduped_data, dedup_usage = normalize_and_dedupe_task(raw_extractions, processing_model)
         result.usage.add(
             prompt_tokens=dedup_usage.total_prompt_tokens,
@@ -70,6 +81,7 @@ def run_market_intelligence_pipeline(
         result.usage.estimated_cost_usd += dedup_usage.estimated_cost_usd
 
         # Step 6: Verify Evidence
+        update_progress("Step 5: Verifying evidence and filtering out AI hallucinations...")
         verified_data, ver_usage = verify_evidence_task(deduped_data, verification_model)
         result.usage.add(
             prompt_tokens=ver_usage.total_prompt_tokens,
@@ -79,6 +91,7 @@ def run_market_intelligence_pipeline(
         result.usage.estimated_cost_usd += ver_usage.estimated_cost_usd
 
         # Step 7: Enrich Market Data
+        update_progress("Step 6: Enriching live metrics via Yahoo Finance API...")
         final_data, enrich_usage = enrich_market_data_task(verified_data, processing_model)
         result.usage.add(
             prompt_tokens=enrich_usage.total_prompt_tokens,
