@@ -42,6 +42,7 @@ def verify_evidence_task(deduped_data: dict, model: str) -> tuple[dict, LLMUsage
     1. Filter out any claims that seem highly likely to be AI hallucinations (e.g., non-existent companies, bizarre deal values).
     2. Flag questionable items by lowering their 'confidence' to LOW.
     3. Ensure lookback windows strictly applied logically: M&A (36m), Fundraising (24m), IPOs (5yr), Comps (current).
+    4. REMOVE any M&A deals or fundraising rounds where the company and the acquirer/investor are the exact same entity (e.g. self-acquisitions).
     Return the filtered, validated JSON matching the exact schema.
     """
     
@@ -54,4 +55,23 @@ def verify_evidence_task(deduped_data: dict, model: str) -> tuple[dict, LLMUsage
         system_prompt=system,
         step_name="verify_evidence"
     )
+    
+    # Python backup strict filter
+    if "ma_events" in data:
+        data["ma_events"] = [
+            e for e in data["ma_events"] 
+            if e.get("company", "").strip().lower() != e.get("acquirer", "").strip().lower()
+        ]
+        
+    if "fundraising_events" in data:
+        filtered_funds = []
+        for e in data["fundraising_events"]:
+            company = e.get("company", "").strip().lower()
+            leads = [l.strip().lower() for l in e.get("lead_investors", [])]
+            # If the ONLY lead investor is the company itself, drop it as an obvious hallucination
+            if len(leads) == 1 and leads[0] == company:
+                continue
+            filtered_funds.append(e)
+        data["fundraising_events"] = filtered_funds
+        
     return data, usage
