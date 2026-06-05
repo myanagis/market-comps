@@ -6,7 +6,7 @@ from market_comps.market_intelligence_pipeline.schemas import MarketIntelligence
 
 logger = logging.getLogger(__name__)
 
-@task(name="classify_market")
+@task(name="classify_market", retries=2, retry_delay_seconds=2)
 def classify_market_task(query: str, description: str, model: str) -> tuple[dict, LLMUsage]:
     logger.info(f"Classifying market for: {query}")
     client = LLMClient(model=model)
@@ -23,7 +23,7 @@ def classify_market_task(query: str, description: str, model: str) -> tuple[dict
     }
     return client.structured_output(prompt=prompt, json_schema=schema, step_name="classify_market")
 
-@task(name="generate_search_queries")
+@task(name="generate_search_queries", retries=2, retry_delay_seconds=2)
 def generate_search_queries_task(classification: dict, model: str) -> tuple[dict, LLMUsage]:
     logger.info("Generating search queries based on classification.")
     client = LLMClient(model=model)
@@ -40,7 +40,7 @@ def generate_search_queries_task(classification: dict, model: str) -> tuple[dict
     }
     return client.structured_output(prompt=prompt, json_schema=schema, step_name="generate_search_queries")
 
-@task(name="retrieve_and_extract_events")
+@task(name="retrieve_and_extract_events", retries=2, retry_delay_seconds=2)
 def retrieve_and_extract_events_task(query: str, search_queries: dict, model: str) -> tuple[dict, LLMUsage]:
     logger.info(f"Retrieving and extracting events using model: {model}")
     client = LLMClient(model=model)

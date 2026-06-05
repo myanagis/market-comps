@@ -6,7 +6,7 @@ from market_comps.market_intelligence_pipeline.schemas import MarketIntelligence
 
 logger = logging.getLogger(__name__)
 
-@task(name="normalize_and_dedupe")
+@task(name="normalize_and_dedupe", retries=2, retry_delay_seconds=2)
 def normalize_and_dedupe_task(extractions: list[dict], model: str) -> tuple[dict, LLMUsage]:
     logger.info("Normalizing and deduping events.")
     client = LLMClient(model=model)
@@ -31,7 +31,7 @@ def normalize_and_dedupe_task(extractions: list[dict], model: str) -> tuple[dict
     )
     return data, usage
 
-@task(name="verify_evidence")
+@task(name="verify_evidence", retries=2, retry_delay_seconds=2)
 def verify_evidence_task(deduped_data: dict, model: str) -> tuple[dict, LLMUsage]:
     logger.info("Verifying evidence and filtering hallucinations.")
     client = LLMClient(model=model)

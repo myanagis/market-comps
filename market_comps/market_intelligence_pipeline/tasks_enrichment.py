@@ -6,7 +6,7 @@ from market_comps.models import CompanyCandidate, LLMUsage
 
 logger = logging.getLogger(__name__)
 
-@task(name="enrich_market_data")
+@task(name="enrich_market_data", retries=2, retry_delay_seconds=2)
 def enrich_market_data_task(verified_data: dict, model: str) -> tuple[dict, LLMUsage]:
     logger.info("Enriching market data with Yahoo Finance API.")
     
