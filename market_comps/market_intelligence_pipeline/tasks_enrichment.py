@@ -12,7 +12,7 @@ def enrich_market_data_task(verified_data: dict, model: str) -> tuple[dict, LLMU
     
     # We need a dedicated LLMClient for the metrics fetcher deduplication step internally
     fetcher_llm = LLMClient(model=model)
-    fetcher = MetricsFetcher(llm_client=fetcher_llm, max_workers=2)
+    fetcher = MetricsFetcher(llm_client=fetcher_llm, max_workers=1)
     
     candidates = []
     

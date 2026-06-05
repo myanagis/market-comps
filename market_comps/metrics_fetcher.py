@@ -171,6 +171,8 @@ class MetricsFetcher:
                 except Exception as exc:
                     logger.warning("Unexpected error for %s: %s", candidate.ticker, exc)
                     yf_results[candidate.ticker] = {}
+                if self._max_workers == 1:
+                    time.sleep(1.5)  # Be gentle if single threaded
 
         # Step B: build CompanyMetrics from yfinance data
         for candidate in candidates:
