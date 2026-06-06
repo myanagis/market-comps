@@ -379,5 +379,4 @@ class SECFormDUpdater(BaseUpdater):
 
         db.commit()
         return stats
- 
- 
+
