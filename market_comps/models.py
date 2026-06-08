@@ -100,9 +100,23 @@ class CompanyMetrics(BaseModel):
 class LLMCallTrace(BaseModel):
     step_name: str
     model: str
+    prompt: str = ""
+    system_prompt: str = ""
+    raw_response: str = ""
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    cost_usd: float
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class TroubleshootingLog(BaseModel):
+    step_name: str
+    model: str
+    prompt: str
+    system_prompt: str = ""
+    raw_response: str
+    prompt_tokens: int
+    completion_tokens: int
     cost_usd: float
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
@@ -124,6 +138,9 @@ class LLMUsage(BaseModel):
         output_price_per_m: float,
         step_name: str = "unknown",
         model: str = "unknown",
+        prompt: str = "",
+        system_prompt: str = "",
+        raw_response: str = ""
     ) -> None:
         """Accumulate tokens and cost from one LLM call."""
         self.total_prompt_tokens += prompt_tokens
@@ -135,6 +152,9 @@ class LLMUsage(BaseModel):
         self.traces.append(LLMCallTrace(
             step_name=step_name,
             model=model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            raw_response=raw_response,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,

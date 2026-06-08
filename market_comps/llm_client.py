@@ -86,6 +86,15 @@ class LLMClient:
 
         content = response.choices[0].message.content or ""
 
+        # Extract prompt and system_prompt from messages
+        prompt_str = ""
+        system_prompt_str = ""
+        for m in messages:
+            if m.get("role") == "system":
+                system_prompt_str += str(m.get("content", "")) + "\n"
+            else:
+                prompt_str += str(m.get("content", "")) + "\n"
+
         # Build usage record for this call
         usage = LLMUsage()
         if response.usage:
@@ -97,6 +106,9 @@ class LLMClient:
                 output_price_per_m=out_price,
                 step_name=step_name,
                 model=model,
+                prompt=prompt_str.strip(),
+                system_prompt=system_prompt_str.strip(),
+                raw_response=content
             )
         else:
             # OpenRouter may not always return usage; estimate conservatively
