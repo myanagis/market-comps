@@ -135,7 +135,7 @@ pg = st.navigation({
     "Apps": [
         st.Page("pages/11_CT_Business_Registry.py", title="CT Business Registry", icon="🏢"),
         st.Page("pages/1_Market_Intelligence.py",      title="Market Intelligence",           icon="📊"),
-        
+        st.Page("pages/10_Data_Sort_cerer.py", title="Data Sort-cerer", icon="📋"),
     ],
     "CRM": [
         st.Page("pages/17_CRM_Record_Lookup.py", title="Record Lookup", icon="🔍"),
@@ -159,7 +159,6 @@ pg = st.navigation({
         st.Page("pages/7_Directory_Analyzer.py", title="Directory Analyzer",    icon="📁"),
         st.Page("pages/8_Cash_Flow_Analysis.py", title="Cash Flow Analysis",    icon="💸"),
         st.Page("pages/9_Portfolio_Company_Analysis.py", title="Portfolio Company Analysis", icon="🏢"),
-        st.Page("pages/10_Schema_Driven_Framework.py", title="Schema-Driven Framework", icon="📋"),
     ],
     "Admin": [
         st.Page("pages/16_Admin.py", title="Admin DB Manager", icon="🔒"),

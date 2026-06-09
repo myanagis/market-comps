@@ -2,7 +2,7 @@ import time
 import streamlit as st
 
 st.set_page_config(
-    page_title="Schema-Driven Framework",
+    page_title="Data Sort-cerer",
     page_icon="📋",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -22,7 +22,7 @@ from market_comps.config import settings
 inject_global_style()
 
 _DIR = Path(__file__).resolve().parent.parent / "market_comps" / "schema_framework"
-_SCHEMA_PATH = _DIR / "starter_schema.json"
+_SCHEMA_PATH = _DIR / "starter_schema.md"
 _PROMPT_PATH = _DIR / "evidence_extraction_prompt.md"
 _SYNTH_PROMPT_PATH = _DIR / "synthesis_prompt.md"
 
@@ -31,8 +31,8 @@ def _load_asset(path: Path) -> str:
         return f.read()
 
 st.markdown("""
-<h1>📋 Schema-Driven Framework</h1>
-<p>Ingest and extract structured evidence based on a standardized framework, merging data and synthesizing insights.</p>
+<h1>📋 Data Sort-cerer</h1>
+<p>Ingest and extract structured evidence based on a Markdown framework, merging data and synthesizing insights.</p>
 """, unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -70,10 +70,10 @@ with st.expander("⚙️ Configuration", expanded=True):
 with st.expander("🛠️ Advanced Configuration", expanded=False):
     st.markdown("**Editable Schema & Prompts**")
     st.session_state["sdf_schema"] = st.text_area(
-        "JSON Schema", 
+        "Markdown Schema", 
         value=st.session_state["sdf_schema"], 
         height=250,
-        help="Edit the JSON schema used for evidence extraction."
+        help="Edit the Markdown schema used for evidence extraction. Use # for main headers and ## for subheaders."
     )
     
     col_ext, col_syn = st.columns(2)
@@ -146,43 +146,22 @@ if uploaded_file is not None:
         
         if ext == "txt":
             extracted_text = file_bytes.decode("utf-8", errors="replace")
-        elif ext == "docx":
-            import io
-            doc = Document(io.BytesIO(file_bytes))
-            extracted_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-        elif ext == "pptx":
-            import io
-            prs = Presentation(io.BytesIO(file_bytes))
-            text_runs = []
-            for slide in prs.slides:
-                for shape in slide.shapes:
-                    if hasattr(shape, "text"):
-                        text_runs.append(shape.text)
-            extracted_text = "\n".join(text_runs)
-        elif ext == "pdf":
-            import io
-            pdf = PdfReader(io.BytesIO(file_bytes))
-            num_pages = len(pdf.pages)
-            
-            confirm_key = f"confirm_pdf_{uploaded_file.file_id}"
-            
-            if num_pages > 20 and not st.session_state.get(confirm_key, False):
-                st.warning(f"This PDF has {num_pages} pages. Mistral OCR costs roughly $2 / 1000 pages. Do you want to proceed with extraction?")
-                if st.button("Confirm Mistral OCR Processing"):
-                    st.session_state[confirm_key] = True
-                    st.rerun()
-                else:
-                    st.stop()
-            
-            with st.spinner("Extracting text via Mistral OCR... This might take a minute."):
-                client = PDFClient(pdf_engine="mistral-ocr", model=selected_model)
-                raw_text, _, usage = client.send(
-                    prompt="Extract the raw text from this document as accurately as possible.", 
-                    pdf_bytes=file_bytes, 
-                    filename=filename
+        elif ext in ["pdf", "docx", "pptx"]:
+            from market_comps.document_pipeline.flow_main import process_document_pipeline
+            with st.spinner(f"Processing {ext.upper()} via Document Pipeline..."):
+                doc_result = process_document_pipeline(
+                    file_bytes=file_bytes, 
+                    filename=filename, 
+                    extraction_method="Mistral OCR" if ext == "pdf" else "Native Parsing", 
+                    model=selected_model,
+                    generate_summary=False
                 )
-                extracted_text = raw_text
-                st.success(f"Extracted {num_pages} pages via Mistral OCR.")
+                if doc_result and doc_result.raw_extracted_text:
+                    extracted_text = doc_result.raw_extracted_text
+                elif doc_result and doc_result.raw_native_text:
+                    extracted_text = doc_result.raw_native_text
+                else:
+                    extracted_text = ""
         
         if extracted_text and ext != "pdf":
             with st.spinner("Processing file..."):
@@ -235,7 +214,8 @@ if analyze_clicked and valid_sources:
         synthesis, synth_usage = synthesize_evidence(
             extracted_data, 
             model=selected_model,
-            synth_prompt_template=st.session_state["sdf_synth_prompt"]
+            synth_prompt_template=st.session_state["sdf_synth_prompt"],
+            schema_text=st.session_state["sdf_schema"]
         )
         synth_elapsed = time.time() - t_synth
         st.write(f"✅ Synthesized evidence in {synth_elapsed:.1f}s")
@@ -251,73 +231,68 @@ if analyze_clicked and valid_sources:
 # ── Results ───────────────────────────────────────────────────────────────────
 results = st.session_state.get("sdf_results")
 if results:
-    st.markdown("## Results")
-
-    tab1, tab2 = st.tabs(["Integrated Synthesis", "Structured Evidence Data"])
+    st.markdown("---")
+    st.markdown("## Synthesized Results")
     
-    with tab1:
-        st.markdown("### Synthesis")
-        from market_comps.ui import safe_markdown
-        st.info(safe_markdown(results["synthesis"]))
-
-        su = results.get("synth_usage")
-        synth_time = results.get("synth_time_s", 0.0)
-        if su:
-            st.markdown(
-                f'<div style="font-size: 0.8rem; color: #64748b; margin-top: 10px;">'
-                f'<b>Synthesis Cost:</b> {su.total_tokens:,} tokens | Est. ${su.estimated_cost_usd:.5f} | Time: {synth_time:.1f}s'
-                f'</div>', unsafe_allow_html=True
-            )
-
-    with tab2:
-        st.markdown("### Raw Extracted Records")
-        for res in results["evidence"]:
-            u = res.get("usage")
-            ext_time = res.get("extraction_time_s", 0.0)
-            usage_str = f" | {u.total_tokens:,} tokens | Est. ${u.estimated_cost_usd:.5f} | Time: {ext_time:.1f}s" if u else " | Usage unknown"
-            with st.expander(f"📦 Evidence from {res['source']}{usage_str}", expanded=True):
-                # Print Metadata
-                meta_cols = st.columns(3)
-                with meta_cols[0]:
-                    st.markdown(f"**Source:** {res.get('source', 'Unknown')}")
-                with meta_cols[1]:
-                    if res.get('date'):
-                        st.markdown(f"**Date:** {res.get('date')}")
-                
-                st.markdown("---")
-                
-                # Print Data structure
-                data = res.get("data", {})
-                if isinstance(data, dict) and "error" in data:
-                    st.error(data["error"])
-                elif isinstance(data, dict):
-                    for category, subcategories in data.items():
-                        if not isinstance(subcategories, dict):
-                            continue
+    from market_comps.ui import safe_markdown
+    
+    synthesis_dict = results.get("synthesis", {})
+    evidence_list = results.get("evidence", [])
+    
+    if isinstance(synthesis_dict, dict) and "error" in synthesis_dict:
+        st.error(synthesis_dict["error"])
+    elif isinstance(synthesis_dict, dict):
+        for h1_header, h1_content in synthesis_dict.items():
+            st.markdown(f"### {h1_header}")
+            
+            if isinstance(h1_content, dict):
+                for h2_header, h2_text in h1_content.items():
+                    st.markdown(f"**{h2_header}**")
+                    st.info(safe_markdown(h2_text))
+                    
+                    with st.expander(f"📦 View Evidence for {h1_header} - {h2_header}"):
+                        has_evidence = False
+                        for ev in evidence_list:
+                            source_name = ev.get("source", "Unknown")
+                            ev_data = ev.get("data", {}).get(h1_header, {}).get(h2_header, [])
+                            if ev_data and isinstance(ev_data, list):
+                                st.markdown(f"**From {source_name}**")
+                                for item in ev_data:
+                                    quote = item.get("quote", "")
+                                    conf = item.get("confidence", "")
+                                    conf_str = f" _({conf})_" if conf else ""
+                                    if quote:
+                                        st.markdown(f"- \"{safe_markdown(quote)}\"{conf_str}")
+                                        has_evidence = True
+                        if not has_evidence:
+                            st.write("No direct evidence extracted.")
                             
-                        # Only show category if it has at least one populated subcategory
-                        has_items = any(bool(items) for items in subcategories.values())
-                        if not has_items:
-                            continue
-                            
-                        st.markdown(f"#### {category}")
-                        
-                        for sub_label, items in subcategories.items():
-                            if items and isinstance(items, list):
-                                st.markdown(f"**{sub_label}**")
-                                for item in items:
-                                    if isinstance(item, dict):
-                                        # Try to find the actual quote text vs metadata tags
-                                        text_val = item.get("quote", item.get("text", item.get("content", "")))
-                                        if not text_val:
-                                            st.markdown(f"- {safe_markdown(str(item))}")
-                                        else:
-                                            # Format extra metadata cleanly (tags, confidence, etc)
-                                            extras = [f"{k}: {v}" for k, v in item.items() if k not in ["quote", "text", "content"]]
-                                            extras_str = f" _({', '.join(extras)})_" if extras else ""
-                                            st.markdown(f"- \"{safe_markdown(text_val)}\"{extras_str}")
-                                    else:
-                                        st.markdown(f"- {safe_markdown(str(item))}")
-                        st.markdown("<br>", unsafe_allow_html=True)
-                else:
-                    st.json(data)
+            else:
+                st.info(safe_markdown(str(h1_content)))
+                
+                with st.expander(f"📦 View Evidence for {h1_header}"):
+                    has_evidence = False
+                    for ev in evidence_list:
+                        source_name = ev.get("source", "Unknown")
+                        ev_data = ev.get("data", {}).get(h1_header, [])
+                        if ev_data and isinstance(ev_data, list):
+                            st.markdown(f"**From {source_name}**")
+                            for item in ev_data:
+                                quote = item.get("quote", "")
+                                conf = item.get("confidence", "")
+                                conf_str = f" _({conf})_" if conf else ""
+                                if quote:
+                                    st.markdown(f"- \"{safe_markdown(quote)}\"{conf_str}")
+                                    has_evidence = True
+                    if not has_evidence:
+                        st.write("No direct evidence extracted.")
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+    su = results.get("synth_usage")
+    synth_time = results.get("synth_time_s", 0.0)
+    if su:
+        st.markdown(
+            f'<div style="font-size: 0.8rem; color: #64748b; margin-top: 20px;">'
+            f'<b>Synthesis Cost:</b> {su.total_tokens:,} tokens | Est. ${su.estimated_cost_usd:.5f} | Time: {synth_time:.1f}s'
+            f'</div>', unsafe_allow_html=True
+        )

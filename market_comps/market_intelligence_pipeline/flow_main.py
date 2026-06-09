@@ -3,12 +3,11 @@ import logging
 from market_comps.models import LLMUsage
 from market_comps.market_intelligence_pipeline.tasks_discovery import (
     classify_market_task, generate_search_queries_task, 
-    extract_ma_events_task, extract_fundraising_events_task, 
-    extract_ipo_events_task, extract_public_comps_task,
-    extract_competitors_task
+    extract_segment_task
 )
+from market_comps.market_intelligence_pipeline.config import SEGMENTS
 from market_comps.market_intelligence_pipeline.tasks_processing import (
-    normalize_and_dedupe_task, verify_evidence_task
+    normalize_and_dedupe_segment_task, verify_segment_task
 )
 from market_comps.market_intelligence_pipeline.tasks_enrichment import enrich_market_data_task
 
@@ -60,43 +59,35 @@ def run_market_intelligence_pipeline(
         merge_usage(q_usage)
 
         # Step 3 & 4: Retrieve and Extract
-        update_progress("Step 3: Extracting specific categories across 3 parallel intelligence agents...")
-        raw_extractions = []
+        update_progress("Step 3: Extracting specific categories across parallel intelligence agents...")
+        
+        # Accumulators for segment-specific results
+        segment_extractions = {seg_id: [] for seg_id in SEGMENTS}
+
         for model in discovery_models:
-            # We call the individual category tasks for each model
-            ma_data, ma_usage = extract_ma_events_task(query, search_queries, model)
-            fundraising_data, fund_usage = extract_fundraising_events_task(query, search_queries, model)
-            ipo_data, ipo_usage = extract_ipo_events_task(query, search_queries, model)
-            comps_data, comps_usage = extract_public_comps_task(query, search_queries, model)
-            competitor_data, competitor_usage = extract_competitors_task(query, search_queries, model)
+            ext_data = {"industry_classification": classification.get("primary_industry", "")}
             
-            merge_usage(ma_usage)
-            merge_usage(fund_usage)
-            merge_usage(ipo_usage)
-            merge_usage(comps_usage)
-            merge_usage(competitor_usage)
-            
-            # Reconstruct the monolithic schema format for the rest of the pipeline
-            ext_data = {
-                "industry_classification": classification.get("primary_industry", ""),
-                "ma_events": ma_data.get("ma_events", []),
-                "fundraising_events": fundraising_data.get("fundraising_events", []),
-                "ipo_events": ipo_data.get("ipo_events", []),
-                "public_comps": comps_data.get("public_comps", []),
-                "competitors": competitor_data.get("competitors", [])
-            }
-            raw_extractions.append(ext_data)
+            for seg_id, config in SEGMENTS.items():
+                data, usage = extract_segment_task(query, search_queries, model, seg_id, config)
+                merge_usage(usage)
+                segment_extractions[seg_id].append(data)
+                ext_data[seg_id] = data.get(seg_id, [])
+                
             result.raw_extractions[model] = ext_data
 
-        # Step 5: Normalize and Dedupe
-        update_progress("Step 4: Merging and deduplicating records across all agents...")
-        deduped_data, dedup_usage = normalize_and_dedupe_task(raw_extractions, processing_model)
-        merge_usage(dedup_usage)
-
-        # Step 6: Verify Evidence
-        update_progress("Step 5: Verifying evidence and filtering out AI hallucinations...")
-        verified_data, ver_usage = verify_evidence_task(deduped_data, verification_model)
-        merge_usage(ver_usage)
+        # Step 5 & 6: Normalize, Dedupe, and Verify by Segment
+        update_progress("Step 4 & 5: Deduping and Verifying each segment individually...")
+        
+        verified_data = {
+            "industry_classification": classification.get("primary_industry", "")
+        }
+        
+        for seg_id, config in SEGMENTS.items():
+            deduped_data, d_usage = normalize_and_dedupe_segment_task(segment_extractions[seg_id], config["schema"].model_json_schema(), config["name"], processing_model)
+            merge_usage(d_usage)
+            verified_seg, v_usage = verify_segment_task(deduped_data, config["schema"].model_json_schema(), config["name"], verification_model)
+            merge_usage(v_usage)
+            verified_data[seg_id] = verified_seg.get(seg_id, [])
 
         # Step 7: Enrich Market Data
         update_progress("Step 6: Enriching live metrics via Yahoo Finance API...")

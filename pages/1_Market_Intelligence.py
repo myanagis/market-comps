@@ -36,15 +36,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<div style="margin-bottom: 1.5rem;">
-    <span class="lookback-badge">🤝 <b>M&A:</b> Last 36 months</span>
-    <span class="lookback-badge">💸 <b>Fundraising:</b> Last 24 months</span>
-    <span class="lookback-badge">🚀 <b>IPOs:</b> Last 5 years</span>
-    <span class="lookback-badge">📈 <b>Public Comps:</b> Current</span>
-    <span class="lookback-badge">⚔️ <b>Competitors:</b> Current</span>
-</div>
-""", unsafe_allow_html=True)
 
 if "mi_result" not in st.session_state:
     st.session_state["mi_result"] = None
@@ -136,56 +127,50 @@ if result is not None:
             return df.style.format(subset=format_cols, formatter="{:,.0f}", na_rep="")
         return df
 
-    tab_ma, tab_fund, tab_ipo, tab_comp, tab_competitors, tab_raw, tab_troubleshoot, tab_logs = st.tabs(["🤝 M&A Events", "💸 Fundraising", "🚀 IPOs", "📈 Public Comps", "⚔️ Competitors", "🤖 Raw Extractions", "🛠️ Advanced Troubleshooting", "📋 Pipeline Logs"])
-    
-    with tab_ma:
-        st.markdown('<div class="section-header">Recent M&A (36 months)</div>', unsafe_allow_html=True)
-        ma_events = data.get("ma_events", [])
-        if ma_events:
-            st.dataframe(format_df(pd.DataFrame(ma_events), ["deal_value"]), use_container_width=True, hide_index=True)
-        else:
-            st.info("No M&A events found.")
-            
-    with tab_fund:
-        st.markdown('<div class="section-header">Recent Fundraising (24 months)</div>', unsafe_allow_html=True)
-        fund_events = data.get("fundraising_events", [])
-        if fund_events:
-            st.dataframe(format_df(pd.DataFrame(fund_events), ["amount", "post_money_valuation"]), use_container_width=True, hide_index=True)
-        else:
-            st.info("No fundraising events found.")
-            
-    with tab_ipo:
-        st.markdown('<div class="section-header">Recent IPOs (5 years)</div>', unsafe_allow_html=True)
-        ipo_events = data.get("ipo_events", [])
-        if ipo_events:
-            st.dataframe(format_df(pd.DataFrame(ipo_events), ["amount_raised", "valuation_at_ipo"]), use_container_width=True, hide_index=True)
-        else:
-            st.info("No IPO events found.")
-            
-    with tab_comp:
-        st.markdown('<div class="section-header">Public Comparables</div>', unsafe_allow_html=True)
-        comps = data.get("public_comps", [])
-        if comps:
-            # Flatten the live_metrics
-            flat_comps = []
-            for c in comps:
-                row = c.copy()
-                if "live_metrics" in row:
-                    lm = row.pop("live_metrics")
-                    row.update(lm)
-                flat_comps.append(row)
-            st.dataframe(format_df(pd.DataFrame(flat_comps), ["market_cap_usd", "ev_usd", "revenue_ttm_usd"]), use_container_width=True, hide_index=True)
-        else:
-            st.info("No public comps found.")
+    st.markdown('<div class="section-header">🤝 Recent M&A (36 months)</div>', unsafe_allow_html=True)
+    ma_events = data.get("ma_events", [])
+    if ma_events:
+        st.dataframe(format_df(pd.DataFrame(ma_events), ["deal_value"]), use_container_width=True, hide_index=True)
+    else:
+        st.info("No M&A events found.")
+        
+    st.markdown('<div class="section-header">💸 Recent Fundraising (24 months)</div>', unsafe_allow_html=True)
+    fund_events = data.get("fundraising_events", [])
+    if fund_events:
+        st.dataframe(format_df(pd.DataFrame(fund_events), ["amount", "post_money_valuation"]), use_container_width=True, hide_index=True)
+    else:
+        st.info("No fundraising events found.")
+        
+    st.markdown('<div class="section-header">🚀 Recent IPOs (5 years)</div>', unsafe_allow_html=True)
+    ipo_events = data.get("ipo_events", [])
+    if ipo_events:
+        st.dataframe(format_df(pd.DataFrame(ipo_events), ["amount_raised", "valuation_at_ipo"]), use_container_width=True, hide_index=True)
+    else:
+        st.info("No IPO events found.")
+        
+    st.markdown('<div class="section-header">📈 Public Comparables</div>', unsafe_allow_html=True)
+    comps = data.get("public_comps", [])
+    if comps:
+        flat_comps = []
+        for c in comps:
+            row = c.copy()
+            if "live_metrics" in row:
+                lm = row.pop("live_metrics")
+                row.update(lm)
+            flat_comps.append(row)
+        st.dataframe(format_df(pd.DataFrame(flat_comps), ["market_cap_usd", "ev_usd", "revenue_ttm_usd"]), use_container_width=True, hide_index=True)
+    else:
+        st.info("No public comps found.")
 
-    with tab_competitors:
-        st.markdown('<div class="section-header">Market Competitors</div>', unsafe_allow_html=True)
-        competitors = data.get("competitors", [])
-        if competitors:
-            st.dataframe(pd.DataFrame(competitors), use_container_width=True, hide_index=True)
-        else:
-            st.info("No competitors found.")
-            
+    st.markdown('<div class="section-header">⚔️ Market Competitors</div>', unsafe_allow_html=True)
+    competitors = data.get("competitors", [])
+    if competitors:
+        st.dataframe(pd.DataFrame(competitors), use_container_width=True, hide_index=True)
+    else:
+        st.info("No competitors found.")
+
+    tab_raw, tab_troubleshoot, tab_logs = st.tabs(["🤖 Raw Extractions", "🛠️ Advanced Troubleshooting", "📋 Pipeline Logs"])
+
     with tab_raw:
         st.markdown('<div class="section-header">Raw Discovery Agent Outputs</div>', unsafe_allow_html=True)
         raw_exts = getattr(result, "raw_extractions", {})

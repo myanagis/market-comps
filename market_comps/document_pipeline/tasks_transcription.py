@@ -65,7 +65,7 @@ def extract_text_with_paddle_ocr(pdf_bytes: bytes, filename: str) -> Tuple[str, 
             if result and result[0]:
                 for line in result[0]:
                     page_text.append(line[1][0])
-            full_text.append(f"--- Page {page_num + 1} ---\n" + "\n".join(page_text))
+            full_text.append(f"===Page {page_num + 1}===\n" + "\n".join(page_text))
             
         return "\n\n".join(full_text), LLMUsage()
     except Exception as e:
@@ -85,14 +85,18 @@ def extract_text_with_native(pdf_bytes: bytes, filename: str, model: str, instru
                 if hasattr(shape, "text") and shape.text.strip():
                     slide_text.append(shape.text.strip())
             if slide_text:
-                text_runs.append(f"--- Slide {slide_num + 1} ---\n" + "\n".join(slide_text))
+                text_runs.append(f"===Page {slide_num + 1}===\n" + "\n".join(slide_text))
         return "\n\n".join(text_runs), LLMUsage()
     elif filename.lower().endswith(".pdf"):
         import io
         try:
             import pdfplumber
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-                text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+                pages_text = []
+                for i, page in enumerate(pdf.pages):
+                    page_content = page.extract_text() or ""
+                    pages_text.append(f"===Page {i + 1}===\n{page_content}")
+                text = "\n\n".join(pages_text)
             return text, LLMUsage()
         except ImportError:
             # Fallback if pdfplumber is not available
