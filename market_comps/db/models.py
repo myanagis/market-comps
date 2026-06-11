@@ -55,6 +55,7 @@ class CompanyProfile(Base, TimestampMixin):
     industry = Column(String)
     subindustry = Column(String)
     company_stage = Column(String)
+    themes = Column(JSON)
 
     organization = relationship("Organization", back_populates="company_profile")
 
@@ -66,6 +67,9 @@ class InvestorProfile(Base, TimestampMixin):
     organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, unique=True)
     investor_type = Column(String)
     preferred_stage = Column(String)
+    founded_year = Column(Integer)
+    themes = Column(JSON)
+    user_notes = Column(String)
 
     organization = relationship("Organization", back_populates="investor_profile")
 
@@ -92,6 +96,10 @@ class FundProfile(Base, TimestampMixin):
     state = Column(String)
     country = Column(String)
     zip_code = Column(String)
+
+    themes = Column(JSON)
+    market_reputation = Column(String)
+    user_notes = Column(String)
 
     parent_organization = relationship("Organization", back_populates="fund_profiles")
 

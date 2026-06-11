@@ -13,12 +13,22 @@ from market_comps.ingestion.reconciler import log_mutation
 st.set_page_config(page_title="Companies Directory", page_icon="🏢", layout="wide")
 st.title("🏢 Companies Directory")
 
+tab_dir, tab_add = st.tabs(["Companies Directory", "Add Company"])
+
 # Get database session
 try:
     db = next(get_db())
 except Exception as e:
     st.error(f"Database connection failed: {e}")
     st.stop()
+
+def get_all_company_themes(db):
+    profiles = db.query(CompanyProfile.themes).filter(CompanyProfile.themes.is_not(None)).all()
+    themes = set()
+    for (t,) in profiles:
+        if t and isinstance(t, list):
+            themes.update(t)
+    return sorted(list(themes))
 
 @st.dialog("Edit Company")
 def edit_company_dialog(org):
@@ -50,6 +60,10 @@ def edit_company_dialog(org):
         with col4:
             stage = st.text_input("Company Stage", value=prof.company_stage if prof else "")
             founded = st.number_input("Founded Year", value=prof.founded_year if prof and prof.founded_year else None, step=1, placeholder="YYYY")
+            
+        all_themes = get_all_company_themes(db)
+        selected_themes = st.multiselect("Themes", options=all_themes, default=prof.themes if prof and prof.themes else [])
+        new_themes = st.text_input("Add New Themes (comma separated)")
             
         if st.form_submit_button("Save Changes"):
             user = st.session_state.get("user_email", "SYSTEM")
@@ -91,6 +105,13 @@ def edit_company_dialog(org):
             check_and_update("COMPANY_PROFILE", prof.id, "company_stage", prof.company_stage, stage, prof)
             check_and_update("COMPANY_PROFILE", prof.id, "founded_year", prof.founded_year, founded if founded else None, prof)
             
+            final_themes = list(selected_themes)
+            if new_themes:
+                final_themes.extend([t.strip() for t in new_themes.split(",") if t.strip()])
+            final_themes = list(set(final_themes))
+            
+            check_and_update("COMPANY_PROFILE", prof.id, "themes", prof.themes, final_themes, prof)
+            
             db.commit()
             st.rerun()
 
@@ -129,6 +150,8 @@ def display_company_details(company_id):
             st.markdown("#### Company Profile")
             st.write(f"**Industry:** {org.company_profile.industry} | **Stage:** {org.company_profile.company_stage}")
             st.write(f"**Sub-Industry:** {org.company_profile.subindustry} | **Founded:** {org.company_profile.founded_year}")
+            if org.company_profile.themes:
+                st.write(f"**Themes:** {', '.join(org.company_profile.themes)}")
             
         if org.program_memberships:
             st.divider()
@@ -298,9 +321,10 @@ def display_company_details(company_id):
             st.info("No mutation entries found.")
 
 # Fetch and query data
-search_query = st.text_input("Search Companies...", placeholder="Search by name, domain, or website...")
-
-q = db.query(Organization).options(
+with tab_dir:
+    search_query = st.text_input("Search Companies...", placeholder="Search by name, domain, or website...")
+    
+    q = db.query(Organization).options(
     joinedload(Organization.company_profile)
 ).filter(Organization.organization_type == "COMPANY")
 
@@ -328,37 +352,148 @@ for o in orgs:
         "Status": o.status,
         "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
     }
-    if o.company_profile:
-        row["Industry"] = o.company_profile.industry
-        row["Stage"] = o.company_profile.company_stage
-    data.append(row)
+    if search_query:
+        search_filter = f"%{search_query}%"
+        q = q.filter(
+            or_(
+                Organization.name.ilike(search_filter),
+                Organization.normalized_name.ilike(search_filter),
+                Organization.primary_domain.ilike(search_filter)
+            )
+        )
 
-df = pd.DataFrame(data)
+    orgs = q.order_by(Organization.created_at.desc()).limit(200).all()
 
-if df.empty:
-    st.info("No company records found.")
-else:
-    st.write("👆 *Select a company row below to inspect full details.*")
-    
-    event = st.dataframe(
-        df,
-        key="grid_companies",
-        on_select="rerun",
-        selection_mode="single-row",
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "ID": None, # Hide ID
-            "Website": st.column_config.LinkColumn("Website"),
-            "Created": st.column_config.DateColumn("Created")
+    # Prepare Dataframe
+    data = []
+    for o in orgs:
+        row = {
+            "ID": o.id,
+            "Name": o.name,
+            "Domain": o.primary_domain,
+            "Website": o.website_url,
+            "City": o.city,
+            "Status": o.status,
+            "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
         }
-    )
-    
-    selection = event.get("selection", {})
-    rows = selection.get("rows", [])
-    
-    if rows:
-        st.divider()
-        selected_row_idx = rows[0]
-        selected_company_id = df.iloc[selected_row_idx]["ID"]
-        display_company_details(selected_company_id)
+        if o.company_profile:
+            row["Industry"] = o.company_profile.industry
+            row["Stage"] = o.company_profile.company_stage
+        data.append(row)
+
+    df = pd.DataFrame(data)
+
+    if df.empty:
+        st.info("No company records found.")
+    else:
+        st.write("👆 *Select a company row below to inspect full details.*")
+        
+        event = st.dataframe(
+            df,
+            key="grid_companies",
+            on_select="rerun",
+            selection_mode="single-row",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "ID": None, # Hide ID
+                "Website": st.column_config.LinkColumn("Website"),
+                "Created": st.column_config.DateColumn("Created")
+            }
+        )
+        
+        selection = event.get("selection", {})
+        rows = selection.get("rows", [])
+        
+        if rows:
+            st.divider()
+            selected_row_idx = rows[0]
+            selected_company_id = df.iloc[selected_row_idx]["ID"]
+            display_company_details(selected_company_id)
+
+with tab_add:
+    with st.form("company_form", clear_on_submit=True):
+        st.subheader("Organization Details")
+        col1, col2 = st.columns(2)
+        name = col1.text_input("Company Name *")
+        domain = col2.text_input("Primary Domain (Unique) *")
+        city = col1.text_input("City")
+        desc = st.text_area("Description")
+        
+        st.subheader("Company Profile")
+        col3, col4 = st.columns(2)
+        founded = col3.number_input("Founded Year", min_value=1800, max_value=2100, value=None, placeholder="YYYY")
+        industry = col4.text_input("Industry")
+        stage = col3.text_input("Company Stage")
+        
+        all_themes = get_all_company_themes(db)
+        selected_themes = st.multiselect("Themes", options=all_themes)
+        new_themes = st.text_input("Add New Themes (comma separated)")
+        
+        from market_comps.db.models import Investment
+        st.subheader("Add Investment Firm (Optional)")
+        investors = db.query(Organization).filter_by(organization_type="INVESTOR").order_by(Organization.name).all()
+        investor_opts = {0: "-- None --"}
+        investor_opts.update({i.id: i.name for i in investors})
+        
+        col5, col6 = st.columns(2)
+        linked_investor_id = col5.selectbox("Select Investment Firm", options=list(investor_opts.keys()), format_func=lambda x: investor_opts[x])
+        inv_round = col6.text_input("Round (e.g. Seed, Series A)")
+        inv_amount = col5.text_input("Amount (e.g. $2M)")
+        inv_date = col6.date_input("Investment Date", value=None)
+        
+        submitted = st.form_submit_button("Create Company")
+        if submitted:
+            if not name or not domain:
+                st.error("Name and Domain are required.")
+            else:
+                try:
+                    org = db.query(Organization).filter_by(primary_domain=domain).first()
+                    action_str = "updated" if org else "created"
+                    
+                    if org:
+                        org.name = name
+                        org.normalized_name = name.lower()
+                        org.city = city
+                        if desc: org.description = desc
+                        org.organization_type = "COMPANY"
+                    else:
+                        org = Organization(name=name, normalized_name=name.lower(), primary_domain=domain, city=city, description=desc, organization_type="COMPANY")
+                        db.add(org)
+                        
+                    db.flush() # get ID
+                    
+                    profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+                    
+                    final_themes = list(selected_themes)
+                    if new_themes:
+                        final_themes.extend([t.strip() for t in new_themes.split(",") if t.strip()])
+                    final_themes = list(set(final_themes))
+                    
+                    if profile:
+                        if founded: profile.founded_year = founded
+                        if industry: profile.industry = industry
+                        if stage: profile.company_stage = stage
+                        if final_themes: profile.themes = final_themes
+                    else:
+                        profile = CompanyProfile(organization_id=org.id, founded_year=founded, industry=industry, company_stage=stage, themes=final_themes if final_themes else None)
+                        db.add(profile)
+                        
+                    db.commit()
+                    
+                    if linked_investor_id != 0:
+                        inv = Investment(
+                            investor_organization_id=linked_investor_id,
+                            company_organization_id=org.id,
+                            round_type=inv_round,
+                            amount=inv_amount,
+                            investment_date=inv_date
+                        )
+                        db.add(inv)
+                        db.commit()
+                        st.success(f"Successfully added investment from {investor_opts[linked_investor_id]}!")
+                        
+                    st.success(f"Successfully {action_str} company: {name}!")
+                except Exception as e:
+                    db.rollback()
+                    st.error(f"Error saving to DB: {str(e)}")
