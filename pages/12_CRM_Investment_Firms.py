@@ -308,9 +308,15 @@ def display_investor_details(investor_id):
         st.divider()
         st.subheader("📄 Linked Source Documents")
         
+        fund_ids = [str(f.id) for f in org.fund_profiles] if org.fund_profiles else []
+        filters = [
+            (EntityMatch.canonical_entity_type == "Organization") & (EntityMatch.canonical_entity_id == str(org.id))
+        ]
+        if fund_ids:
+            filters.append((EntityMatch.canonical_entity_type == "FundProfile") & (EntityMatch.canonical_entity_id.in_(fund_ids)))
+            
         doc_ids_subquery = db.query(SourceDocument.id).join(DocumentText).join(ExtractionJob).join(ExtractedEntity).join(EntityMatch).filter(
-            EntityMatch.canonical_entity_type == "Organization",
-            EntityMatch.canonical_entity_id == str(org.id)
+            or_(*filters)
         ).subquery()
         
         docs = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids_subquery)).all()
@@ -336,10 +342,14 @@ def display_investor_details(investor_id):
         st.divider()
         st.subheader("🧠 Raw Extracted Data")
         
-        matches = db.query(EntityMatch).filter_by(
-            canonical_entity_type="Organization",
-            canonical_entity_id=str(org.id)
-        ).all()
+        fund_ids = [str(f.id) for f in org.fund_profiles] if org.fund_profiles else []
+        filters = [
+            (EntityMatch.canonical_entity_type == "Organization") & (EntityMatch.canonical_entity_id == str(org.id))
+        ]
+        if fund_ids:
+            filters.append((EntityMatch.canonical_entity_type == "FundProfile") & (EntityMatch.canonical_entity_id.in_(fund_ids)))
+            
+        matches = db.query(EntityMatch).filter(or_(*filters)).all()
         
         extracted_entities = [m.extracted_entity for m in matches if m.extracted_entity]
         if extracted_entities:
