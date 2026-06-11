@@ -319,7 +319,15 @@ def display_investor_details(investor_id):
             or_(*filters)
         ).subquery()
         
-        docs = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids_subquery)).all()
+        docs_query = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids_subquery))
+        
+        accession_numbers = [f.accession_number for f in org.fund_profiles if f.accession_number]
+        if accession_numbers:
+            sec_filters = [SourceDocument.source_url.contains(acc) for acc in accession_numbers]
+            sec_docs_query = db.query(SourceDocument).filter(or_(*sec_filters))
+            docs = docs_query.union(sec_docs_query).all()
+        else:
+            docs = docs_query.all()
         
         if docs:
             from market_comps.config import get_supabase_url
