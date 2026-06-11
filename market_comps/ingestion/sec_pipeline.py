@@ -10,7 +10,7 @@ from lxml import etree
 from sqlalchemy.orm import Session
 
 from market_comps.config import settings
-from market_comps.db.models import Pipeline, PipelineRun, SourceDocument, DocumentText, Organization, FundProfile, Person, PersonOrganizationRole, PersonEmail, InvestorProfile
+from market_comps.db.models import Pipeline, PipelineRun, SourceDocument, DocumentText, Organization, FundProfile, Person, PersonOrganizationRole, PersonEmail, InvestorProfile, ExtractionJob, ExtractedEntity, EntityMatch
 from market_comps.ingestion.interfaces import BaseFetcher, BasePreparer, BaseExtractor, BaseNormalizer, BaseUpdater
 
 logger = logging.getLogger(__name__)
@@ -222,6 +222,7 @@ class SECFormDExtractor(BaseExtractor):
                     })
 
                 data = {
+                    "document_text_id": doc.id,
                     "accession_number": doc.source_document.source_url.split("/")[-1].replace(".xml", ""),
                     "issuer_name": first_text("issuerName"),
                     "industry_group": ", ".join(all_texts("investmentFundType")) or first_text("industryGroupType"),
@@ -270,6 +271,7 @@ Respond ONLY with the deduced firm name. Do not include any other text."""
                 firm_name = issuer_name.split(" Fund ")[0].split(" LLC")[0].split(" L.P.")[0].split(" LP")[0]
             
             fund_data = {
+                "document_text_id": filing.get("document_text_id"),
                 "accession_number": filing.get("accession_number"),
                 "firm_name": firm_name,
                 "fund_name": issuer_name,
@@ -292,6 +294,30 @@ class SECFormDUpdater(BaseUpdater):
         stats = {"orgs_created": 0, "funds_created": 0, "people_created": 0}
         
         for data in normalized_data:
+            # 0. Track provenance if possible
+            doc_text_id = data.get("document_text_id")
+            extraction_job = None
+            extracted_entity = None
+            if doc_text_id:
+                extraction_job = ExtractionJob(
+                    pipeline_run_id=run.id,
+                    document_text_id=doc_text_id,
+                    schema_name="SEC_FORM_D",
+                    status="SUCCESS"
+                )
+                db.add(extraction_job)
+                db.flush()
+                
+                extracted_entity = ExtractedEntity(
+                    extraction_job_id=extraction_job.id,
+                    entity_type="INVESTMENT_FUND",
+                    raw_name=data.get("fund_name"),
+                    normalized_name=str(data.get("fund_name")).lower() if data.get("fund_name") else "",
+                    extracted_payload_json=data
+                )
+                db.add(extracted_entity)
+                db.flush()
+
             # 1. UPSERT Organization (Firm)
             firm_name = data["firm_name"]
             firm = db.query(Organization).filter(Organization.name.ilike(firm_name)).first()
@@ -312,6 +338,16 @@ class SECFormDUpdater(BaseUpdater):
                 stats["orgs_created"] += 1
             elif not firm.organization_type or firm.organization_type != "INVESTOR":
                 firm.organization_type = "INVESTOR"
+                
+            if extracted_entity:
+                db.add(EntityMatch(
+                    extracted_entity_id=extracted_entity.id,
+                    canonical_entity_type="Organization",
+                    canonical_entity_id=str(firm.id),
+                    match_confidence=1.0,
+                    match_method="DETERMINISTIC_SEC_PIPELINE",
+                    created_by="SYSTEM"
+                ))
                 
             prof = db.query(InvestorProfile).filter_by(organization_id=firm.id).first()
             if not prof:
@@ -346,6 +382,16 @@ class SECFormDUpdater(BaseUpdater):
                 if data.get("fund_size_raised"): fund.fund_size_raised = data.get("fund_size_raised")
                 if data.get("fund_size_target"): fund.fund_size_target = data.get("fund_size_target")
                 if data.get("accession_number"): fund.accession_number = data.get("accession_number")
+
+            if extracted_entity:
+                db.add(EntityMatch(
+                    extracted_entity_id=extracted_entity.id,
+                    canonical_entity_type="FundProfile",
+                    canonical_entity_id=str(fund.id),
+                    match_confidence=1.0,
+                    match_method="DETERMINISTIC_SEC_PIPELINE",
+                    created_by="SYSTEM"
+                ))
 
             # 3. UPSERT People
             for p in data.get("people", []):
