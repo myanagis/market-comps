@@ -405,9 +405,13 @@ def display_company_details(company_id):
                     if docs and docs[0].document_date:
                         source_str += f" (Doc: {docs[0].document_date})"
                         
+                action_str = a.mutation_type
+                if action_str == "CREATE" and a.canonical_entity_type:
+                    action_str = f"CREATE {a.canonical_entity_type}"
+                    
                 audit_data.append({
                     "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
-                    "Action": a.mutation_type,
+                    "Action": action_str,
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
                     "New Value": a.new_value or "",
@@ -547,6 +551,8 @@ with tab_add:
                     else:
                         org = Organization(name=name, normalized_name=name.lower(), primary_domain=domain, city=city, description=desc, organization_type="COMPANY")
                         db.add(org)
+                        db.flush()
+                        log_mutation(db, "ORGANIZATION", str(org.id), "CREATE", source="USER_EDIT", created_by=st.session_state.get("user_email", "SYSTEM"))
                         
                     db.flush() # get ID
                     
@@ -565,6 +571,8 @@ with tab_add:
                     else:
                         profile = CompanyProfile(organization_id=org.id, founded_year=founded, industry=industry, company_stage=stage, themes=final_themes if final_themes else None)
                         db.add(profile)
+                        db.flush()
+                        log_mutation(db, "COMPANY_PROFILE", str(profile.id), "CREATE", source="USER_EDIT", created_by=st.session_state.get("user_email", "SYSTEM"))
                         
                     db.commit()
                     
