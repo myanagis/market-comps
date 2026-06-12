@@ -243,6 +243,7 @@ def display_company_details(company_id):
                     from market_comps.ingestion.company_augmentation import run_augmentation_pipeline
                     run_augmentation_pipeline(org.id)
                 st.success("Augmentation Complete! Please refresh if the page does not reload automatically.")
+                import time
                 time.sleep(1)
                 st.rerun()
                 
