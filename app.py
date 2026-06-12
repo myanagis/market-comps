@@ -163,6 +163,7 @@ pg = st.navigation({
     ],
     "Admin": [
         st.Page("pages/16_Admin.py", title="Admin DB Manager", icon="🔒"),
+        st.Page("pages/90_Recent_Documents.py", title="Recent Documents", icon="📄"),
     ]
 })
 

@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
-from sqlalchemy.orm import joinedload
-from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, and_, desc
+import json
 from market_comps.db.session import get_db
+from market_comps.utils import format_est_datetime, format_currency
 from market_comps.db.models import (
     Organization, Person, InvestorProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, AuditTrail,
@@ -197,24 +199,31 @@ def display_investor_details(investor_id):
             if st.button("✏️ Edit", key=f"edit_org_{org.id}", use_container_width=True):
                 edit_firm_dialog(org)
         
-        st.markdown("#### Basic Information")
-        st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url}")
-        st.write(f"**LinkedIn:** {org.linkedin_url}")
-        st.write(f"**Location:** {org.city}, {org.state}, {org.country}")
-        st.write(f"**Status:** {org.status}")
-        if org.description:
-            st.info(org.description)
-            
-        if org.investor_profile:
-            st.divider()
-            st.markdown("#### Investor Profile")
-            st.write(f"**Investor Type:** {org.investor_profile.investor_type}")
-            st.write(f"**Preferred Stage:** {org.investor_profile.preferred_stage}")
-            st.write(f"**Founded Year:** {org.investor_profile.founded_year}")
-            if org.investor_profile.themes:
-                st.write(f"**Themes:** {', '.join(org.investor_profile.themes)}")
-            if org.investor_profile.user_notes:
-                st.write(f"**User Notes:** {org.investor_profile.user_notes}")
+        st.markdown("#### Firm Details")
+        col_b1, col_b2 = st.columns(2)
+        
+        with col_b1:
+            domain_str = f"[{org.primary_domain}](https://{org.primary_domain})" if org.primary_domain else "N/A"
+            st.write(f"**Domain:** {domain_str}")
+            website_str = f"[{org.website_url}]({org.website_url})" if org.website_url else "N/A"
+            st.write(f"**Website:** {website_str}")
+            st.write(f"**LinkedIn:** {org.linkedin_url or 'N/A'}")
+            st.write(f"**Location:** {org.city or ''}, {org.state or ''}, {org.country or ''}".strip(', '))
+            st.write(f"**Status:** {org.status or 'N/A'}")
+            if org.description:
+                st.caption(org.description)
+                
+        with col_b2:
+            if org.investor_profile:
+                st.write(f"**Investor Type:** {org.investor_profile.investor_type or 'N/A'}")
+                st.write(f"**Preferred Stage:** {org.investor_profile.preferred_stage or 'N/A'}")
+                st.write(f"**Founded Year:** {org.investor_profile.founded_year or 'N/A'}")
+                if org.investor_profile.themes:
+                    st.write(f"**Themes:** {', '.join(org.investor_profile.themes)}")
+                if org.investor_profile.user_notes:
+                    st.write(f"**User Notes:** {org.investor_profile.user_notes}")
+            else:
+                st.info("No extended investor profile available.")
             
         if org.program_memberships:
             st.divider()
@@ -237,8 +246,8 @@ def display_investor_details(investor_id):
                 fund_data.append({
                     "Name": fund.fund_name,
                     "Vintage": fund.vintage_year or "",
-                    "Raised": fund.fund_size_raised or "",
-                    "Target": fund.fund_size_target or "",
+                    "Raised": format_currency(fund.fund_size_raised),
+                    "Target": format_currency(fund.fund_size_target),
                     "Type": type_display,
                     "Reputation": fund.market_reputation or "",
                     "Themes": ", ".join(fund.themes) if fund.themes else ""
@@ -337,18 +346,21 @@ def display_investor_details(investor_id):
         
         if docs:
             from market_comps.config import get_supabase_url
-            import zoneinfo
-            eastern = zoneinfo.ZoneInfo("America/New_York")
             
             for doc in docs:
                 signed_url = get_supabase_url(doc.file_path) if doc.file_path else ""
-                if signed_url:
+                tz_time = format_est_datetime(doc.created_at)
+                
+                doc_name = "SEC Form D" if doc.document_type == "SEC_XML" else doc.document_type
+                
+                if doc.document_type == "SEC_XML":
+                    url_display = f"[{doc_name}]({doc.source_url})"
+                elif signed_url:
                     url_display = f"{doc.source_url} [(View)]({signed_url})"
                 else:
                     url_display = f"[{doc.source_url}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc.source_url
                 
-                tz_time = doc.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %I:%M %p ET') if doc.created_at else "Unknown Time"
-                st.markdown(f"- **{doc.document_type}**: {url_display} (Processed: {tz_time})")
+                st.markdown(f"- **{doc_name}**: {url_display} (Processed: {tz_time})")
         else:
             st.info("No documents linked to this investor.")
 
@@ -384,6 +396,9 @@ def display_investor_details(investor_id):
         if org.investor_profile:
             filters.append((AuditTrail.canonical_entity_type == "INVESTOR_PROFILE") & (AuditTrail.canonical_entity_id == str(org.investor_profile.id)))
             
+        if fund_ids:
+            filters.append((AuditTrail.canonical_entity_type == "FUND_PROFILE") & (AuditTrail.canonical_entity_id.in_(fund_ids)))
+            
         role_ids = [str(role.id) for role in org.roles] if org.roles else []
         if role_ids:
             filters.append((AuditTrail.canonical_entity_type == "PERSON_ROLE") & (AuditTrail.canonical_entity_id.in_(role_ids)))
@@ -403,9 +418,11 @@ def display_investor_details(investor_id):
                     if docs and docs[0].document_date:
                         source_str += f" (Doc: {docs[0].document_date})"
                         
+                action_str = "Update" if a.mutation_type == "UPDATE" else "Create" if a.mutation_type == "CREATE" else a.mutation_type
+                        
                 audit_data.append({
-                    "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
-                    "Action": a.mutation_type,
+                    "Date": format_est_datetime(a.created_at),
+                    "Action": action_str,
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
                     "New Value": a.new_value or "",
