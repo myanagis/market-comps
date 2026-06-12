@@ -252,8 +252,8 @@ class SECFormDNormalizer(BaseNormalizer):
             addr = filing.get("issuer_address", {})
             people = filing.get("related_persons", [])
             
-            # Use LLM to deduce firm name
-            prompt = f"""Given the following SEC Form D filing data for an investment fund, deduce the likely name of the overarching parent Investment Management Firm.
+            # Use LLM to deduce firm name and domain
+            prompt = f"""Given the following SEC Form D filing data for an investment fund, deduce the likely name of the overarching parent Investment Management Firm and its primary website domain.
 For example, if the fund is "PUMA Venture Capital Fund II, LP", the firm is likely "PUMA Venture Capital".
 If the fund is "Sequoia Capital U.S. Growth Fund VIII, L.P.", the firm is likely "Sequoia Capital".
 
@@ -261,19 +261,32 @@ Fund Name: {issuer_name}
 Fund Address: {addr.get('city')}, {addr.get('state_or_country')}
 Related People/Entities: {[p.get('name') for p in people]}
 
-Respond ONLY with the deduced firm name. Do not include any other text."""
+Respond ONLY with a valid JSON object containing exactly two keys: "firm_name" and "firm_domain". If you cannot deduce the domain, set it to null. Do not include markdown formatting or any other text."""
             
+            firm_domain = None
             try:
-                firm_name_raw, usage = llm.chat_completion([{"role": "user", "content": prompt}], step_name="deduce_firm_name")
-                firm_name = firm_name_raw.strip('"').strip()
+                response_raw, usage = llm.chat_completion([{"role": "user", "content": prompt}], step_name="deduce_firm_name_and_domain")
+                clean_json = response_raw.strip()
+                if clean_json.startswith("```json"):
+                    clean_json = clean_json[7:]
+                if clean_json.endswith("```"):
+                    clean_json = clean_json[:-3]
+                clean_json = clean_json.strip()
+                
+                parsed = json.loads(clean_json)
+                firm_name = parsed.get("firm_name")
+                firm_domain = parsed.get("firm_domain")
+                if not firm_name:
+                    raise ValueError("firm_name missing from JSON")
             except Exception as e:
-                logger.error(f"LLM deduction failed for firm name: {e}")
+                logger.error(f"LLM deduction failed for firm name/domain: {e}")
                 firm_name = issuer_name.split(" Fund ")[0].split(" LLC")[0].split(" L.P.")[0].split(" LP")[0]
             
             fund_data = {
                 "document_text_id": filing.get("document_text_id"),
                 "accession_number": filing.get("accession_number"),
                 "firm_name": firm_name,
+                "firm_domain": firm_domain,
                 "fund_name": issuer_name,
                 "fund_type": filing.get("industry_group"),
                 "fund_size_raised": filing.get("total_amount_sold"),
@@ -320,11 +333,13 @@ class SECFormDUpdater(BaseUpdater):
 
             # 1. UPSERT Organization (Firm)
             firm_name = data["firm_name"]
+            firm_domain = data.get("firm_domain")
             firm = db.query(Organization).filter(Organization.name.ilike(firm_name)).first()
             if not firm:
                 firm = Organization(
                     name=firm_name,
                     normalized_name=firm_name.lower(),
+                    primary_domain=firm_domain,
                     city=data.get("city"),
                     state=data.get("state"),
                     country=data.get("country"),
@@ -336,8 +351,11 @@ class SECFormDUpdater(BaseUpdater):
                 db.add(firm)
                 db.flush()
                 stats["orgs_created"] += 1
-            elif not firm.organization_type or firm.organization_type != "INVESTOR":
-                firm.organization_type = "INVESTOR"
+            else:
+                if not firm.organization_type or firm.organization_type != "INVESTOR":
+                    firm.organization_type = "INVESTOR"
+                if not firm.primary_domain and firm_domain:
+                    firm.primary_domain = firm_domain
                 
             if extracted_entity:
                 db.add(EntityMatch(

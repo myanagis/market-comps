@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON, Float, Text
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, validates
 from sqlalchemy.dialects.postgresql import UUID
 
 Base = declarative_base()
@@ -44,6 +44,21 @@ class Organization(Base, TimestampMixin):
     pipelines = relationship("Pipeline", back_populates="organization")
     investments_made = relationship("Investment", foreign_keys="[Investment.investor_organization_id]", back_populates="investor")
     investments_received = relationship("Investment", foreign_keys="[Investment.company_organization_id]", back_populates="company")
+
+    @validates('primary_domain')
+    def validate_primary_domain(self, key, value):
+        if not value:
+            return value
+            
+        value = value.lower().strip()
+        if "://" in value:
+            value = value.split("://")[-1]
+        if "/" in value:
+            value = value.split("/")[0]
+        if value.startswith("www."):
+            value = value[4:]
+            
+        return value if value else None
 
 
 class CompanyProfile(Base, TimestampMixin):
