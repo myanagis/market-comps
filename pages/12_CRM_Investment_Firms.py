@@ -250,8 +250,7 @@ def display_investor_details(investor_id):
                     "Target": format_currency(fund.fund_size_target),
                     "Type": type_display,
                     "Reputation": fund.market_reputation or "",
-                    "Themes": ", ".join(fund.themes) if fund.themes else "",
-                    "Imported": fund.created_at.strftime("%Y-%m-%d") if fund.created_at else ""
+                    "Themes": ", ".join(fund.themes) if fund.themes else ""
                 })
             st.dataframe(fund_data, use_container_width=True, hide_index=True)
             

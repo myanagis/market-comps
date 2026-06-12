@@ -136,6 +136,7 @@ class SECFormDXMLPreparer(BasePreparer):
                 source_doc = SourceDocument(
                     pipeline_run_id=run.id,
                     document_type="SEC_XML",
+                    document_date=filing.get("filing_date"),
                     source_url=xml_url,
                     content_hash=content_hash,
                 )
@@ -375,7 +376,22 @@ class SECFormDUpdater(BaseUpdater):
 
             # 2. UPSERT FundProfile
             fund_name = data["fund_name"]
-            fund = db.query(FundProfile).filter(FundProfile.fund_name.ilike(fund_name)).first()
+            
+            # Determine vintage year from filing date
+            vintage_year = None
+            if doc_text_id:
+                from market_comps.db.models import DocumentText
+                doc_text = db.query(DocumentText).filter_by(id=doc_text_id).first()
+                if doc_text and doc_text.source_document and doc_text.source_document.document_date:
+                    try:
+                        vintage_year = int(str(doc_text.source_document.document_date).split('-')[0])
+                    except Exception:
+                        pass
+
+            fund = db.query(FundProfile).filter(
+                FundProfile.parent_organization_id == firm.id,
+                FundProfile.fund_name.ilike(fund_name)
+            ).first()
             if not fund:
                 fund = FundProfile(
                     parent_organization_id=firm.id,
@@ -383,6 +399,7 @@ class SECFormDUpdater(BaseUpdater):
                     investment_fund_type=data.get("fund_type"),
                     fund_size_raised=data.get("fund_size_raised"),
                     fund_size_target=data.get("fund_size_target"),
+                    vintage_year=vintage_year,
                     street1=data.get("street1"),
                     street2=data.get("street2"),
                     city=data.get("city"),
@@ -400,6 +417,7 @@ class SECFormDUpdater(BaseUpdater):
                 if data.get("fund_size_raised"): fund.fund_size_raised = data.get("fund_size_raised")
                 if data.get("fund_size_target"): fund.fund_size_target = data.get("fund_size_target")
                 if data.get("accession_number"): fund.accession_number = data.get("accession_number")
+                if not fund.vintage_year and vintage_year: fund.vintage_year = vintage_year
 
             if extracted_entity:
                 db.add(EntityMatch(
