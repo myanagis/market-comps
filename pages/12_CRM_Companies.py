@@ -232,16 +232,69 @@ def display_company_details(company_id):
         else:
             st.info("No people linked to this company.")
 
+        # AI Profile Augmentation
+        st.divider()
+        col_aug1, col_aug2 = st.columns([3, 1])
+        with col_aug1:
+            st.subheader("🌐 Web Profile Augmentation")
+        with col_aug2:
+            if st.button("Augment via Web Search", key=f"btn_aug_{org.id}", use_container_width=True):
+                with st.spinner("Searching the web and extracting evidence..."):
+                    from market_comps.ingestion.company_augmentation import run_augmentation_pipeline
+                    run_augmentation_pipeline(org.id)
+                st.success("Augmentation Complete! Please refresh if the page does not reload automatically.")
+                time.sleep(1)
+                st.rerun()
+                
+        from market_comps.db.models import CompanyAugmentationReport
+        latest_report = db.query(CompanyAugmentationReport).filter_by(organization_id=org.id).order_by(CompanyAugmentationReport.created_at.desc()).first()
+        
+        if latest_report and latest_report.status == "SUCCESS" and latest_report.extracted_data_json:
+            import zoneinfo
+            eastern = zoneinfo.ZoneInfo("America/New_York")
+            tz_time = latest_report.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %I:%M %p ET') if latest_report.created_at else "Unknown"
+            st.caption(f"*(Last augmented: {tz_time})*")
+            
+            score_data = latest_report.scoring_json or {}
+            if score_data:
+                st.markdown("##### LLM Opinion Scores")
+                score_cols = st.columns(len(score_data))
+                for i, (section, s_data) in enumerate(score_data.items()):
+                    with score_cols[i]:
+                        score_val = s_data.get("score", 0)
+                        conf = s_data.get("confidence", "Unknown")
+                        color = "green" if score_val and score_val >= 8 else "orange" if score_val and score_val >= 5 else "red"
+                        st.markdown(f"**{section.replace('_', ' ').title()}**")
+                        st.markdown(f"### :{color}[{score_val}/10]")
+                        st.caption(f"Conf: {conf}")
+                        if s_data.get("reasoning"):
+                            st.write(s_data.get("reasoning"))
+                            
+            st.markdown("##### Evidenced Data")
+            for section, d in latest_report.extracted_data_json.items():
+                with st.expander(f"📦 {section.replace('_', ' ').title()} Evidence"):
+                    for quote in d.get("evidenced_data", []):
+                        st.markdown(f"- \"{quote}\"")
+        elif latest_report and latest_report.status == "FAILED":
+            st.error(f"Last augmentation failed: {latest_report.error_message}")
+
         # Linked Source Documents
         st.divider()
         st.subheader("📄 Linked Source Documents")
         
-        doc_ids_subquery = db.query(SourceDocument.id).join(DocumentText).join(ExtractionJob).join(ExtractedEntity).join(EntityMatch).filter(
+        doc_ids_subquery_1 = db.query(SourceDocument.id).join(DocumentText).join(ExtractionJob).join(ExtractedEntity).join(EntityMatch).filter(
             EntityMatch.canonical_entity_type == "Organization",
             EntityMatch.canonical_entity_id == str(org.id)
         ).subquery()
         
-        docs = db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids_subquery)).all()
+        from market_comps.db.models import CompanyAugmentationReport, PipelineRun
+        doc_ids_subquery_2 = db.query(SourceDocument.id).join(PipelineRun, SourceDocument.pipeline_run_id == PipelineRun.id).join(CompanyAugmentationReport, PipelineRun.id == CompanyAugmentationReport.pipeline_run_id).filter(
+            CompanyAugmentationReport.organization_id == org.id
+        ).subquery()
+        
+        docs = db.query(SourceDocument).filter(
+            (SourceDocument.id.in_(doc_ids_subquery_1)) | (SourceDocument.id.in_(doc_ids_subquery_2))
+        ).all()
         
         if docs:
             from market_comps.config import get_supabase_url
@@ -250,13 +303,18 @@ def display_company_details(company_id):
             
             for doc in docs:
                 signed_url = get_supabase_url(doc.file_path) if doc.file_path else ""
+                
+                doc_label = doc.title if doc.title else doc.source_url
+                
                 if signed_url:
-                    url_display = f"{doc.source_url} [(View)]({signed_url})"
+                    url_display = f"{doc_label} [(View)]({signed_url})"
                 else:
-                    url_display = f"[{doc.source_url}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc.source_url
+                    url_display = f"[{doc_label}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc_label
                 
                 tz_time = doc.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %I:%M %p ET') if doc.created_at else "Unknown Time"
-                st.markdown(f"- **{doc.document_type}**: {url_display} (Processed: {tz_time})")
+                
+                source_suffix = f" (via {doc.source_name})" if doc.source_name else ""
+                st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} (Processed: {tz_time})")
         else:
             st.info("No documents linked to this company.")
 

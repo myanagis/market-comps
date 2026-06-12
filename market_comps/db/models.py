@@ -342,6 +342,8 @@ class SourceDocument(Base, TimestampMixin):
     classification_result_json = Column(JSON)
     document_date = Column(String, nullable=True)
     
+    title = Column(String, nullable=True)
+    source_name = Column(String, nullable=True)
     source_url = Column(String)
     file_path = Column(String)
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
@@ -489,3 +491,21 @@ class AuditTrail(Base, TimestampMixin):
     extraction_job_id = Column(Integer, ForeignKey('extraction_jobs.id'), nullable=True)
     
     extraction_job = relationship("ExtractionJob")
+
+class CompanyAugmentationReport(Base, TimestampMixin):
+    __tablename__ = 'company_augmentation_reports'
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    
+    pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=True)
+    
+    schema_version = Column(String)
+    extracted_data_json = Column(JSON)
+    scoring_json = Column(JSON)
+    
+    status = Column(String) # RUNNING, SUCCESS, FAILED
+    error_message = Column(String)
+
+    organization = relationship("Organization")
+    pipeline_run = relationship("PipelineRun")

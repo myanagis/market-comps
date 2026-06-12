@@ -58,6 +58,9 @@ class Settings:
     supabase_storage_bucket: str = field(
         default_factory=lambda: _get_secret("SUPABASE_STORAGE_BUCKET", "documents")
     )
+    exa_api_key: str = field(
+        default_factory=lambda: _get_secret("EXA_API_KEY", "")
+    )
     sec_edgar_user_agent: str = field(
         default_factory=lambda: _get_secret("SEC_EDGAR_USER_AGENT", "market-comps myanagis@example.com")
     )
