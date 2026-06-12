@@ -20,7 +20,7 @@ AUGMENTATION_SCHEMA = """
 2. Product & Differentiation
 3. Team
 4. Traction
-5. Thesis / Mandate Fit
+5. Thesis / Mandate Fit (Note: CT presence/connection is highly important to our thesis)
 """
 
 def generate_search_queries(company_name: str, company_domain: str, company_description: str) -> List[str]:
@@ -109,8 +109,8 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
     For each section, provide:
     1. "summary": A brief 1-3 sentence summary/synthesis of the evidence found.
     2. "evidenced_data": A list of direct, verbatim quotes or atomic facts extracted from the text that fit this section. Do NOT paraphrase, extract verbatim.
-    3. "score_1_to_10": An integer score (1-10) evaluating the strength/quality of this section based ONLY on the evidence provided. If there is no evidence, score it a 0.
-    4. "confidence": High, Medium, or Low (your confidence in the score based on the amount/quality of evidence).
+    3. "score_1_to_10": An integer score (1-10) evaluating the strength/quality of this section based ONLY on the evidence provided. If there is no evidence, score it a 0. Calibrate your ratings harshly: 5 should be average, 10 should be exceptional/world's best.
+    4. "confidence": High, Medium, or Low. Only use 'High' if we have complete, comprehensive data. Most should be 'Low' or 'Medium' confidence.
     5. "reasoning": A brief 1-sentence justification for the score.
     
     DOCUMENTS:
