@@ -266,7 +266,7 @@ def run_augmentation_pipeline(org_id: int):
                 title=d["title"][:255] if d["title"] else "Web Page",
                 source_url=d["url"],
                 source_name=d["url"].split('/')[2] if '//' in d["url"] else d["url"][:255],
-                document_date=d["date"],
+                document_date=d["date"] if d["date"] else None,
                 content_hash=content_hash
             )
             db.add(src_doc)

@@ -332,10 +332,19 @@ def display_company_details(company_id):
                 else:
                     url_display = f"[{doc_label}]({doc.source_url})" if str(doc.source_url).startswith("http") else doc_label
                 
-                tz_time = doc.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %I:%M %p ET') if doc.created_at else "Unknown Time"
+                if doc.document_date:
+                    from datetime import datetime
+                    if isinstance(doc.document_date, datetime):
+                        tz_time = doc.document_date.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d')
+                    else:
+                        tz_time = str(doc.document_date).split("T")[0]
+                    date_display = f"Written: {tz_time}"
+                else:
+                    tz_time = doc.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d') if doc.created_at else "Unknown Time"
+                    date_display = f"Processed: {tz_time}"
                 
                 source_suffix = f" (via {doc.source_name})" if doc.source_name else ""
-                st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} (Processed: {tz_time})")
+                st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} ({date_display})")
         else:
             st.info("No documents linked to this company.")
 
