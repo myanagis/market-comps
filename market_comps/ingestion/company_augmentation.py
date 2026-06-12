@@ -113,6 +113,8 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
     4. "confidence": High, Medium, or Low. Only use 'High' if we have complete, comprehensive data. Most should be 'Low' or 'Medium' confidence.
     5. "reasoning": A brief 1-sentence justification for the score.
     
+    Additionally, provide a top-level "executive_summary" (1-2 paragraphs) summarizing the company as a whole.
+    
     DOCUMENTS:
     {doc_text_block}
     """
@@ -120,6 +122,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
     schema = {
         "type": "object",
         "properties": {
+            "executive_summary": {"type": "string"},
             "market": {
                 "type": "object",
                 "properties": {
@@ -171,7 +174,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
                 }
             }
         },
-        "required": ["market", "product_and_differentiation", "team", "traction", "thesis_mandate_fit"]
+        "required": ["executive_summary", "market", "product_and_differentiation", "team", "traction", "thesis_mandate_fit"]
     }
     
     result, _ = client.structured_output(
@@ -285,6 +288,8 @@ def run_augmentation_pipeline(org_id: int):
         # Extract scoring into separate field for ease of use
         scoring = {}
         for k, v in extracted_data.items():
+            if k == "executive_summary":
+                continue
             scoring[k] = {
                 "score": v.get("score_1_to_10"),
                 "confidence": v.get("confidence"),

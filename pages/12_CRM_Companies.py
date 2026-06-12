@@ -255,6 +255,11 @@ def display_company_details(company_id):
             tz_time = latest_report.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %I:%M %p ET') if latest_report.created_at else "Unknown"
             st.caption(f"*(Last augmented: {tz_time})*")
             
+            exec_summary = latest_report.extracted_data_json.get("executive_summary")
+            if exec_summary:
+                st.markdown("##### Executive Summary")
+                st.info(exec_summary)
+            
             score_data = latest_report.scoring_json or {}
             if score_data:
                 st.markdown("##### LLM Opinion Scores")
@@ -272,6 +277,8 @@ def display_company_details(company_id):
                             
             st.markdown("##### Evidenced Data")
             for section, d in latest_report.extracted_data_json.items():
+                if section == "executive_summary":
+                    continue
                 with st.expander(f"📦 {section.replace('_', ' ').title()}"):
                     summary_text = d.get("summary")
                     if summary_text:
