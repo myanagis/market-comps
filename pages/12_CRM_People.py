@@ -178,22 +178,9 @@ def display_person_details(person_id):
         
         if audit:
             audit_data = []
+            from market_comps.utils import format_audit_row
             for a in audit:
-                source_str = a.source or ""
-                if source_str == "PIPELINE" and a.extraction_job and a.extraction_job.pipeline_run:
-                    docs = a.extraction_job.pipeline_run.source_documents
-                    if docs and docs[0].document_date:
-                        source_str += f" (Doc: {docs[0].document_date})"
-                        
-                audit_data.append({
-                    "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
-                    "Action": a.mutation_type,
-                    "Field": a.field_name or "",
-                    "Old Value": a.old_value or "",
-                    "New Value": a.new_value or "",
-                    "Source": source_str,
-                    "User": a.created_by or "SYSTEM"
-                })
+                audit_data.append(format_audit_row(a, db))
             st.dataframe(pd.DataFrame(audit_data), use_container_width=True, hide_index=True)
         else:
             st.info("No mutation entries found.")
