@@ -406,15 +406,27 @@ def display_company_details(company_id):
                         source_str += f" (Doc: {docs[0].document_date})"
                         
                 action_str = a.mutation_type
+                new_val_str = a.new_value or ""
+                
                 if action_str == "CREATE" and a.canonical_entity_type:
                     action_str = f"CREATE {a.canonical_entity_type}"
+                    
+                    if a.canonical_entity_type == "PERSON":
+                        p = db.query(Person).filter_by(id=a.canonical_entity_id).first()
+                        if p: new_val_str = p.full_name
+                    elif a.canonical_entity_type == "PERSON_ROLE":
+                        r = db.query(PersonOrganizationRole).filter_by(id=a.canonical_entity_id).first()
+                        if r and r.person: new_val_str = f"{r.person.full_name} ({r.title})"
+                    elif a.canonical_entity_type == "ORGANIZATION":
+                        o = db.query(Organization).filter_by(id=a.canonical_entity_id).first()
+                        if o: new_val_str = o.name
                     
                 audit_data.append({
                     "Date": a.created_at.strftime("%Y-%m-%d %H:%M"),
                     "Action": action_str,
                     "Field": a.field_name or "",
                     "Old Value": a.old_value or "",
-                    "New Value": a.new_value or "",
+                    "New Value": new_val_str,
                     "Source": source_str,
                     "User": a.created_by or "SYSTEM"
                 })
