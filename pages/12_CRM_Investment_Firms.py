@@ -230,21 +230,35 @@ def display_investor_details(investor_id):
         if org.fund_profiles:
             st.divider()
             st.markdown("#### Fund Profiles")
+            
+            fund_data = []
             for fund in org.fund_profiles:
-                with st.expander(f"💰 {fund.fund_name}"):
-                    if st.button("✏️ Edit Fund", key=f"edit_fund_{fund.id}"):
-                        edit_fund_dialog(fund)
-                    st.write(f"**Vintage:** {fund.vintage_year} | **Raised:** {fund.fund_size_raised} | **Target:** {fund.fund_size_target}")
-                    type_display = fund.fund_type or fund.investment_fund_type or "N/A"
-                    st.write(f"**Type:** {type_display} | **Status:** {fund.status or 'N/A'}")
-                    if fund.market_reputation:
-                        st.write(f"**Market Reputation:** {fund.market_reputation}")
-                    if fund.themes:
-                        st.write(f"**Themes:** {', '.join(fund.themes)}")
-                    if fund.user_notes:
-                        st.write(f"**User Notes:** {fund.user_notes}")
-                    if fund.description:
-                        st.caption(fund.description)
+                type_display = fund.fund_type or fund.investment_fund_type or "N/A"
+                fund_data.append({
+                    "Name": fund.fund_name,
+                    "Vintage": fund.vintage_year or "",
+                    "Raised": fund.fund_size_raised or "",
+                    "Target": fund.fund_size_target or "",
+                    "Type": type_display,
+                    "Reputation": fund.market_reputation or "",
+                    "Themes": ", ".join(fund.themes) if fund.themes else ""
+                })
+            st.dataframe(fund_data, use_container_width=True, hide_index=True)
+            
+            with st.expander("Edit Funds & View Notes", expanded=False):
+                for i, fund in enumerate(org.fund_profiles):
+                    cols = st.columns([4, 1])
+                    with cols[0]:
+                        st.markdown(f"**{fund.fund_name}**")
+                        if fund.user_notes:
+                            st.write(f"**User Notes:** {fund.user_notes}")
+                        if fund.description:
+                            st.caption(fund.description)
+                    with cols[1]:
+                        if st.button("✏️ Edit", key=f"edit_fund_{fund.id}", use_container_width=True):
+                            edit_fund_dialog(fund)
+                    if i < len(org.fund_profiles) - 1:
+                        st.divider()
 
         if org.program_profiles:
             st.divider()
@@ -351,7 +365,7 @@ def display_investor_details(investor_id):
             
         matches = db.query(EntityMatch).filter(or_(*filters)).all()
         
-        extracted_entities = [m.extracted_entity for m in matches if m.extracted_entity]
+        extracted_entities = list({m.extracted_entity.id: m.extracted_entity for m in matches if m.extracted_entity}.values())
         if extracted_entities:
             for ent in extracted_entities:
                 job = ent.extraction_job
