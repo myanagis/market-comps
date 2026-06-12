@@ -250,7 +250,8 @@ def display_investor_details(investor_id):
                     "Target": format_currency(fund.fund_size_target),
                     "Type": type_display,
                     "Reputation": fund.market_reputation or "",
-                    "Themes": ", ".join(fund.themes) if fund.themes else ""
+                    "Themes": ", ".join(fund.themes) if fund.themes else "",
+                    "Imported": fund.created_at.strftime("%Y-%m-%d") if fund.created_at else ""
                 })
             st.dataframe(fund_data, use_container_width=True, hide_index=True)
             
@@ -437,7 +438,8 @@ with tab_firms:
     search_query = st.text_input("Search Investors...", placeholder="Search by name, domain, or website...")
 
     q = db.query(Organization).options(
-        joinedload(Organization.investor_profile)
+        joinedload(Organization.investor_profile),
+        joinedload(Organization.fund_profiles)
     ).filter(Organization.organization_type == "INVESTOR")
 
     if search_query:
@@ -468,6 +470,10 @@ with tab_firms:
         if o.investor_profile:
             row["Inv Type"] = o.investor_profile.investor_type
             row["Pref Stage"] = o.investor_profile.preferred_stage
+        
+        fund_types = list(set([f.fund_type for f in o.fund_profiles if f.fund_type] + [f.investment_fund_type for f in o.fund_profiles if f.investment_fund_type]))
+        row["Fund Types"] = ", ".join(fund_types)
+        
         data.append(row)
 
     df = pd.DataFrame(data)

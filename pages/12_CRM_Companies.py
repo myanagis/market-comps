@@ -325,33 +325,9 @@ with tab_dir:
     search_query = st.text_input("Search Companies...", placeholder="Search by name, domain, or website...")
     
     q = db.query(Organization).options(
-    joinedload(Organization.company_profile)
-).filter(Organization.organization_type == "COMPANY")
+        joinedload(Organization.company_profile)
+    ).filter(Organization.organization_type == "COMPANY")
 
-if search_query:
-    search_filter = f"%{search_query}%"
-    q = q.filter(
-        or_(
-            Organization.name.ilike(search_filter),
-            Organization.normalized_name.ilike(search_filter),
-            Organization.primary_domain.ilike(search_filter)
-        )
-    )
-
-orgs = q.order_by(Organization.created_at.desc()).limit(200).all()
-
-# Prepare Dataframe
-data = []
-for o in orgs:
-    row = {
-        "ID": o.id,
-        "Name": o.name,
-        "Domain": o.primary_domain,
-        "Website": o.website_url,
-        "City": o.city,
-        "Status": o.status,
-        "Created": o.created_at.strftime("%Y-%m-%d") if o.created_at else ""
-    }
     if search_query:
         search_filter = f"%{search_query}%"
         q = q.filter(
