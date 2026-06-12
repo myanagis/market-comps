@@ -3,10 +3,10 @@ from sqlalchemy.orm import joinedload
 from market_comps.db.session import get_db
 from market_comps.db.models import SourceDocument, PipelineRun, ExtractionJob, ExtractedEntity, EntityMatch, Organization, FundProfile, Person
 from market_comps.utils import format_est_datetime
-from market_comps.ui import apply_theme
+from market_comps.ui import inject_global_style
 
 st.set_page_config(layout="wide", page_title="Recent Documents", page_icon="📄")
-apply_theme()
+inject_global_style()
 
 st.title("📄 Recent Documents (Admin)")
 st.write("View the 100 most recently ingested source documents and trace the exact database records they generated.")
