@@ -96,6 +96,23 @@ def fetch_exa_results(queries: List[str]) -> List[Dict]:
 
 def process_and_score_evidence(documents: List[Dict]) -> Dict:
     """Process documents into the required schema and score them."""
+    if not documents:
+        default_section = {
+            "summary": "No web documents found to analyze.",
+            "evidenced_data": [],
+            "score_1_to_10": 0,
+            "confidence": "Low",
+            "reasoning": "No search results returned from Exa API."
+        }
+        return {
+            "executive_summary": "No web presence could be found for this company during augmentation.",
+            "market": default_section,
+            "product_and_differentiation": default_section,
+            "team": default_section,
+            "traction": default_section,
+            "thesis_mandate_fit": default_section
+        }
+        
     client = LLMClient()
     
     doc_text_block = ""
@@ -186,6 +203,9 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
 
 def extract_entities(documents: List[Dict]) -> List[Dict]:
     """Extract people and roles from the text."""
+    if not documents:
+        return []
+        
     client = LLMClient()
     doc_text_block = "\\n".join([d["text"][:3000] for d in documents])
     
