@@ -107,10 +107,11 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
     {AUGMENTATION_SCHEMA}
     
     For each section, provide:
-    1. "evidenced_data": A list of direct, verbatim quotes or atomic facts extracted from the text that fit this section. Do NOT paraphrase, extract verbatim.
-    2. "score_1_to_10": An integer score (1-10) evaluating the strength/quality of this section based ONLY on the evidence provided. If there is no evidence, score it a 0.
-    3. "confidence": High, Medium, or Low (your confidence in the score based on the amount/quality of evidence).
-    4. "reasoning": A brief 1-sentence justification for the score.
+    1. "summary": A brief 1-3 sentence summary/synthesis of the evidence found.
+    2. "evidenced_data": A list of direct, verbatim quotes or atomic facts extracted from the text that fit this section. Do NOT paraphrase, extract verbatim.
+    3. "score_1_to_10": An integer score (1-10) evaluating the strength/quality of this section based ONLY on the evidence provided. If there is no evidence, score it a 0.
+    4. "confidence": High, Medium, or Low (your confidence in the score based on the amount/quality of evidence).
+    5. "reasoning": A brief 1-sentence justification for the score.
     
     DOCUMENTS:
     {doc_text_block}
@@ -122,6 +123,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "market": {
                 "type": "object",
                 "properties": {
+                    "summary": {"type": "string"},
                     "evidenced_data": {"type": "array", "items": {"type": "string"}},
                     "score_1_to_10": {"type": "integer"},
                     "confidence": {"type": "string"},
@@ -131,6 +133,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "product_and_differentiation": {
                 "type": "object",
                 "properties": {
+                    "summary": {"type": "string"},
                     "evidenced_data": {"type": "array", "items": {"type": "string"}},
                     "score_1_to_10": {"type": "integer"},
                     "confidence": {"type": "string"},
@@ -140,6 +143,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "team": {
                 "type": "object",
                 "properties": {
+                    "summary": {"type": "string"},
                     "evidenced_data": {"type": "array", "items": {"type": "string"}},
                     "score_1_to_10": {"type": "integer"},
                     "confidence": {"type": "string"},
@@ -149,6 +153,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "traction": {
                 "type": "object",
                 "properties": {
+                    "summary": {"type": "string"},
                     "evidenced_data": {"type": "array", "items": {"type": "string"}},
                     "score_1_to_10": {"type": "integer"},
                     "confidence": {"type": "string"},
@@ -158,6 +163,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "thesis_mandate_fit": {
                 "type": "object",
                 "properties": {
+                    "summary": {"type": "string"},
                     "evidenced_data": {"type": "array", "items": {"type": "string"}},
                     "score_1_to_10": {"type": "integer"},
                     "confidence": {"type": "string"},

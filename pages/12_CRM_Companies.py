@@ -272,7 +272,11 @@ def display_company_details(company_id):
                             
             st.markdown("##### Evidenced Data")
             for section, d in latest_report.extracted_data_json.items():
-                with st.expander(f"📦 {section.replace('_', ' ').title()} Evidence"):
+                with st.expander(f"📦 {section.replace('_', ' ').title()}"):
+                    summary_text = d.get("summary")
+                    if summary_text:
+                        st.info(summary_text)
+                    
                     for quote in d.get("evidenced_data", []):
                         st.markdown(f"- \"{quote}\"")
         elif latest_report and latest_report.status == "FAILED":
@@ -297,11 +301,21 @@ def display_company_details(company_id):
         ).all()
         
         if docs:
+            # Deduplicate by URL
+            seen_urls = set()
+            deduped_docs = []
+            for doc in docs:
+                url = str(doc.source_url).strip().lower()
+                if url.endswith('/'): url = url[:-1]
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    deduped_docs.append(doc)
+            
             from market_comps.config import get_supabase_url
             import zoneinfo
             eastern = zoneinfo.ZoneInfo("America/New_York")
             
-            for doc in docs:
+            for doc in deduped_docs:
                 signed_url = get_supabase_url(doc.file_path) if doc.file_path else ""
                 
                 doc_label = doc.title if doc.title else doc.source_url
