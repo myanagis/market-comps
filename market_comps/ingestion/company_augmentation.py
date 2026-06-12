@@ -323,7 +323,7 @@ def run_augmentation_pipeline(org_id: int):
                 db.flush()
                 
                 db.add(AuditTrail(
-                    canonical_entity_type="Person",
+                    canonical_entity_type="PERSON",
                     canonical_entity_id=str(person.id),
                     mutation_type="CREATE",
                     source="WEB_AUGMENTATION",
@@ -342,7 +342,7 @@ def run_augmentation_pipeline(org_id: int):
                 db.flush()
                 
                 db.add(AuditTrail(
-                    canonical_entity_type="PersonOrganizationRole",
+                    canonical_entity_type="PERSON_ROLE",
                     canonical_entity_id=str(role.id),
                     mutation_type="CREATE",
                     source="WEB_AUGMENTATION",
