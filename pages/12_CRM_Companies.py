@@ -479,11 +479,24 @@ with tab_dir:
         selection = event.get("selection", {})
         rows = selection.get("rows", [])
         
+        url_id = st.query_params.get("id")
+        
         if rows:
             st.divider()
             selected_row_idx = rows[0]
             selected_company_id = df.iloc[selected_row_idx]["ID"]
+            
+            # Update URL so user can copy it
+            st.query_params["id"] = str(selected_company_id)
+            
+            # Show a copyable link hint
+            st.info("🔗 **Pro Tip:** You can now copy the URL from your browser's address bar to link directly to this company!")
+            
             display_company_details(selected_company_id)
+        elif url_id:
+            st.divider()
+            st.info("Loaded from URL. Select any row in the table above to switch companies.")
+            display_company_details(url_id)
 
 with tab_add:
     with st.form("company_form", clear_on_submit=True):
