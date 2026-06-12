@@ -7,7 +7,7 @@ from datetime import datetime
 
 from market_comps.config import settings
 from market_comps.llm_client import LLMClient
-from market_comps.db.database import SessionLocal
+from market_comps.db.session import SessionLocal
 from market_comps.db.models import (
     SourceDocument, DocumentText, CompanyAugmentationReport,
     PipelineRun, Organization, Person, PersonOrganizationRole
