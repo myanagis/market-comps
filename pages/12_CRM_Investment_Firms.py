@@ -434,7 +434,19 @@ def display_investor_details(investor_id):
             st.info("No mutation entries found.")
 
 with tab_firms:
-    search_query = st.text_input("Search Investors...", placeholder="Search by name, domain, or website...")
+    col_s1, col_s2, col_s3 = st.columns(3)
+    with col_s1:
+        search_query = st.text_input("Search Investors...", placeholder="Search by name, domain...")
+        
+    all_states = [s[0] for s in db.query(Organization.state).filter(Organization.state.is_not(None), Organization.organization_type == "INVESTOR").distinct().all() if s[0]]
+    with col_s2:
+        state_filter = st.multiselect("Filter by State", options=sorted(all_states))
+        
+    f_types_1 = [f[0] for f in db.query(FundProfile.fund_type).filter(FundProfile.fund_type.is_not(None)).distinct().all() if f[0]]
+    f_types_2 = [f[0] for f in db.query(FundProfile.investment_fund_type).filter(FundProfile.investment_fund_type.is_not(None)).distinct().all() if f[0]]
+    all_fund_types = sorted(list(set(f_types_1 + f_types_2)))
+    with col_s3:
+        fund_type_filter = st.multiselect("Filter by Fund Type", options=all_fund_types)
 
     q = db.query(Organization).options(
         joinedload(Organization.investor_profile),
@@ -450,6 +462,17 @@ with tab_firms:
                 Organization.primary_domain.ilike(search_filter)
             )
         )
+        
+    if state_filter:
+        q = q.filter(Organization.state.in_(state_filter))
+        
+    if fund_type_filter:
+        q = q.join(FundProfile, Organization.id == FundProfile.organization_id).filter(
+            or_(
+                FundProfile.fund_type.in_(fund_type_filter),
+                FundProfile.investment_fund_type.in_(fund_type_filter)
+            )
+        ).distinct()
 
     orgs = q.order_by(Organization.created_at.desc()).limit(200).all()
 
