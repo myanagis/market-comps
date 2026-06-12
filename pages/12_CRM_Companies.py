@@ -234,7 +234,7 @@ def display_company_details(company_id):
 
         # AI Profile Augmentation
         st.divider()
-        col_aug1, col_aug2 = st.columns([3, 1])
+        col_aug1, col_aug2, col_aug3 = st.columns([2, 1, 1])
         with col_aug1:
             st.subheader("🌐 Web Profile Augmentation")
         with col_aug2:
@@ -243,6 +243,15 @@ def display_company_details(company_id):
                     from market_comps.ingestion.company_augmentation import run_augmentation_pipeline
                     run_augmentation_pipeline(org.id)
                 st.success("Augmentation Complete! Please refresh if the page does not reload automatically.")
+                import time
+                time.sleep(1)
+                st.rerun()
+        with col_aug3:
+            if st.button("🗑️ Clear Data", key=f"btn_clear_aug_{org.id}", use_container_width=True):
+                with st.spinner("Clearing augmentation data..."):
+                    from market_comps.ingestion.company_augmentation import clear_augmentation_data
+                    clear_augmentation_data(org.id)
+                st.success("Cleared! Reloading...")
                 import time
                 time.sleep(1)
                 st.rerun()

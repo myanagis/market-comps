@@ -363,3 +363,39 @@ def run_augmentation_pipeline(org_id: int):
         raise e
     finally:
         db.close()
+
+def clear_augmentation_data(org_id: int):
+    """Clear all augmentation data for a company to allow a fresh run."""
+    db = SessionLocal()
+    from market_comps.db.models import AuditTrail
+    try:
+        # Delete PersonRoles linked to WEB_AUGMENTATION
+        roles = db.query(PersonOrganizationRole).filter_by(organization_id=org_id, source="WEB_AUGMENTATION").all()
+        for role in roles:
+            db.query(AuditTrail).filter_by(canonical_entity_type="PERSON_ROLE", canonical_entity_id=str(role.id)).delete(synchronize_session=False)
+            db.delete(role)
+            
+        reports = db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).all()
+        pipeline_run_ids = [r.pipeline_run_id for r in reports if r.pipeline_run_id]
+        
+        # Delete Reports
+        db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).delete(synchronize_session=False)
+        
+        if pipeline_run_ids:
+            # SourceDocuments
+            docs = db.query(SourceDocument).filter(SourceDocument.pipeline_run_id.in_(pipeline_run_ids)).all()
+            doc_ids = [d.id for d in docs]
+            
+            if doc_ids:
+                db.query(DocumentText).filter(DocumentText.source_document_id.in_(doc_ids)).delete(synchronize_session=False)
+                db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).delete(synchronize_session=False)
+                
+            db.query(PipelineRun).filter(PipelineRun.id.in_(pipeline_run_ids)).delete(synchronize_session=False)
+            
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to clear augmentation data: {e}")
+        db.rollback()
+        raise e
+    finally:
+        db.close()
