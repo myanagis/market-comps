@@ -234,7 +234,7 @@ def run_augmentation_pipeline(org_id: int):
         # Create Pipeline Run
         run = PipelineRun(
             pipeline_id=None,
-            status="IN_PROGRESS"
+            run_status="IN_PROGRESS"
         )
         db.add(run)
         db.commit()
@@ -339,7 +339,7 @@ def run_augmentation_pipeline(org_id: int):
                 ))
                 
         db.commit()
-        run.status = "SUCCESS"
+        run.run_status = "SUCCESS"
         run.completed_at = datetime.utcnow()
         db.commit()
         
