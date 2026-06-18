@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 def classify_market_task(query: str, description: str, model: str) -> tuple[dict, LLMUsage]:
     logger.info(f"Classifying market for: {query}")
     client = LLMClient(model=model)
-    prompt = f"Query: {query}\nDescription: {description}\nClassify the market industry, list subindustries, adjacent markets, and key search terms."
+    system = "You are an expert investment analyst finding relevant markets/submarkets for the given company. You are highly accurate and concise."
+    prompt = f"Company/Market Query: {query}\nDescription: {description}\nClassify the market industry, list subindustries, adjacent markets, and key search terms."
     schema = {
         "type": "object",
         "properties": {
@@ -23,25 +24,34 @@ def classify_market_task(query: str, description: str, model: str) -> tuple[dict
         },
         "required": ["primary_industry", "subindustries", "adjacent_markets", "keywords"]
     }
-    return client.structured_output(prompt=prompt, json_schema=schema, step_name="classify_market")
+    return client.structured_output(
+        prompt=prompt, 
+        json_schema=schema, 
+        system_prompt=system,
+        step_name="classify_market"
+    )
 
-@task(name="generate_search_queries", retries=2, retry_delay_seconds=2)
-def generate_search_queries_task(classification: dict, model: str) -> tuple[dict, LLMUsage]:
-    logger.info("Generating search queries based on classification.")
+@task(name="generate_search_queries_for_segment", retries=2, retry_delay_seconds=2)
+def generate_search_queries_for_segment_task(classification: dict, config: dict, model: str) -> tuple[list[str], LLMUsage]:
+    segment_name = config["name"]
+    logger.info(f"Generating search queries for {segment_name}.")
     client = LLMClient(model=model)
-    prompt = f"Given this market classification: {classification}, generate specific web search queries to find:\n1. M&A deals\n2. Fundraising rounds\n3. IPOs\n4. Public comps\n5. Direct and indirect competitors"
+    system = f"You are an expert investment analyst. Generate precise web search queries to find {segment_name} for the given market classification. These queries will soon query real live sources via search engines, so optimize for high-quality results."
+    prompt = f"Market Classification: {classification}\nGenerate search queries for: {segment_name}."
     schema = {
         "type": "object",
         "properties": {
-            "ma_queries": {"type": "array", "items": {"type": "string"}},
-            "fundraising_queries": {"type": "array", "items": {"type": "string"}},
-            "ipo_queries": {"type": "array", "items": {"type": "string"}},
-            "comps_queries": {"type": "array", "items": {"type": "string"}},
-            "competitor_queries": {"type": "array", "items": {"type": "string"}}
+            "queries": {"type": "array", "items": {"type": "string"}}
         },
-        "required": ["ma_queries", "fundraising_queries", "ipo_queries", "comps_queries", "competitor_queries"]
+        "required": ["queries"]
     }
-    return client.structured_output(prompt=prompt, json_schema=schema, step_name="generate_search_queries")
+    data, usage = client.structured_output(
+        prompt=prompt, 
+        json_schema=schema, 
+        system_prompt=system,
+        step_name=f"generate_queries_{segment_name.lower().replace(' ', '_').replace('&', 'and')}"
+    )
+    return data.get("queries", []), usage
 
 @task(name="extract_segment", retries=2, retry_delay_seconds=2)
 def extract_segment_task(query: str, search_queries: dict, model: str, segment_id: str, config: dict) -> tuple[dict, LLMUsage]:

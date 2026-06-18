@@ -10,13 +10,12 @@ def normalize_and_dedupe_segment_task(extractions: list[dict], json_schema: dict
     logger.info(f"Normalizing and deduping {segment_name}.")
     client = LLMClient(model=model)
     
-    system = f"""You are a financial data normalization and deduplication engine specializing in {segment_name}.
-    You will receive multiple raw JSON extractions from different AI agents.
-    Your task is to merge them into a single, comprehensive output matching the schema.
+    system = f"""You are an expert investment analyst and data normalization engine specializing in {segment_name}.
+    Merge multiple raw JSON extractions into a single, comprehensive output.
     Rules:
-    1. Resolve duplicate events (e.g. if two agents find the same event, merge the info into one record).
-    2. Normalize company names (e.g. "Stripe Inc." and "Stripe" -> "Stripe").
-    3. Retain the highest confidence available for an event.
+    1. Resolve duplicates.
+    2. Normalize company names.
+    3. Retain highest confidence.
     """
     
     prompt = f"Raw {segment_name} extractions from multiple agents:\n{extractions}\nPlease deduplicate and return the canonical JSON."
@@ -34,14 +33,13 @@ def verify_segment_task(deduped_data: dict, json_schema: dict, segment_name: str
     logger.info(f"Verifying evidence for {segment_name}.")
     client = LLMClient(model=model)
     
-    system = f"""You are an expert fact-checker and hallucination-detection engine specializing in {segment_name}.
-    Review the provided JSON.
+    system = f"""You are an expert investment analyst fact-checking {segment_name}.
+    Review the JSON to remove hallucinations and validate.
     Rules:
-    1. Filter out any claims that seem highly likely to be AI hallucinations.
-    2. Flag questionable items by lowering their 'confidence' to LOW.
-    3. Ensure standard lookback windows are applied: M&A (36m), Fundraising (24m), IPOs (5yr), Comps/Competitors (current).
-    4. REMOVE any deals or rounds where the company and the acquirer/investor are the exact same entity.
-    Return the filtered, validated JSON matching the exact schema.
+    1. Filter out AI hallucinations.
+    2. Flag questionable items with LOW confidence.
+    3. Enforce lookbacks: M&A (36m), Fundraising (24m), IPOs (5yr), Comps/Competitors (current).
+    4. Remove self-deals (acquirer/investor same as company).
     """
     
     prompt = f"Data to verify:\n{deduped_data}\nPlease verify and return the clean JSON."

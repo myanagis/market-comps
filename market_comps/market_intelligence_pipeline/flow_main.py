@@ -2,7 +2,7 @@ from prefect import flow
 import logging
 from market_comps.models import LLMUsage
 from market_comps.market_intelligence_pipeline.tasks_discovery import (
-    classify_market_task, generate_search_queries_task, 
+    classify_market_task, generate_search_queries_for_segment_task, 
     extract_segment_task
 )
 from market_comps.market_intelligence_pipeline.config import SEGMENTS
@@ -54,9 +54,12 @@ def run_market_intelligence_pipeline(
         merge_usage(class_usage)
         
         # Step 2: Generate Queries
-        update_progress("Step 2: Generating optimal search queries for M&A, Fundraising, and IPOs...")
-        search_queries, q_usage = generate_search_queries_task(classification, discovery_models[0])
-        merge_usage(q_usage)
+        update_progress("Step 2: Generating optimal search queries for each segment...")
+        search_queries = {}
+        for seg_id, config in SEGMENTS.items():
+            queries, q_usage = generate_search_queries_for_segment_task(classification, config, discovery_models[0])
+            merge_usage(q_usage)
+            search_queries[config["query_key"]] = queries
 
         # Step 3 & 4: Retrieve and Extract
         update_progress("Step 3: Extracting specific categories across parallel intelligence agents...")
