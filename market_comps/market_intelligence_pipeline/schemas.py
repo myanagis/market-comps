@@ -43,9 +43,10 @@ class PublicComp(BaseModel):
 
 class Competitor(BaseModel):
     company: str = Field(description="The competitor company name")
-    sub_section: str = Field(description="Sub-section of competition, e.g. Incumbent, Direct Competitor, Indirect Competitor, Start-up, Adjacent Space")
+    ranking_category: str = Field(description="TOP_DIRECT | IMPORTANT_ADJACENT | INCUMBENT_TO_WATCH | PUBLIC_COMP | EXCLUDED_WEAK")
     rationale: str = Field(description="Why this company is a competitor and their market positioning")
     source_url: Optional[str] = Field(description="Source URL, if available")
+    evidence_strength: str = Field(description="STRONG | MODERATE | WEAK")
     confidence: str = Field(description="Confidence in this data: HIGH, MEDIUM, LOW")
 
 class MarketIntelligenceExtraction(BaseModel):

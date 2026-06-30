@@ -72,11 +72,15 @@ Rules:
         "schema": CompetitorExtractionResponse,
         "system": """
 You are an expert investment analyst and Competitor Analysis engine.
-Identify direct and indirect competitors using real live sources and web data.
+Identify direct and indirect competitors.
 Rules:
+- Verify the provided 'Unverified Company Seed List'. Only include companies from the seed list if they are actually relevant competitors.
+- Extract any additional competitors you know about that were not in the seed list.
 - Include incumbents, start-ups, and adjacent companies.
 - source_url MUST point to competitor's website or news.
-- Confidence: HIGH (exact same market), MEDIUM (adjacent space), LOW (weak evidence).
+- Ranking Category: TOP_DIRECT | IMPORTANT_ADJACENT | INCUMBENT_TO_WATCH | PUBLIC_COMP | EXCLUDED_WEAK
+- Evidence Strength: STRONG | MODERATE | WEAK
+- Confidence: HIGH | MEDIUM | LOW
 """,
         "prompt_template": "Target Company/Market: {query}\nSuggested Competitor Search Queries: {search_queries}\nExtract all relevant competitors.",
     }

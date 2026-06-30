@@ -2,8 +2,7 @@ from prefect import flow
 import logging
 from market_comps.models import LLMUsage
 from market_comps.market_intelligence_pipeline.tasks_discovery import (
-    classify_market_task, generate_search_queries_for_segment_task, 
-    extract_segment_task
+    generate_segment_context_and_queries_task, extract_segment_task
 )
 from market_comps.market_intelligence_pipeline.config import SEGMENTS
 from market_comps.market_intelligence_pipeline.tasks_processing import (
@@ -48,41 +47,40 @@ def run_market_intelligence_pipeline(
         result.usage.call_count += task_usage.call_count
     
     try:
-        # Step 1: Classify Market
-        update_progress("Step 1: Classifying market and identifying keywords...")
-        classification, class_usage = classify_market_task(query, description, discovery_models[0])
-        merge_usage(class_usage)
-        
-        # Step 2: Generate Queries
-        update_progress("Step 2: Generating optimal search queries for each segment...")
-        search_queries = {}
+        # Step 1: Generate Context & Queries per segment
+        update_progress("Step 1: Generating optimal search queries and market context for each segment...")
+        segment_contexts = {}
         for seg_id, config in SEGMENTS.items():
-            queries, q_usage = generate_search_queries_for_segment_task(classification, config, discovery_models[0])
+            context, q_usage = generate_segment_context_and_queries_task(query, description, config, discovery_models[0])
             merge_usage(q_usage)
-            search_queries[config["query_key"]] = queries
+            segment_contexts[seg_id] = context
 
-        # Step 3 & 4: Retrieve and Extract
-        update_progress("Step 3: Extracting specific categories across parallel intelligence agents...")
+        # Step 2 & 3: Retrieve and Extract
+        update_progress("Step 2: Extracting specific categories across parallel intelligence agents...")
         
         # Accumulators for segment-specific results
         segment_extractions = {seg_id: [] for seg_id in SEGMENTS}
 
         for model in discovery_models:
-            ext_data = {"industry_classification": classification.get("primary_industry", "")}
+            ext_data = {}
             
             for seg_id, config in SEGMENTS.items():
-                data, usage = extract_segment_task(query, search_queries, model, seg_id, config)
+                data, usage = extract_segment_task(query, segment_contexts[seg_id], model, seg_id, config)
                 merge_usage(usage)
                 segment_extractions[seg_id].append(data)
                 ext_data[seg_id] = data.get(seg_id, [])
                 
             result.raw_extractions[model] = ext_data
 
-        # Step 5 & 6: Normalize, Dedupe, and Verify by Segment
-        update_progress("Step 4 & 5: Deduping and Verifying each segment individually...")
+        # Step 4 & 5: Normalize, Dedupe, and Verify by Segment
+        update_progress("Step 3 & 4: Deduping and Verifying each segment individually...")
         
+        all_subindustries = set()
+        for ctx in segment_contexts.values():
+            all_subindustries.update(ctx.get("subindustries", []))
+            
         verified_data = {
-            "industry_classification": classification.get("primary_industry", "")
+            "industry_classification": ", ".join(all_subindustries)
         }
         
         for seg_id, config in SEGMENTS.items():
