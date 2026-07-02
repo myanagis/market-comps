@@ -38,16 +38,27 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
     3. Recent traction, news, or press releases
     4. Specific funding rounds, investment amounts, and lead investors
     
-    Return a JSON array of strings containing ONLY the 4 queries.
+    Return a JSON object with a 'queries' array containing ONLY the 4 strings.
     """
     try:
-        queries, _ = client.structured_output(
+        schema = {
+            "type": "object",
+            "properties": {
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
+        }
+        result, _ = client.structured_output(
             prompt=prompt,
-            json_schema={"type": "array", "items": {"type": "string"}},
+            json_schema=schema,
             model=settings.default_model
         )
-        if isinstance(queries, list) and len(queries) > 0:
-            return queries[:4]
+        if isinstance(result, dict) and "queries" in result:
+            return result["queries"][:4]
+        elif isinstance(result, list):
+            return result[:4]
     except Exception as e:
         logger.error(f"Failed to generate search queries: {e}")
     
@@ -255,7 +266,7 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
     
     prompt = f"""
     Extract any team members, founders, or executives mentioned in the text.
-    Return a JSON array of objects with:
+    Return a JSON object with a 'people' array containing objects with:
     - first_name
     - last_name
     - title
@@ -269,24 +280,33 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
     """
     
     schema = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "first_name": {"type": "string"},
-                "last_name": {"type": "string"},
-                "title": {"type": "string"},
-                "city": {"type": "string"},
-                "linkedin_url": {"type": "string"},
-                "email": {"type": "string"},
-                "is_founder": {"type": "boolean"}
+        "type": "object",
+        "properties": {
+            "people": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "first_name": {"type": "string"},
+                        "last_name": {"type": "string"},
+                        "title": {"type": "string"},
+                        "city": {"type": "string"},
+                        "linkedin_url": {"type": "string"},
+                        "email": {"type": "string"},
+                        "is_founder": {"type": "boolean"}
+                    }
+                }
             }
         }
     }
     
     try:
         result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
-        return result
+        if isinstance(result, dict) and "people" in result:
+            return result["people"]
+        if isinstance(result, list):
+            return result
+        return []
     except Exception as e:
         logger.error(f"Entity extraction failed: {e}")
         return []
@@ -303,7 +323,7 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
         
     prompt = f"""
     Extract any specific funding rounds or investments mentioned in the text.
-    Return a JSON array of objects with:
+    Return a JSON object with an 'investments' array containing objects with:
     - investor_name: The name of the firm or person who invested
     - round_type: e.g. "Series A", "Seed", "Venture Round"
     - total_round_amount: The total amount raised in the round (e.g. "$10M")
@@ -319,25 +339,34 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
     """
     
     schema = {
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "investor_name": {"type": "string"},
-                "round_type": {"type": "string"},
-                "total_round_amount": {"type": ["string", "null"]},
-                "firm_investment_amount": {"type": ["string", "null"]},
-                "investment_date": {"type": ["string", "null"]},
-                "is_lead": {"type": "boolean"},
-                "source_doc_index": {"type": "integer"}
-            },
-            "required": ["investor_name", "source_doc_index"]
+        "type": "object",
+        "properties": {
+            "investments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "investor_name": {"type": "string"},
+                        "round_type": {"type": "string"},
+                        "total_round_amount": {"type": ["string", "null"]},
+                        "firm_investment_amount": {"type": ["string", "null"]},
+                        "investment_date": {"type": ["string", "null"]},
+                        "is_lead": {"type": "boolean"},
+                        "source_doc_index": {"type": "integer"}
+                    },
+                    "required": ["investor_name", "source_doc_index"]
+                }
+            }
         }
     }
     
     try:
         result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
-        return result
+        if isinstance(result, dict) and "investments" in result:
+            return result["investments"]
+        if isinstance(result, list):
+            return result
+        return []
     except Exception as e:
         logger.error(f"Investment extraction failed: {e}")
         return []
