@@ -169,7 +169,7 @@ def map_companies(names: list[str]) -> pd.DataFrame:
                 best_score = score
                 best_match = can
                 best_status = status
-                best_reason = reason
+                best_reason = f"{reason} (vs '{can['canonical']}')"
                 
         if best_status in ("auto_mapped", "review"):
             results.append({
