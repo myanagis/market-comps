@@ -253,8 +253,16 @@ def display_company_details(company_id):
                 r_type = group["round_type"] or "Unknown Round"
                 date_str = group["date"].strftime("%b %Y") if group["date"] else "Unknown Date"
                 
-                amounts = list(set([x.total_round_amount for x in group["investments"] if x.total_round_amount]))
-                r_amount = ", ".join(amounts)
+                amounts_raw = [x.total_round_amount for x in group["investments"] if x.total_round_amount]
+                unique_amounts = []
+                for amt in amounts_raw:
+                    # Normalize for deduplication: remove spaces, uppercase, replace .0M with M
+                    norm = amt.upper().replace(" ", "").replace(".0M", "M").replace(".00M", "M").replace(".0K", "K").replace(".0B", "B")
+                    # Also handle if they are literally the same float if parsed, but string replace covers 99% of LLM outputs
+                    if not any(norm == a.upper().replace(" ", "").replace(".0M", "M").replace(".00M", "M").replace(".0K", "K").replace(".0B", "B") for a in unique_amounts):
+                        unique_amounts.append(amt)
+                
+                r_amount = ", ".join(unique_amounts)
                 
                 invs_sorted = sorted(group["investments"], key=lambda x: not x.is_lead)
                 investor_strs = []
