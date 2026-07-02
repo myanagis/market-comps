@@ -86,7 +86,7 @@ def fetch_exa_results(queries: List[str]) -> List[Dict]:
         }
         data = {
             "query": query,
-            "numResults": 2,
+            "numResults": 3,
             "contents": {"text": True}
         }
         try:
@@ -219,7 +219,7 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
     if not documents:
         return {}
     client = LLMClient()
-    doc_text_block = "\\n".join([d["text"][:3000] for d in documents])
+    doc_text_block = "\\n".join([d["text"] for d in documents])
     
     prompt = f"""
     Extract the following company basics from the text.
@@ -262,7 +262,7 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
         return []
         
     client = LLMClient()
-    doc_text_block = "\\n".join([d["text"][:3000] for d in documents])
+    doc_text_block = "\\n".join([d["text"] for d in documents])
     
     prompt = f"""
     Extract any team members, founders, or executives mentioned in the text.
@@ -319,7 +319,7 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
     # We want to know which document the investment came from for traceability
     doc_text_block = ""
     for i, doc in enumerate(documents):
-        doc_text_block += f"\\n\\n--- Document {i} (URL: {doc['url']}) ---\\n{doc['text'][:3000]}"
+        doc_text_block += f"\n\n--- Document {i} (URL: {doc['url']}) ---\n{doc['text']}"
         
     prompt = f"""
     Extract any specific funding rounds or investments mentioned in the text.
