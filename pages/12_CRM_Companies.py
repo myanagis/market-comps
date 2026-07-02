@@ -219,11 +219,17 @@ def display_company_details(company_id):
                 reverse=True
             )
             
+            def norm_rt(rt):
+                if not rt: return ""
+                rt = rt.lower().strip()
+                if rt.endswith(" round"): rt = rt[:-6].strip()
+                return rt
+            
             merged_rounds = []
             for inv in sorted_investments:
                 matched = False
                 for group in merged_rounds:
-                    if group["round_type"] == inv.round_type:
+                    if norm_rt(group["round_type"]) == norm_rt(inv.round_type):
                         group_date = group["date"]
                         inv_date = inv.investment_date
                         if group_date and inv_date:
