@@ -6,7 +6,7 @@ from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, AuditTrail,
-    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument
+    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument, Investment
 )
 from market_comps.ingestion.reconciler import log_mutation
 
