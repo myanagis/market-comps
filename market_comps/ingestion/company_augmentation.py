@@ -359,14 +359,27 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
             }
         }
     }
-    
     try:
         result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        
+        investments_list = []
         if isinstance(result, dict) and "investments" in result:
-            return result["investments"]
-        if isinstance(result, list):
-            return result
-        return []
+            investments_list = result["investments"]
+        elif isinstance(result, list):
+            investments_list = result
+            
+        # Normalize round names
+        for inv in investments_list:
+            if inv.get("round_type"):
+                rt = inv["round_type"].strip()
+                if rt.lower().endswith(" round"):
+                    rt = rt[:-6].strip()
+                if rt:
+                    # Title case but preserve specific known cases if needed. Title() is mostly fine
+                    # e.g. "Series A", "Pre-Seed" -> "Pre-Seed"
+                    inv["round_type"] = rt.title()
+                    
+        return investments_list
     except Exception as e:
         logger.error(f"Investment extraction failed: {e}")
         return []
