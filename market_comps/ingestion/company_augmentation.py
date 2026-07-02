@@ -282,16 +282,22 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
         from market_comps.models import LLMUsage
         return {}, LLMUsage()
 
-def extract_entities(documents: List[Dict]) -> List[Dict]:
+def extract_entities(documents: List[Dict], target_company_name: str = "") -> Tuple[List[Dict], LLMUsage]:
     """Extract people and roles from the text."""
     if not documents:
-        return []
+        from market_comps.models import LLMUsage
+        return [], LLMUsage()
         
     client = LLMClient()
     doc_text_block = "\n".join([d["text"] for d in documents])
     
+    target_directive = f"You are extracting data specifically for the company named '{target_company_name}'." if target_company_name else "You are extracting data for a target company."
+    
     prompt = f"""
-    Extract any team members, founders, or executives mentioned in the text.
+    {target_directive}
+    Extract any team members, founders, or executives mentioned in the text that belong to {target_company_name if target_company_name else 'the target company'}.
+    DO NOT extract people who work for other unrelated companies, investors, or competitors mentioned in the text!
+    
     Return a JSON object with a 'people' array containing objects with:
     - first_name
     - last_name
@@ -338,9 +344,10 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
         from market_comps.models import LLMUsage
         return [], LLMUsage()
 
-def extract_investments(documents: List[Dict]) -> List[Dict]:
+def extract_investments(documents: List[Dict], target_company_name: str = "") -> Tuple[List[Dict], LLMUsage]:
     if not documents:
-        return []
+        from market_comps.models import LLMUsage
+        return [], LLMUsage()
     client = LLMClient()
     
     # We want to know which document the investment came from for traceability
@@ -348,8 +355,13 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
     for i, doc in enumerate(documents):
         doc_text_block += f"\n\n--- Document {i} (URL: {doc['url']}) ---\n{doc['text']}"
         
+    target_directive = f"You are extracting data specifically for the company named '{target_company_name}'." if target_company_name else "You are extracting data for a target company."
+        
     prompt = f"""
-    Extract any specific funding rounds or investments mentioned in the text.
+    {target_directive}
+    Extract any specific funding rounds or investments mentioned in the text that were received by {target_company_name if target_company_name else 'the target company'} (or its direct subsidiaries).
+    DO NOT extract investments made by or into other unrelated companies, investors, or competitors mentioned in the text!
+    
     Return a JSON object with an 'investments' array containing objects with:
     - investor_name: The name of the firm or person who invested
     - round_type: e.g. "Series A", "Seed", "Venture Round"
@@ -530,7 +542,7 @@ def run_augmentation_pipeline(org_id: int):
         db.flush()
 
         # 6. Extract and Upsert Entities (Founders / Team)
-        people, u_people = extract_entities(docs_data)
+        people, u_people = extract_entities(docs_data, target_company_name=org.name)
         add_usage(u_people)
         for p in people:
             first = p.get("first_name")
@@ -593,7 +605,7 @@ def run_augmentation_pipeline(org_id: int):
                 role.title = "Founder & " + (role.title or "Executive")
         
         # 7. Extract and Upsert Investments
-        investments_data, u_inv = extract_investments(docs_data)
+        investments_data, u_inv = extract_investments(docs_data, target_company_name=org.name)
         add_usage(u_inv)
         for inv in investments_data:
             investor_name = inv.get("investor_name")
@@ -682,28 +694,34 @@ def clear_augmentation_data(org_id: int):
         
         # Delete investments created by WEB_AUGMENTATION for this company
         from market_comps.db.models import Investment
+        from datetime import datetime
         from sqlalchemy import cast, Integer
         db.query(Investment).filter(
             Investment.company_organization_id == org_id,
             Investment.id.in_(db.query(cast(AuditTrail.canonical_entity_id, Integer)).filter_by(canonical_entity_type="INVESTMENT", source="WEB_AUGMENTATION"))
-        ).delete(synchronize_session=False)
+        ).update({Investment.deleted_at: datetime.utcnow(), Investment.deleted_by: 'USER'}, synchronize_session=False)
         
-        # Delete Reports
-        db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).delete(synchronize_session=False)
+        # Mark Reports as CLEARED
+        db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).update({CompanyAugmentationReport.status: "CLEARED"}, synchronize_session=False)
         
         if pipeline_run_ids:
             # SourceDocuments
-            docs = db.query(SourceDocument).filter(SourceDocument.pipeline_run_id.in_(pipeline_run_ids)).all()
+            docs = db.query(SourceDocument).filter(
+                SourceDocument.pipeline_run_id.in_(pipeline_run_ids),
+                SourceDocument.deleted_at == None
+            ).all()
             doc_ids = [d.id for d in docs]
             
             if doc_ids:
-                # Delete investments linked to these documents
-                db.query(Investment).filter(Investment.source_document_id.in_(doc_ids)).delete(synchronize_session=False)
+                # Soft delete investments linked to these documents
+                db.query(Investment).filter(Investment.source_document_id.in_(doc_ids)).update({Investment.deleted_at: datetime.utcnow(), Investment.deleted_by: 'USER'}, synchronize_session=False)
                 
-                db.query(DocumentText).filter(DocumentText.source_document_id.in_(doc_ids)).delete(synchronize_session=False)
-                db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).delete(synchronize_session=False)
+                # Soft delete documents (leave DocumentText intact)
+                db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).update({SourceDocument.deleted_at: datetime.utcnow(), SourceDocument.deleted_by: 'USER'}, synchronize_session=False)
                 
-            db.query(PipelineRun).filter(PipelineRun.id.in_(pipeline_run_ids)).delete(synchronize_session=False)
+            # Mark Pipeline runs as CLEARED
+            from market_comps.db.models import PipelineRun
+            db.query(PipelineRun).filter(PipelineRun.id.in_(pipeline_run_ids)).update({PipelineRun.run_status: "CLEARED"}, synchronize_session=False)
             
         db.commit()
     except Exception as e:
@@ -903,7 +921,8 @@ def re_synthesize_company_data(org_id: int):
         ).subquery()
         
         docs = db.query(SourceDocument).filter(
-            (SourceDocument.id.in_(doc_ids_subquery_1)) | (SourceDocument.id.in_(doc_ids_subquery_2))
+            ((SourceDocument.id.in_(doc_ids_subquery_1)) | (SourceDocument.id.in_(doc_ids_subquery_2))),
+            SourceDocument.deleted_at == None
         ).all()
         
         # Deduplicate
@@ -1004,7 +1023,7 @@ def re_synthesize_company_data(org_id: int):
         db.flush()
 
         # 6. Extract and Upsert Entities (Founders / Team)
-        people, u_people = extract_entities(docs_data)
+        people, u_people = extract_entities(docs_data, target_company_name=org.name)
         add_usage(u_people)
         for p in people:
             first = p.get("first_name")
@@ -1051,7 +1070,7 @@ def re_synthesize_company_data(org_id: int):
                 role.title = "Founder & " + (role.title or "Executive")
         
         # 7. Extract and Upsert Investments
-        investments_data, u_inv = extract_investments(docs_data)
+        investments_data, u_inv = extract_investments(docs_data, target_company_name=org.name)
         add_usage(u_inv)
         for inv in investments_data:
             investor_name = inv.get("investor_name")

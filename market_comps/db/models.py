@@ -236,6 +236,8 @@ class Investment(Base, TimestampMixin):
     fund_id = Column(Integer, ForeignKey('fund_profiles.id'), nullable=True)
     source_document_id = Column(Integer, ForeignKey('source_documents.id'), nullable=True)
     metadata_json = Column(JSON)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(String, nullable=True)
 
     investor = relationship("Organization", foreign_keys=[investor_organization_id], back_populates="investments_made")
     company = relationship("Organization", foreign_keys=[company_organization_id], back_populates="investments_received")
@@ -359,6 +361,8 @@ class SourceDocument(Base, TimestampMixin):
     file_path = Column(String)
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
     content_hash = Column(String, index=True)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(String, nullable=True)
 
     pipeline_run = relationship("PipelineRun", back_populates="source_documents")
     document_texts = relationship("DocumentText", back_populates="source_document")

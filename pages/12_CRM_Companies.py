@@ -210,14 +210,16 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("💸 Investments & Funding")
         if org.investments_received:
-            from collections import defaultdict
-            from datetime import datetime, timedelta
-            
-            sorted_investments = sorted(
-                org.investments_received, 
-                key=lambda x: x.investment_date or datetime.min, 
-                reverse=True
-            )
+            active_investments = [i for i in org.investments_received if i.deleted_at is None]
+            if active_investments:
+                from collections import defaultdict
+                from datetime import datetime, timedelta
+                
+                sorted_investments = sorted(
+                    active_investments, 
+                    key=lambda x: x.investment_date or datetime.min, 
+                    reverse=True
+                )
             
             def norm_rt(rt):
                 if not rt: return ""
@@ -449,7 +451,8 @@ def display_company_details(company_id):
         ).subquery()
         
         docs = db.query(SourceDocument).filter(
-            (SourceDocument.id.in_(doc_ids_subquery_1)) | (SourceDocument.id.in_(doc_ids_subquery_2))
+            ((SourceDocument.id.in_(doc_ids_subquery_1)) | (SourceDocument.id.in_(doc_ids_subquery_2))),
+            SourceDocument.deleted_at == None
         ).all()
         
         if docs:
@@ -498,16 +501,11 @@ def display_company_details(company_id):
                         st.caption("Remove this source document from the database.")
                         if st.button("Confirm Delete", key=f"del_doc_{doc.id}", type="primary"):
                             try:
-                                # Delete associated investments
-                                db.query(Investment).filter(Investment.source_document_id == doc.id).delete(synchronize_session=False)
+                                # Soft delete associated investments
+                                db.query(Investment).filter(Investment.source_document_id == doc.id).update({Investment.deleted_at: datetime.utcnow(), Investment.deleted_by: 'USER'}, synchronize_session=False)
                                 
-                                # Deep delete nested tables if any exist
-                                texts = db.query(DocumentText).filter(DocumentText.source_document_id == doc.id).all()
-                                for t in texts:
-                                    db.query(ExtractionJob).filter(ExtractionJob.document_text_id == t.id).delete(synchronize_session=False)
-                                
-                                db.query(DocumentText).filter(DocumentText.source_document_id == doc.id).delete(synchronize_session=False)
-                                db.query(SourceDocument).filter(SourceDocument.id == doc.id).delete(synchronize_session=False)
+                                # Soft delete document
+                                db.query(SourceDocument).filter(SourceDocument.id == doc.id).update({SourceDocument.deleted_at: datetime.utcnow(), SourceDocument.deleted_by: 'USER'}, synchronize_session=False)
                                 db.commit()
                                 st.rerun()
                             except Exception as e:
