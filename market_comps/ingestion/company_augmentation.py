@@ -680,6 +680,14 @@ def clear_augmentation_data(org_id: int):
         reports = db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).all()
         pipeline_run_ids = [r.pipeline_run_id for r in reports if r.pipeline_run_id]
         
+        # Delete investments created by WEB_AUGMENTATION for this company
+        from market_comps.db.models import Investment
+        from sqlalchemy import cast, Integer
+        db.query(Investment).filter(
+            Investment.company_organization_id == org_id,
+            Investment.id.in_(db.query(cast(AuditTrail.canonical_entity_id, Integer)).filter_by(canonical_entity_type="INVESTMENT", source="WEB_AUGMENTATION"))
+        ).delete(synchronize_session=False)
+        
         # Delete Reports
         db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).delete(synchronize_session=False)
         
@@ -689,6 +697,9 @@ def clear_augmentation_data(org_id: int):
             doc_ids = [d.id for d in docs]
             
             if doc_ids:
+                # Delete investments linked to these documents
+                db.query(Investment).filter(Investment.source_document_id.in_(doc_ids)).delete(synchronize_session=False)
+                
                 db.query(DocumentText).filter(DocumentText.source_document_id.in_(doc_ids)).delete(synchronize_session=False)
                 db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).delete(synchronize_session=False)
                 

@@ -498,8 +498,8 @@ def display_company_details(company_id):
                         st.caption("Remove this source document from the database.")
                         if st.button("Confirm Delete", key=f"del_doc_{doc.id}", type="primary"):
                             try:
-                                # Remove foreign key references
-                                db.query(Investment).filter(Investment.source_document_id == doc.id).update({Investment.source_document_id: None})
+                                # Delete associated investments
+                                db.query(Investment).filter(Investment.source_document_id == doc.id).delete(synchronize_session=False)
                                 
                                 # Deep delete nested tables if any exist
                                 texts = db.query(DocumentText).filter(DocumentText.source_document_id == doc.id).all()
