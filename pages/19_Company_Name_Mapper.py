@@ -48,8 +48,90 @@ def normalize_name(name: str) -> str:
     # Upper first letter (Title case)
     return n.strip().title()
 
+def get_meaningful_tokens(name: str) -> list[str]:
+    tokens = [t for t in name.upper().split() if t]
+    generic = {
+        "VENTURES", "HEALTH", "TECH", "TECHNOLOGY", "AI", "LABS", 
+        "SYSTEMS", "SOLUTIONS", "GROUP", "HOLDINGS", "CAPITAL", 
+        "PARTNERS", "MEDICAL", "SOFTWARE", "ANALYTICS", "ENTERPRISES", 
+        "BIOSCIENCES", "INC", "LLC", "CORP", "CORPORATION", "LTD", 
+        "LIMITED", "CO", "COMPANY"
+    }
+    res = []
+    for t in tokens:
+        if t in generic or t.endswith("MICS"):
+            continue
+        res.append(t)
+    return res
+
+def compare_names(norm_orig: str, norm_can: str) -> tuple[float, str, str]:
+    if norm_orig == norm_can:
+        return 100.0, "auto_mapped", "Exact normalized match"
+        
+    meaningful_orig = get_meaningful_tokens(norm_orig)
+    meaningful_can = get_meaningful_tokens(norm_can)
+    
+    score_set = fuzz.token_set_ratio(norm_orig, norm_can)
+    score_sort = fuzz.token_sort_ratio(norm_orig, norm_can)
+    score_part = fuzz.partial_ratio(norm_orig, norm_can)
+    
+    # Use sort ratio mostly, but give partial credit for containment
+    base_score = max(score_sort, (score_set + score_part) / 2)
+    
+    if not meaningful_orig or not meaningful_can:
+        if base_score >= 92:
+            return base_score, "review", "High score but lacks meaningful tokens"
+        return base_score, "new", "Low score and no meaningful tokens"
+            
+    orig_contains_can = norm_can in norm_orig and len(meaningful_can) >= 2
+    can_contains_orig = norm_orig in norm_can and len(meaningful_orig) >= 2
+    
+    first_match = (meaningful_orig[0] == meaningful_can[0])
+    
+    shared = set(meaningful_orig).intersection(set(meaningful_can))
+    num_shared = len(shared)
+    
+    distinct_orig = set(meaningful_orig) - shared
+    distinct_can = set(meaningful_can) - shared
+    
+    avoid_reasons = []
+    if not first_match:
+        avoid_reasons.append("First meaningful tokens differ")
+    if distinct_orig and distinct_can:
+        avoid_reasons.append("Both have different distinctive tokens")
+    if num_shared == 1 and not distinct_orig and not distinct_can:
+        pass # single token exact match
+    elif num_shared == 1 and (distinct_orig or distinct_can):
+        avoid_reasons.append("Only one meaningful token overlaps")
+        
+    strong_match_reason = None
+    if orig_contains_can or can_contains_orig:
+        strong_match_reason = "Containment match with >= 2 meaningful tokens"
+    elif first_match and base_score >= 92:
+        strong_match_reason = "First meaningful token matches and score >= 92"
+    elif num_shared >= 2 and base_score >= 90:
+        strong_match_reason = ">= 2 meaningful tokens overlap and score >= 90"
+        
+    if num_shared == 0:
+        return base_score, "new", "No shared meaningful tokens"
+        
+    if avoid_reasons:
+        if base_score >= 82:
+            return base_score, "new" if len(avoid_reasons) >= 2 else "review", f"Avoided auto-match: {', '.join(avoid_reasons)}"
+        return base_score, "new", f"Different entities ({', '.join(avoid_reasons)})"
+        
+    if strong_match_reason:
+        return base_score, "auto_mapped", strong_match_reason
+        
+    if base_score >= 92:
+        return base_score, "auto_mapped", "High score >= 92"
+    elif base_score >= 82:
+        return base_score, "review", "Score between 82 and 91"
+    else:
+        return base_score, "new", "Low score < 82"
+
 def map_companies(names: list[str]) -> pd.DataFrame:
-    canonical_list = [] # [{"canonical": "Meta", "normalized": "Meta"}]
+    canonical_list = []
     results = []
     
     for orig in names:
@@ -65,44 +147,46 @@ def map_companies(names: list[str]) -> pd.DataFrame:
                 "original_name": orig_str,
                 "canonical_name": orig_str,
                 "score": 100.0,
-                "status": "new"
+                "status": "new",
+                "reason": "First entry"
             })
             continue
             
         best_match = None
         best_score = -1
+        best_status = "new"
+        best_reason = ""
         
         for can in canonical_list:
-            score1 = fuzz.token_set_ratio(norm, can["normalized"])
-            score2 = fuzz.partial_ratio(norm, can["normalized"])
-            score = max(score1, score2)
+            score, status, reason = compare_names(norm, can["normalized"])
             
-            if score > best_score:
+            def status_weight(s):
+                if s == "auto_mapped": return 3
+                if s == "review": return 2
+                return 1
+                
+            if (status_weight(status), score) > (status_weight(best_status), best_score):
                 best_score = score
                 best_match = can
+                best_status = status
+                best_reason = reason
                 
-        if best_score >= 95:
+        if best_status in ("auto_mapped", "review"):
             results.append({
                 "original_name": orig_str,
                 "canonical_name": best_match["canonical"],
                 "score": round(best_score, 1),
-                "status": "auto_mapped"
-            })
-        elif best_score >= 75:
-            results.append({
-                "original_name": orig_str,
-                "canonical_name": best_match["canonical"],
-                "score": round(best_score, 1),
-                "status": "review"
+                "status": best_status,
+                "reason": best_reason
             })
         else:
-            # Create new canonical
             canonical_list.append({"canonical": orig_str, "normalized": norm})
             results.append({
                 "original_name": orig_str,
                 "canonical_name": orig_str,
                 "score": round(best_score, 1) if best_match else 0.0,
-                "status": "new"
+                "status": "new",
+                "reason": best_reason or "No strong match found"
             })
             
     return pd.DataFrame(results)
@@ -144,7 +228,8 @@ if "mapped_df" in st.session_state:
             "original_name": st.column_config.TextColumn("Original Name", disabled=True),
             "canonical_name": st.column_config.TextColumn("Canonical Name", disabled=False),
             "score": st.column_config.NumberColumn("Score", disabled=True),
-            "status": st.column_config.TextColumn("Status", disabled=True)
+            "status": st.column_config.TextColumn("Status", disabled=True),
+            "reason": st.column_config.TextColumn("Reason", disabled=True)
         },
         hide_index=True
     )
