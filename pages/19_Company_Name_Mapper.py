@@ -101,8 +101,6 @@ def compare_names(norm_orig: str, norm_can: str) -> tuple[float, str, str]:
         avoid_reasons.append("Both have different distinctive tokens")
     if num_shared == 1 and not distinct_orig and not distinct_can:
         pass # single token exact match
-    elif num_shared == 1 and (distinct_orig or distinct_can):
-        avoid_reasons.append("Only one meaningful token overlaps")
         
     strong_match_reason = None
     if orig_contains_can or can_contains_orig:
@@ -113,7 +111,7 @@ def compare_names(norm_orig: str, norm_can: str) -> tuple[float, str, str]:
         strong_match_reason = ">= 2 meaningful tokens overlap and score >= 90"
         
     if num_shared == 0:
-        return base_score, "new", "No shared meaningful tokens"
+        return base_score, "new", "No/low overlap with prior companies"
         
     if avoid_reasons:
         if base_score >= 82:
@@ -172,7 +170,7 @@ def map_companies(names: list[str]) -> pd.DataFrame:
                 
                 if status == "new" and score < 60:
                     best_reason = "No strong match found"
-                elif status == "new" and "No shared meaningful tokens" in reason:
+                elif status == "new" and "No/low overlap with prior companies" in reason:
                     best_reason = reason
                 else:
                     best_reason = f"{reason} (vs '{can['canonical']}')"
