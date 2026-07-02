@@ -81,7 +81,7 @@ def compare_names(norm_orig: str, norm_can: str) -> tuple[float, str, str]:
     if not meaningful_orig or not meaningful_can:
         if base_score >= 92:
             return base_score, "review", "High score but lacks meaningful tokens"
-        return base_score, "new", "Low score and no meaningful tokens"
+        return base_score, "new", "Name only contains generic words"
             
     orig_contains_can = norm_can in norm_orig and len(meaningful_can) >= 2
     can_contains_orig = norm_orig in norm_can and len(meaningful_orig) >= 2
@@ -170,7 +170,9 @@ def map_companies(names: list[str]) -> pd.DataFrame:
                 best_match = can
                 best_status = status
                 
-                if status == "new" and ("No shared meaningful tokens" in reason or score < 50):
+                if status == "new" and score < 60:
+                    best_reason = "No strong match found"
+                elif status == "new" and "No shared meaningful tokens" in reason:
                     best_reason = reason
                 else:
                     best_reason = f"{reason} (vs '{can['canonical']}')"
