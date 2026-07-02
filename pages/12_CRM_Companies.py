@@ -477,7 +477,30 @@ def display_company_details(company_id):
                     date_display = f"Processed: {tz_time}"
                 
                 source_suffix = f" (via {doc.source_name})" if doc.source_name else ""
-                st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} ({date_display})")
+                
+                col_info, col_act = st.columns([5, 1])
+                with col_info:
+                    st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} ({date_display})")
+                with col_act:
+                    with st.popover("🗑️ Remove"):
+                        st.caption("Remove this source document from the database.")
+                        if st.button("Confirm Delete", key=f"del_doc_{doc.id}", type="primary"):
+                            try:
+                                # Remove foreign key references
+                                db.query(Investment).filter(Investment.source_document_id == doc.id).update({Investment.source_document_id: None})
+                                
+                                # Deep delete nested tables if any exist
+                                texts = db.query(DocumentText).filter(DocumentText.source_document_id == doc.id).all()
+                                for t in texts:
+                                    db.query(ExtractionJob).filter(ExtractionJob.document_text_id == t.id).delete()
+                                    db.delete(t)
+                                
+                                db.query(SourceDocument).filter(SourceDocument.id == doc.id).delete()
+                                db.commit()
+                                st.rerun()
+                            except Exception as e:
+                                db.rollback()
+                                st.error(f"Failed to delete: {e}")
         else:
             st.info("No documents linked to this company.")
 
