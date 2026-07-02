@@ -226,8 +226,8 @@ if "mapped_df" in st.session_state:
         use_container_width=True,
         column_config={
             "original_name": st.column_config.TextColumn("Original Name", disabled=True),
-            "canonical_name": st.column_config.TextColumn("Canonical Name", disabled=False),
-            "score": st.column_config.NumberColumn("Score", disabled=True),
+            "canonical_name": st.column_config.TextColumn("Mapped Name", disabled=False),
+            "score": st.column_config.NumberColumn("Matching Score", disabled=True),
             "status": st.column_config.TextColumn("Status", disabled=True),
             "reason": st.column_config.TextColumn("Reason", disabled=True)
         },
