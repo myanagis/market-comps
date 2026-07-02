@@ -211,26 +211,48 @@ def display_company_details(company_id):
         st.subheader("💸 Investments & Funding")
         if org.investments_received:
             from collections import defaultdict
-            from datetime import datetime
+            from datetime import datetime, timedelta
             
-            rounds = defaultdict(list)
-            for inv in org.investments_received:
-                date_str = inv.investment_date.strftime("%b %Y") if inv.investment_date else "Unknown Date"
-                r_type = inv.round_type or "Unknown Round"
-                r_amount = inv.total_round_amount or ""
-                # Use a sorting key that handles None dates gracefully
-                sort_date = inv.investment_date or datetime.min
-                key = (date_str, r_type, r_amount, sort_date)
-                rounds[key].append(inv)
+            sorted_investments = sorted(
+                org.investments_received, 
+                key=lambda x: x.investment_date or datetime.min, 
+                reverse=True
+            )
+            
+            merged_rounds = []
+            for inv in sorted_investments:
+                matched = False
+                for group in merged_rounds:
+                    if group["round_type"] == inv.round_type:
+                        group_date = group["date"]
+                        inv_date = inv.investment_date
+                        if group_date and inv_date:
+                            if abs((group_date - inv_date).days) <= 45:
+                                group["investments"].append(inv)
+                                matched = True
+                                break
+                        elif not group_date and not inv_date:
+                            group["investments"].append(inv)
+                            matched = True
+                            break
+                if not matched:
+                    merged_rounds.append({
+                        "round_type": inv.round_type,
+                        "date": inv.investment_date,
+                        "investments": [inv]
+                    })
                 
             inv_data = []
-            sorted_keys = sorted(rounds.keys(), key=lambda k: k[3], reverse=True)
-            for k in sorted_keys:
-                date_str, r_type, r_amount, _ = k
-                invs = rounds[k]
+            for group in merged_rounds:
+                r_type = group["round_type"] or "Unknown Round"
+                date_str = group["date"].strftime("%b %Y") if group["date"] else "Unknown Date"
                 
-                invs_sorted = sorted(invs, key=lambda x: not x.is_lead)
+                amounts = list(set([x.total_round_amount for x in group["investments"] if x.total_round_amount]))
+                r_amount = ", ".join(amounts)
+                
+                invs_sorted = sorted(group["investments"], key=lambda x: not x.is_lead)
                 investor_strs = []
+                sources = []
                 for x in invs_sorted:
                     name = x.investor.name if x.investor else "Unknown"
                     if x.is_lead:
@@ -239,14 +261,39 @@ def display_company_details(company_id):
                         name += f" ({x.firm_investment_amount})"
                     investor_strs.append(name)
                     
+                    if x.source_document:
+                        # Convert URLs to markdown links for better UI
+                        src = f"[{x.source_document.source_name}]({x.source_document.source_url})" if x.source_document.source_url else x.source_document.source_name
+                        if src: sources.append(src)
+                        
+                sources = list(set(sources))
+                    
                 inv_data.append({
                     "Round": r_type,
                     "Date": date_str,
                     "Round Amount": r_amount,
-                    "Investors": ", ".join(investor_strs)
+                    "Investors": ", ".join(investor_strs),
+                    "Sources": ", ".join(sources)
                 })
                 
-            st.dataframe(inv_data, use_container_width=True, hide_index=True)
+            # Use markdown styling for links in dataframe
+            st.markdown(
+                """
+                <style>
+                [data-testid="stDataFrame"] a {
+                    color: #4da6ff;
+                }
+                </style>
+                """, unsafe_allow_html=True
+            )
+            st.dataframe(
+                inv_data, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Sources": st.column_config.LinkColumn("Sources")
+                }
+            )
         else:
             st.info("No investments recorded for this company.")
 
