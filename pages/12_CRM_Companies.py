@@ -498,7 +498,6 @@ def display_company_details(company_id):
                         st.caption("Remove this source document from the database.")
                         if st.button("Confirm Delete", key=f"del_doc_{doc.id}", type="primary"):
                             try:
-                                from market_comps.db.models import Investment, DocumentText, ExtractionJob, SourceDocument
                                 # Remove foreign key references
                                 db.query(Investment).filter(Investment.source_document_id == doc.id).update({Investment.source_document_id: None})
                                 
