@@ -644,6 +644,16 @@ def clear_augmentation_data(org_id: int):
         db.close()
 
 
+def fetch_jina_content(url: str) -> str:
+    import requests
+    try:
+        response = requests.get(f"https://r.jina.ai/{url}", timeout=15)
+        if response.status_code == 200:
+            return response.text
+    except Exception:
+        pass
+    return ""
+
 def run_manual_url_augmentation(org_id: int, url: str):
     """Augment a company's profile incrementally by reading a single manually provided URL."""
     db = SessionLocal()
