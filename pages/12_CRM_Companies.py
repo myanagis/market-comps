@@ -195,6 +195,24 @@ def display_company_details(company_id):
                     else:
                         st.caption("No cohorts defined.")
 
+        # Investments & Funding
+        st.divider()
+        st.subheader("💸 Investments & Funding")
+        if org.investments_received:
+            inv_data = []
+            for inv in org.investments_received:
+                inv_data.append({
+                    "Investor": inv.investor.name if inv.investor else "Unknown",
+                    "Round Type": inv.round_type or "",
+                    "Total Round Amount": inv.total_round_amount or "",
+                    "Firm Investment": inv.firm_investment_amount or "",
+                    "Date": inv.investment_date.strftime("%Y-%m-%d") if inv.investment_date else "",
+                    "Lead": "Yes" if inv.is_lead else ""
+                })
+            st.dataframe(inv_data, use_container_width=True, hide_index=True)
+        else:
+            st.info("No investments recorded for this company.")
+
         # People & Roles
         st.divider()
         st.subheader("👥 People & Roles")
