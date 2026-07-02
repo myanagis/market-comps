@@ -48,7 +48,7 @@ if "access_token" in query_params:
     st.rerun()
 
 # 4. Inject JavaScript to convert URL Hash fragment into Query params
-components.html(
+st.html(
     """
     <script>
     try {
@@ -66,9 +66,7 @@ components.html(
         console.error("OAuth redirect parse error:", e);
     }
     </script>
-    """,
-    height=0,
-    width=0,
+    """
 )
 
 # 5. Sidebar Authentication Widget (Optional Login)

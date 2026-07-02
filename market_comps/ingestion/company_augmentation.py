@@ -210,12 +210,33 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
         "required": ["executive_summary", "market", "product_and_differentiation", "team", "traction", "thesis_mandate_fit"]
     }
     
-    result, usage = client.structured_output(
-        prompt=prompt,
-        json_schema=schema,
-        model="google/gemini-2.5-pro" # Use a stronger model for complex processing
-    )
-    return result, usage
+    try:
+        result, usage = client.structured_output(
+            prompt=prompt,
+            json_schema=schema,
+            model="google/gemini-2.5-pro" # Use a stronger model for complex processing
+        )
+        return result, usage
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to parse LLM JSON in process_and_score_evidence: {e}")
+        from market_comps.models import LLMUsage
+        default_section = {
+            "summary": "Failed to parse evidence due to LLM error.",
+            "evidenced_data": [],
+            "score_1_to_10": 0,
+            "confidence": "Low",
+            "reasoning": "Error occurred during structured data extraction."
+        }
+        return {
+            "executive_summary": "Failed to parse evidence due to LLM error.",
+            "market": default_section,
+            "product_and_differentiation": default_section,
+            "team": default_section,
+            "traction": default_section,
+            "thesis_mandate_fit": default_section
+        }, LLMUsage()
 
 def extract_company_basics(documents: List[Dict]) -> Dict:
     if not documents:
