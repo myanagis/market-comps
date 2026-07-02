@@ -340,7 +340,7 @@ def display_company_details(company_id):
 
         # AI Profile Augmentation
         st.divider()
-        col_aug1, col_aug2, col_aug3 = st.columns([2, 1, 1])
+        col_aug1, col_aug2, col_aug3, col_aug4 = st.columns([2, 1.5, 1.5, 1])
         with col_aug1:
             st.subheader("🌐 Web Profile Augmentation")
         with col_aug2:
@@ -353,6 +353,18 @@ def display_company_details(company_id):
                 time.sleep(1)
                 st.rerun()
         with col_aug3:
+            if st.button("🧠 Re-synthesize Data", key=f"btn_resynth_aug_{org.id}", use_container_width=True):
+                with st.spinner("Re-synthesizing from existing sources..."):
+                    from market_comps.ingestion.company_augmentation import re_synthesize_company_data
+                    try:
+                        re_synthesize_company_data(org.id)
+                        st.success("Re-synthesized! Reloading...")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                import time
+                time.sleep(1)
+                st.rerun()
+        with col_aug4:
             if st.button("🗑️ Clear Data", key=f"btn_clear_aug_{org.id}", use_container_width=True):
                 with st.spinner("Clearing augmentation data..."):
                     from market_comps.ingestion.company_augmentation import clear_augmentation_data
