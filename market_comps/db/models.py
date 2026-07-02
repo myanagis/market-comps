@@ -298,6 +298,11 @@ class PipelineRun(Base):
     records_created = Column(Integer, default=0)
     records_updated = Column(Integer, default=0)
     records_failed = Column(Integer, default=0)
+    
+    llm_total_tokens = Column(Integer, default=0)
+    llm_estimated_cost_usd = Column(Float, default=0.0)
+    exa_calls = Column(Integer, default=0)
+    exa_estimated_cost_usd = Column(Float, default=0.0)
 
     error_message = Column(String)
     logs_json = Column(JSON)

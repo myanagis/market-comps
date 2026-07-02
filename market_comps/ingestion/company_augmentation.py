@@ -50,25 +50,26 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
                 }
             }
         }
-        result, _ = client.structured_output(
+        result, usage = client.structured_output(
             prompt=prompt,
             json_schema=schema,
             model=settings.default_model
         )
         if isinstance(result, dict) and "queries" in result:
-            return result["queries"][:4]
+            return result["queries"][:4], usage
         elif isinstance(result, list):
-            return result[:4]
+            return result[:4], usage
     except Exception as e:
         logger.error(f"Failed to generate search queries: {e}")
     
     # Fallback
+    from market_comps.models import LLMUsage
     return [
         f"{company_name} company overview product",
         f"{company_name} team founders",
         f"{company_name} news traction",
         f"{company_name} funding rounds investors amounts"
-    ]
+    ], LLMUsage()
 
 def fetch_exa_results(queries: List[str]) -> List[Dict]:
     """Fetch results from Exa API."""
@@ -118,6 +119,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "confidence": "Low",
             "reasoning": "No search results returned from Exa API."
         }
+        from market_comps.models import LLMUsage
         return {
             "executive_summary": "No web presence could be found for this company during augmentation.",
             "market": default_section,
@@ -125,7 +127,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
             "team": default_section,
             "traction": default_section,
             "thesis_mandate_fit": default_section
-        }
+        }, LLMUsage()
         
     client = LLMClient()
     
@@ -208,12 +210,12 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
         "required": ["executive_summary", "market", "product_and_differentiation", "team", "traction", "thesis_mandate_fit"]
     }
     
-    result, _ = client.structured_output(
+    result, usage = client.structured_output(
         prompt=prompt,
         json_schema=schema,
         model="google/gemini-2.5-pro" # Use a stronger model for complex processing
     )
-    return result
+    return result, usage
 
 def extract_company_basics(documents: List[Dict]) -> Dict:
     if not documents:
@@ -250,11 +252,14 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
     }
     
     try:
-        result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
-        return result
+        result, usage = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        if isinstance(result, dict):
+            return result, usage
+        return {}, usage
     except Exception as e:
-        logger.error(f"Company basics extraction failed: {e}")
-        return {}
+        logger.error(f"Basics extraction failed: {e}")
+        from market_comps.models import LLMUsage
+        return {}, LLMUsage()
 
 def extract_entities(documents: List[Dict]) -> List[Dict]:
     """Extract people and roles from the text."""
@@ -262,7 +267,7 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
         return []
         
     client = LLMClient()
-    doc_text_block = "\\n".join([d["text"] for d in documents])
+    doc_text_block = "\n".join([d["text"] for d in documents])
     
     prompt = f"""
     Extract any team members, founders, or executives mentioned in the text.
@@ -301,15 +306,16 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
     }
     
     try:
-        result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        result, usage = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
         if isinstance(result, dict) and "people" in result:
-            return result["people"]
+            return result["people"], usage
         if isinstance(result, list):
-            return result
-        return []
+            return result, usage
+        return [], usage
     except Exception as e:
         logger.error(f"Entity extraction failed: {e}")
-        return []
+        from market_comps.models import LLMUsage
+        return [], LLMUsage()
 
 def extract_investments(documents: List[Dict]) -> List[Dict]:
     if not documents:
@@ -360,7 +366,7 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
         }
     }
     try:
-        result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        result, usage = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
         
         investments_list = []
         if isinstance(result, dict) and "investments" in result:
@@ -379,10 +385,11 @@ def extract_investments(documents: List[Dict]) -> List[Dict]:
                     # e.g. "Series A", "Pre-Seed" -> "Pre-Seed"
                     inv["round_type"] = rt.title()
                     
-        return investments_list
+        return investments_list, usage
     except Exception as e:
         logger.error(f"Investment extraction failed: {e}")
-        return []
+        from market_comps.models import LLMUsage
+        return [], LLMUsage()
 
 def run_augmentation_pipeline(org_id: int):
     """Main entrypoint for the augmentation pipeline."""
@@ -412,11 +419,25 @@ def run_augmentation_pipeline(org_id: int):
         report.pipeline_run_id = run.id
         db.commit()
         
+        # Initialize usage trackers
+        if not run.llm_total_tokens: run.llm_total_tokens = 0
+        if not run.llm_estimated_cost_usd: run.llm_estimated_cost_usd = 0.0
+        if not run.exa_calls: run.exa_calls = 0
+        if not run.exa_estimated_cost_usd: run.exa_estimated_cost_usd = 0.0
+        
+        def add_usage(u):
+            if u:
+                run.llm_total_tokens += u.total_tokens
+                run.llm_estimated_cost_usd += u.estimated_cost_usd
+
         # 1. Generate Queries
-        queries = generate_search_queries(org.name, org.primary_domain or "", org.description or "")
+        queries, u_queries = generate_search_queries(org.name, org.primary_domain or "", org.description or "")
+        add_usage(u_queries)
         
         # 2. Fetch Data
         docs_data = fetch_exa_results(queries)
+        run.exa_calls += len(queries)
+        run.exa_estimated_cost_usd += len(queries) * 0.005
         
         for d in docs_data:
             content_hash = hashlib.sha256((d["text"] or "").encode()).hexdigest()
@@ -445,7 +466,8 @@ def run_augmentation_pipeline(org_id: int):
         db.commit()
         
         # 3 & 4. Process and Score
-        extracted_data = process_and_score_evidence(docs_data)
+        extracted_data, u_score = process_and_score_evidence(docs_data)
+        add_usage(u_score)
         
         # Extract scoring into separate field for ease of use
         scoring = {}
@@ -463,7 +485,8 @@ def run_augmentation_pipeline(org_id: int):
         report.status = "SUCCESS"
         
         # 5. Extract and Upsert Basics
-        basics = extract_company_basics(docs_data)
+        basics, u_basics = extract_company_basics(docs_data)
+        add_usage(u_basics)
         if basics.get("website"): org.website_url = basics["website"]
         if basics.get("description_short"): org.description = basics["description_short"]
         
@@ -486,7 +509,8 @@ def run_augmentation_pipeline(org_id: int):
         db.flush()
 
         # 6. Extract and Upsert Entities (Founders / Team)
-        people = extract_entities(docs_data)
+        people, u_people = extract_entities(docs_data)
+        add_usage(u_people)
         for p in people:
             first = p.get("first_name")
             last = p.get("last_name")
@@ -548,7 +572,8 @@ def run_augmentation_pipeline(org_id: int):
                 role.title = "Founder & " + (role.title or "Executive")
         
         # 7. Extract and Upsert Investments
-        investments_data = extract_investments(docs_data)
+        investments_data, u_inv = extract_investments(docs_data)
+        add_usage(u_inv)
         for inv in investments_data:
             investor_name = inv.get("investor_name")
             if not investor_name: continue
@@ -683,6 +708,7 @@ def run_manual_url_augmentation(org_id: int, url: str):
         report = db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).order_by(CompanyAugmentationReport.created_at.desc()).first()
         if report and report.pipeline_run_id:
             run_id = report.pipeline_run_id
+            run = db.query(PipelineRun).filter_by(id=run_id).first()
         else:
             run = PipelineRun(pipeline_id=None, run_status="IN_PROGRESS")
             db.add(run)
@@ -691,6 +717,10 @@ def run_manual_url_augmentation(org_id: int, url: str):
             if report:
                 report.pipeline_run_id = run_id
                 db.commit()
+                
+        # Initialize usage trackers
+        if not run.llm_total_tokens: run.llm_total_tokens = 0
+        if not run.llm_estimated_cost_usd: run.llm_estimated_cost_usd = 0.0
                 
         # Fetch Data
         text = fetch_jina_content(url)
@@ -723,8 +753,15 @@ def run_manual_url_augmentation(org_id: int, url: str):
         
         docs_data = [{"index": 0, "url": url, "text": text[:15000], "title": "Manual Upload", "db_id": src_doc.id, "date": ""}]
         
+        def add_usage(u):
+            if u:
+                run.llm_total_tokens += u.total_tokens
+                run.llm_estimated_cost_usd += u.estimated_cost_usd
+        
         # 1. Basics (Upsert only missing fields)
-        basics = extract_company_basics(docs_data)
+        basics, u_basics = extract_company_basics(docs_data)
+        add_usage(u_basics)
+        
         if basics:
             if basics.get("website") and not org.website_url: org.website_url = basics["website"]
             if basics.get("description_short") and not org.description: org.description = basics["description_short"]
@@ -748,7 +785,8 @@ def run_manual_url_augmentation(org_id: int, url: str):
         db.flush()
 
         # 2. People (Incremental Upsert)
-        people = extract_entities(docs_data)
+        people, u_people = extract_entities(docs_data)
+        add_usage(u_people)
         for p in people:
             first = p.get("first_name")
             last = p.get("last_name")
@@ -769,7 +807,8 @@ def run_manual_url_augmentation(org_id: int, url: str):
         db.flush()
         
         # 3. Investments (Incremental Upsert)
-        investments_data = extract_investments(docs_data)
+        investments_data, u_inv = extract_investments(docs_data)
+        add_usage(u_inv)
         for inv in investments_data:
             investor_name = inv.get("investor_name")
             if not investor_name: continue

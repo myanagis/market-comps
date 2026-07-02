@@ -276,8 +276,11 @@ def display_company_details(company_id):
                     investor_strs.append(name)
                     
                     if x.source_document:
-                        # Convert URLs to markdown links for better UI
-                        src = f"[{x.source_document.source_name}]({x.source_document.source_url})" if x.source_document.source_url else x.source_document.source_name
+                        # Add icon for manual upload vs exa search
+                        icon = "📁" if x.source_document.source_type == "MANUAL_UPLOAD" else "🔍"
+                        src = f"{icon} {x.source_document.source_name}"
+                        if x.source_document.source_url:
+                            src += f" ({x.source_document.source_url})"
                         if src: sources.append(src)
                         
                 sources = list(set(sources))
@@ -287,26 +290,13 @@ def display_company_details(company_id):
                     "Date": date_str,
                     "Round Amount": r_amount,
                     "Investors": ", ".join(investor_strs),
-                    "Sources": ", ".join(sources)
+                    "Sources": " | ".join(sources)
                 })
                 
-            # Use markdown styling for links in dataframe
-            st.markdown(
-                """
-                <style>
-                [data-testid="stDataFrame"] a {
-                    color: #4da6ff;
-                }
-                </style>
-                """, unsafe_allow_html=True
-            )
             st.dataframe(
                 inv_data, 
                 use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "Sources": st.column_config.LinkColumn("Sources")
-                }
+                hide_index=True
             )
         else:
             st.info("No investments recorded for this company.")
