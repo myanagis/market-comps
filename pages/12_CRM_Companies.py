@@ -137,21 +137,32 @@ def display_company_details(company_id):
             if st.button("✏️ Edit", key=f"edit_org_{org.id}", use_container_width=True):
                 edit_company_dialog(org)
         
-        st.markdown("#### Basic Information")
-        st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url}")
-        st.write(f"**LinkedIn:** {org.linkedin_url}")
-        st.write(f"**Location:** {org.city}, {org.state}, {org.country}")
-        st.write(f"**Status:** {org.status}")
+        location_str = ", ".join(filter(None, [org.city, org.state, org.country]))
+        
+        st.write(f"**Domain:** {org.primary_domain} | **Website:** {org.website_url} | **LinkedIn:** {org.linkedin_url}")
+        
+        info_parts = [f"**Location:** {location_str}"]
+        
+        if org.company_profile:
+            if org.company_profile.industry:
+                info_parts.append(f"**Industry:** {org.company_profile.industry}")
+            if org.company_profile.subindustry:
+                info_parts.append(f"**Sub-Industry:** {org.company_profile.subindustry}")
+            if org.company_profile.company_stage:
+                info_parts.append(f"**Stage:** {org.company_profile.company_stage}")
+            if org.company_profile.founded_year:
+                info_parts.append(f"**Founded:** {org.company_profile.founded_year}")
+                
+        st.write(" | ".join(info_parts))
+        
+        if org.status and org.status.upper() != "ACTIVE":
+            st.warning(f"**Status:** {org.status}")
+            
         if org.description:
             st.info(org.description)
             
-        if org.company_profile:
-            st.divider()
-            st.markdown("#### Company Profile")
-            st.write(f"**Industry:** {org.company_profile.industry} | **Stage:** {org.company_profile.company_stage}")
-            st.write(f"**Sub-Industry:** {org.company_profile.subindustry} | **Founded:** {org.company_profile.founded_year}")
-            if org.company_profile.themes:
-                st.write(f"**Themes:** {', '.join(org.company_profile.themes)}")
+        if org.company_profile and org.company_profile.themes:
+            st.write(f"**Themes:** {', '.join(org.company_profile.themes)}")
             
         if org.program_memberships:
             st.divider()
