@@ -10,7 +10,8 @@ from market_comps.llm_client import LLMClient
 from market_comps.db.session import SessionLocal
 from market_comps.db.models import (
     SourceDocument, DocumentText, CompanyAugmentationReport,
-    PipelineRun, Organization, Person, PersonOrganizationRole
+    PipelineRun, Organization, Person, PersonOrganizationRole,
+    CompanyProfile, PersonEmail, Investment, AuditTrail
 )
 
 logger = logging.getLogger(__name__)
@@ -30,13 +31,14 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
     We need to research a company named '{company_name}' (domain: {company_domain}).
     Description: {company_description or 'None provided'}
     
-    Please generate exactly 3 highly targeted search queries to find information on this company to fill out an investment memo.
+    Please generate exactly 4 highly targeted search queries to find information on this company to fill out an investment memo.
     Queries should target:
     1. General overview, product, and differentiation
     2. Team, founders, and key personnel
-    3. Recent traction, news, or fundraises
+    3. Recent traction, news, or press releases
+    4. Specific funding rounds, investment amounts, and lead investors
     
-    Return a JSON array of strings containing ONLY the 3 queries.
+    Return a JSON array of strings containing ONLY the 4 queries.
     """
     try:
         queries, _ = client.structured_output(
@@ -45,7 +47,7 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
             model=settings.default_model
         )
         if isinstance(queries, list) and len(queries) > 0:
-            return queries[:3]
+            return queries[:4]
     except Exception as e:
         logger.error(f"Failed to generate search queries: {e}")
     
@@ -53,7 +55,8 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
     return [
         f"{company_name} company overview product",
         f"{company_name} team founders",
-        f"{company_name} news funding traction"
+        f"{company_name} news traction",
+        f"{company_name} funding rounds investors amounts"
     ]
 
 def fetch_exa_results(queries: List[str]) -> List[Dict]:
@@ -201,6 +204,47 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
     )
     return result
 
+def extract_company_basics(documents: List[Dict]) -> Dict:
+    if not documents:
+        return {}
+    client = LLMClient()
+    doc_text_block = "\\n".join([d["text"][:3000] for d in documents])
+    
+    prompt = f"""
+    Extract the following company basics from the text.
+    IMPORTANT: Only extract a field if you are highly certain it is correct based explicitly on the text. If you are unsure or the information is not present, return null for that field. Do not hallucinate or guess.
+    
+    Fields:
+    - website: The company's primary website URL
+    - description_short: A concise description of what the company does (under 20 words)
+    - hq_location: The headquarters location (City, State, Country)
+    - founded_year: The year the company was founded (integer)
+    - sector: The broad industry category
+    - subsector: The more specific market or niche
+    
+    DOCUMENTS:
+    {doc_text_block}
+    """
+    
+    schema = {
+        "type": "object",
+        "properties": {
+            "website": {"type": ["string", "null"]},
+            "description_short": {"type": ["string", "null"]},
+            "hq_location": {"type": ["string", "null"]},
+            "founded_year": {"type": ["integer", "null"]},
+            "sector": {"type": ["string", "null"]},
+            "subsector": {"type": ["string", "null"]}
+        }
+    }
+    
+    try:
+        result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        return result
+    except Exception as e:
+        logger.error(f"Company basics extraction failed: {e}")
+        return {}
+
 def extract_entities(documents: List[Dict]) -> List[Dict]:
     """Extract people and roles from the text."""
     if not documents:
@@ -217,6 +261,8 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
     - title
     - city (if mentioned)
     - linkedin_url (if mentioned)
+    - email (if mentioned)
+    - is_founder (boolean, true if explicitly mentioned as a founder)
     
     DOCUMENTS:
     {doc_text_block}
@@ -231,7 +277,9 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
                 "last_name": {"type": "string"},
                 "title": {"type": "string"},
                 "city": {"type": "string"},
-                "linkedin_url": {"type": "string"}
+                "linkedin_url": {"type": "string"},
+                "email": {"type": "string"},
+                "is_founder": {"type": "boolean"}
             }
         }
     }
@@ -241,6 +289,57 @@ def extract_entities(documents: List[Dict]) -> List[Dict]:
         return result
     except Exception as e:
         logger.error(f"Entity extraction failed: {e}")
+        return []
+
+def extract_investments(documents: List[Dict]) -> List[Dict]:
+    if not documents:
+        return []
+    client = LLMClient()
+    
+    # We want to know which document the investment came from for traceability
+    doc_text_block = ""
+    for i, doc in enumerate(documents):
+        doc_text_block += f"\\n\\n--- Document {i} (URL: {doc['url']}) ---\\n{doc['text'][:3000]}"
+        
+    prompt = f"""
+    Extract any specific funding rounds or investments mentioned in the text.
+    Return a JSON array of objects with:
+    - investor_name: The name of the firm or person who invested
+    - round_type: e.g. "Series A", "Seed", "Venture Round"
+    - total_round_amount: The total amount raised in the round (e.g. "$10M")
+    - firm_investment_amount: The specific amount this investor contributed, if mentioned (e.g. "$2M")
+    - investment_date: When the round happened (YYYY-MM-DD or similar)
+    - is_lead: boolean, true if this investor lead the round
+    - source_doc_index: the integer index of the document (0-based) this was found in
+    
+    Only extract clear investments.
+    
+    DOCUMENTS:
+    {doc_text_block}
+    """
+    
+    schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "investor_name": {"type": "string"},
+                "round_type": {"type": "string"},
+                "total_round_amount": {"type": ["string", "null"]},
+                "firm_investment_amount": {"type": ["string", "null"]},
+                "investment_date": {"type": ["string", "null"]},
+                "is_lead": {"type": "boolean"},
+                "source_doc_index": {"type": "integer"}
+            },
+            "required": ["investor_name", "source_doc_index"]
+        }
+    }
+    
+    try:
+        result, _ = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        return result
+    except Exception as e:
+        logger.error(f"Investment extraction failed: {e}")
         return []
 
 def run_augmentation_pipeline(org_id: int):
@@ -291,6 +390,7 @@ def run_augmentation_pipeline(org_id: int):
             )
             db.add(src_doc)
             db.flush()
+            d["db_id"] = src_doc.id
             
             doc_text = DocumentText(
                 source_document_id=src_doc.id,
@@ -320,9 +420,31 @@ def run_augmentation_pipeline(org_id: int):
         report.scoring_json = scoring
         report.status = "SUCCESS"
         
-        # 5. Extract Entities and Upsert
+        # 5. Extract and Upsert Basics
+        basics = extract_company_basics(docs_data)
+        if basics.get("website"): org.website_url = basics["website"]
+        if basics.get("description_short"): org.description = basics["description_short"]
+        
+        loc = basics.get("hq_location")
+        if loc:
+            parts = [p.strip() for p in loc.split(",")]
+            if len(parts) >= 1: org.city = parts[0]
+            if len(parts) >= 2: org.state = parts[1]
+            if len(parts) >= 3: org.country = parts[2]
+            
+        profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+        if not profile:
+            profile = CompanyProfile(organization_id=org.id)
+            db.add(profile)
+        
+        if basics.get("founded_year"): profile.founded_year = basics["founded_year"]
+        if basics.get("sector"): profile.industry = basics["sector"]
+        if basics.get("subsector"): profile.subindustry = basics["subsector"]
+        
+        db.flush()
+
+        # 6. Extract and Upsert Entities (Founders / Team)
         people = extract_entities(docs_data)
-        from market_comps.db.models import AuditTrail
         for p in people:
             first = p.get("first_name")
             last = p.get("last_name")
@@ -350,12 +472,24 @@ def run_augmentation_pipeline(org_id: int):
                     created_by="SYSTEM"
                 ))
             
+            if p.get("email"):
+                existing_email = db.query(PersonEmail).filter_by(person_id=person.id, email=p["email"]).first()
+                if not existing_email:
+                    email_record = PersonEmail(
+                        person_id=person.id,
+                        email=p["email"],
+                        organization_id=org.id,
+                        is_primary=True
+                    )
+                    db.add(email_record)
+            
+            title = p.get("title") or ("Founder" if p.get("is_founder") else "Executive")
             role = db.query(PersonOrganizationRole).filter_by(person_id=person.id, organization_id=org.id).first()
             if not role:
                 role = PersonOrganizationRole(
                     person_id=person.id,
                     organization_id=org.id,
-                    title=p.get("title") or "Executive",
+                    title=title,
                     source="WEB_AUGMENTATION"
                 )
                 db.add(role)
@@ -368,7 +502,67 @@ def run_augmentation_pipeline(org_id: int):
                     source="WEB_AUGMENTATION",
                     created_by="SYSTEM"
                 ))
+            elif p.get("is_founder") and "founder" not in (role.title or "").lower():
+                role.title = "Founder & " + (role.title or "Executive")
+        
+        # 7. Extract and Upsert Investments
+        investments_data = extract_investments(docs_data)
+        for inv in investments_data:
+            investor_name = inv.get("investor_name")
+            if not investor_name: continue
+            
+            investor_org = db.query(Organization).filter(Organization.name.ilike(investor_name)).first()
+            if not investor_org:
+                investor_org = Organization(
+                    name=investor_name,
+                    organization_type="INVESTOR",
+                    status="ACTIVE"
+                )
+                db.add(investor_org)
+                db.flush()
                 
+                db.add(AuditTrail(
+                    canonical_entity_type="ORGANIZATION",
+                    canonical_entity_id=str(investor_org.id),
+                    mutation_type="CREATE",
+                    source="WEB_AUGMENTATION",
+                    created_by="SYSTEM"
+                ))
+            
+            doc_idx = inv.get("source_doc_index")
+            source_doc_id = None
+            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
+                source_doc_id = docs_data[doc_idx].get("db_id")
+                
+            investment = Investment(
+                investor_organization_id=investor_org.id,
+                company_organization_id=org.id,
+                round_type=inv.get("round_type"),
+                total_round_amount=inv.get("total_round_amount"),
+                firm_investment_amount=inv.get("firm_investment_amount"),
+                is_lead=inv.get("is_lead", False),
+                source_document_id=source_doc_id
+            )
+            
+            # Simple date parsing attempt
+            date_str = inv.get("investment_date")
+            if date_str:
+                try:
+                    investment.investment_date = datetime.strptime(date_str, "%Y-%m-%d")
+                except ValueError:
+                    pass
+            
+            db.add(investment)
+            db.flush()
+            
+            db.add(AuditTrail(
+                canonical_entity_type="INVESTMENT",
+                canonical_entity_id=str(investment.id),
+                mutation_type="CREATE",
+                source="WEB_AUGMENTATION",
+                created_by="SYSTEM"
+            ))
+            
         db.commit()
         run.run_status = "SUCCESS"
         run.completed_at = datetime.utcnow()

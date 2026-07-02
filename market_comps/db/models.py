@@ -229,14 +229,18 @@ class Investment(Base, TimestampMixin):
     
     investment_date = Column(DateTime)
     round_type = Column(String) # e.g., Seed, Series A
-    amount = Column(String) # e.g., $5M
+    amount = Column(String) # legacy / general amount string
+    total_round_amount = Column(String)
+    firm_investment_amount = Column(String)
     is_lead = Column(Boolean, default=False)
     fund_id = Column(Integer, ForeignKey('fund_profiles.id'), nullable=True)
+    source_document_id = Column(Integer, ForeignKey('source_documents.id'), nullable=True)
     metadata_json = Column(JSON)
 
     investor = relationship("Organization", foreign_keys=[investor_organization_id], back_populates="investments_made")
     company = relationship("Organization", foreign_keys=[company_organization_id], back_populates="investments_received")
     fund = relationship("FundProfile")
+    source_document = relationship("SourceDocument")
 
 
 # ==============================================================================
