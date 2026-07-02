@@ -159,9 +159,11 @@ pg = st.navigation({
         st.Page("pages/7_Directory_Analyzer.py", title="Directory Analyzer",    icon="📁"),
         st.Page("pages/8_Cash_Flow_Analysis.py", title="Cash Flow Analysis",    icon="💸"),
         st.Page("pages/9_Portfolio_Company_Analysis.py", title="Portfolio Company Analysis", icon="🏢"),
+        st.Page("pages/19_Company_Name_Mapper.py", title="Company Name Mapper", icon="🏷️"),
     ],
     "Admin": [
         st.Page("pages/16_Admin.py", title="Admin DB Manager", icon="🔒"),
+        st.Page("pages/20_System_Dashboard.py", title="System Dashboard", icon="⚙️"),
         st.Page("pages/90_Recent_Documents.py", title="Recent Documents", icon="📄"),
     ]
 })
