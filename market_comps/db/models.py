@@ -340,6 +340,8 @@ class SourceDocument(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     pipeline_run_id = Column(Integer, ForeignKey('pipeline_runs.id'), nullable=False)
+    
+    source_type = Column(String, default="EXA_SEARCH") # EXA_SEARCH, MANUAL_UPLOAD
 
     document_type = Column(String) # PDF, WEB_PAGE, IMAGE, API_RESPONSE, CSV_FILE, DOCSEND, etc.
     document_class = Column(String) # startup_pitch_deck, legal_contract, etc.

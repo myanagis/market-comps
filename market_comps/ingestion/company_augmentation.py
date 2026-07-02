@@ -642,3 +642,148 @@ def clear_augmentation_data(org_id: int):
         raise e
     finally:
         db.close()
+
+
+def run_manual_url_augmentation(org_id: int, url: str):
+    """Augment a company's profile incrementally by reading a single manually provided URL."""
+    db = SessionLocal()
+    from market_comps.db.models import Organization, CompanyAugmentationReport, PipelineRun, SourceDocument, DocumentText, Person, PersonOrganizationRole, Investment, CompanyProfile, AuditTrail
+    import hashlib
+    from datetime import datetime
+    
+    try:
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if not org:
+            raise ValueError("Organization not found")
+            
+        # Link to the existing pipeline run or create a new one
+        report = db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).order_by(CompanyAugmentationReport.created_at.desc()).first()
+        if report and report.pipeline_run_id:
+            run_id = report.pipeline_run_id
+        else:
+            run = PipelineRun(pipeline_id=None, run_status="IN_PROGRESS")
+            db.add(run)
+            db.commit()
+            run_id = run.id
+            if report:
+                report.pipeline_run_id = run_id
+                db.commit()
+                
+        # Fetch Data
+        text = fetch_jina_content(url)
+        if not text:
+            raise ValueError(f"Could not extract meaningful content from {url}")
+            
+        content_hash = hashlib.sha256(text.encode()).hexdigest()
+        
+        src_doc = SourceDocument(
+            pipeline_run_id=run_id,
+            document_type="WEB_PAGE",
+            document_class="manual_augmentation",
+            title="Manual Upload",
+            source_url=url,
+            source_name=url.split('/')[2] if '//' in url else url[:255],
+            source_type="MANUAL_UPLOAD",
+            content_hash=content_hash
+        )
+        db.add(src_doc)
+        db.flush()
+        
+        doc_text = DocumentText(
+            source_document_id=src_doc.id,
+            data_type="PAGE_TEXT",
+            raw_content=text,
+            content_hash=content_hash
+        )
+        db.add(doc_text)
+        db.flush()
+        
+        docs_data = [{"index": 0, "url": url, "text": text[:15000], "title": "Manual Upload", "db_id": src_doc.id, "date": ""}]
+        
+        # 1. Basics (Upsert only missing fields)
+        basics = extract_company_basics(docs_data)
+        if basics:
+            if basics.get("website") and not org.website_url: org.website_url = basics["website"]
+            if basics.get("description_short") and not org.description: org.description = basics["description_short"]
+            
+            loc = basics.get("hq_location")
+            if loc and not org.city:
+                parts = [p.strip() for p in loc.split(",")]
+                if len(parts) >= 1: org.city = parts[0]
+                if len(parts) >= 2: org.state = parts[1]
+                if len(parts) >= 3: org.country = parts[2]
+                
+            profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+            if not profile:
+                profile = CompanyProfile(organization_id=org.id)
+                db.add(profile)
+            
+            if basics.get("founded_year") and not profile.founded_year: profile.founded_year = basics["founded_year"]
+            if basics.get("sector") and not profile.industry: profile.industry = basics["sector"]
+            if basics.get("subsector") and not profile.subindustry: profile.subindustry = basics["subsector"]
+            
+        db.flush()
+
+        # 2. People (Incremental Upsert)
+        people = extract_entities(docs_data)
+        for p in people:
+            first = p.get("first_name")
+            last = p.get("last_name")
+            if not first or not last: continue
+            
+            existing_person = db.query(Person).filter(Person.first_name.ilike(first), Person.last_name.ilike(last)).first()
+            if existing_person:
+                existing_role = db.query(PersonOrganizationRole).filter_by(person_id=existing_person.id, organization_id=org.id).first()
+                if not existing_role:
+                    role = PersonOrganizationRole(person_id=existing_person.id, organization_id=org.id, title=p.get("title"))
+                    db.add(role)
+            else:
+                person = Person(first_name=first, last_name=last, city=p.get("city"), linkedin_url=p.get("linkedin_url"))
+                db.add(person)
+                db.flush()
+                role = PersonOrganizationRole(person_id=person.id, organization_id=org.id, title=p.get("title"))
+                db.add(role)
+        db.flush()
+        
+        # 3. Investments (Incremental Upsert)
+        investments_data = extract_investments(docs_data)
+        for inv in investments_data:
+            investor_name = inv.get("investor_name")
+            if not investor_name: continue
+            
+            investor_org = db.query(Organization).filter(Organization.name.ilike(investor_name)).first()
+            if not investor_org:
+                investor_org = Organization(name=investor_name, organization_type="INVESTOR", status="ACTIVE")
+                db.add(investor_org)
+                db.flush()
+            
+            r_type = inv.get("round_type")
+            existing_inv = db.query(Investment).filter_by(investor_organization_id=investor_org.id, company_organization_id=org.id, round_type=r_type).first()
+            
+            if not existing_inv:
+                investment = Investment(
+                    investor_organization_id=investor_org.id,
+                    company_organization_id=org.id,
+                    round_type=r_type,
+                    total_round_amount=inv.get("total_round_amount"),
+                    firm_investment_amount=inv.get("firm_investment_amount"),
+                    is_lead=inv.get("is_lead", False),
+                    source_document_id=src_doc.id
+                )
+                date_str = inv.get("investment_date")
+                if date_str:
+                    try:
+                        investment.investment_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    except:
+                        pass
+                db.add(investment)
+                
+        db.commit()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Manual augmentation failed: {e}")
+        db.rollback()
+        raise e
+    finally:
+        db.close()

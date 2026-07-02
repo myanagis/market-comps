@@ -311,6 +311,23 @@ def display_company_details(company_id):
                 time.sleep(1)
                 st.rerun()
                 
+        st.markdown("**Manual URL Ingestion**")
+        col_man1, col_man2 = st.columns([3, 1])
+        with col_man1:
+            manual_url = st.text_input("Enter URL to extract data from", key=f"man_url_{org.id}", label_visibility="collapsed", placeholder="https://techcrunch.com/...")
+        with col_man2:
+            if st.button("Ingest URL", key=f"btn_man_aug_{org.id}", use_container_width=True) and manual_url:
+                with st.spinner("Reading URL and extracting data..."):
+                    from market_comps.ingestion.company_augmentation import run_manual_url_augmentation
+                    try:
+                        run_manual_url_augmentation(org.id, manual_url)
+                        st.success("Successfully ingested data! Refreshing...")
+                        import time
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to ingest URL: {e}")
+                
         from market_comps.db.models import CompanyAugmentationReport
         latest_report = db.query(CompanyAugmentationReport).filter_by(organization_id=org.id).order_by(CompanyAugmentationReport.created_at.desc()).first()
         
