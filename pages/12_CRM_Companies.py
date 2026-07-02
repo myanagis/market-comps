@@ -199,16 +199,42 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("💸 Investments & Funding")
         if org.investments_received:
-            inv_data = []
+            from collections import defaultdict
+            from datetime import datetime
+            
+            rounds = defaultdict(list)
             for inv in org.investments_received:
+                date_str = inv.investment_date.strftime("%b %Y") if inv.investment_date else "Unknown Date"
+                r_type = inv.round_type or "Unknown Round"
+                r_amount = inv.total_round_amount or ""
+                # Use a sorting key that handles None dates gracefully
+                sort_date = inv.investment_date or datetime.min
+                key = (date_str, r_type, r_amount, sort_date)
+                rounds[key].append(inv)
+                
+            inv_data = []
+            sorted_keys = sorted(rounds.keys(), key=lambda k: k[3], reverse=True)
+            for k in sorted_keys:
+                date_str, r_type, r_amount, _ = k
+                invs = rounds[k]
+                
+                invs_sorted = sorted(invs, key=lambda x: not x.is_lead)
+                investor_strs = []
+                for x in invs_sorted:
+                    name = x.investor.name if x.investor else "Unknown"
+                    if x.is_lead:
+                        name = f"⭐ {name} (Lead)"
+                    if x.firm_investment_amount:
+                        name += f" ({x.firm_investment_amount})"
+                    investor_strs.append(name)
+                    
                 inv_data.append({
-                    "Investor": inv.investor.name if inv.investor else "Unknown",
-                    "Round Type": inv.round_type or "",
-                    "Total Round Amount": inv.total_round_amount or "",
-                    "Firm Investment": inv.firm_investment_amount or "",
-                    "Date": inv.investment_date.strftime("%Y-%m-%d") if inv.investment_date else "",
-                    "Lead": "Yes" if inv.is_lead else ""
+                    "Round": r_type,
+                    "Date": date_str,
+                    "Round Amount": r_amount,
+                    "Investors": ", ".join(investor_strs)
                 })
+                
             st.dataframe(inv_data, use_container_width=True, hide_index=True)
         else:
             st.info("No investments recorded for this company.")
