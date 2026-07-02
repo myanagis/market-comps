@@ -504,10 +504,10 @@ def display_company_details(company_id):
                                 # Deep delete nested tables if any exist
                                 texts = db.query(DocumentText).filter(DocumentText.source_document_id == doc.id).all()
                                 for t in texts:
-                                    db.query(ExtractionJob).filter(ExtractionJob.document_text_id == t.id).delete()
-                                    db.delete(t)
+                                    db.query(ExtractionJob).filter(ExtractionJob.document_text_id == t.id).delete(synchronize_session=False)
                                 
-                                db.query(SourceDocument).filter(SourceDocument.id == doc.id).delete()
+                                db.query(DocumentText).filter(DocumentText.source_document_id == doc.id).delete(synchronize_session=False)
+                                db.query(SourceDocument).filter(SourceDocument.id == doc.id).delete(synchronize_session=False)
                                 db.commit()
                                 st.rerun()
                             except Exception as e:
