@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, InvestorProfile,
-    Investment, PersonOrganizationRole
+    FinancingRound, RoundInvestor, PersonOrganizationRole
 )
 
 st.set_page_config(page_title="CRM Record Lookup", page_icon="🔍", layout="wide")
@@ -28,10 +28,8 @@ if search_query:
     orgs = db.query(Organization).options(
         joinedload(Organization.company_profile),
         joinedload(Organization.investor_profile),
-        joinedload(Organization.investments_made).joinedload(Investment.company),
-        joinedload(Organization.investments_made).joinedload(Investment.fund),
-        joinedload(Organization.investments_received).joinedload(Investment.investor),
-        joinedload(Organization.investments_received).joinedload(Investment.fund)
+        joinedload(Organization.investments_made).joinedload(RoundInvestor.round).joinedload(FinancingRound.company),
+        joinedload(Organization.financing_rounds).joinedload(FinancingRound.investors).joinedload(RoundInvestor.investor)
     ).filter(
         or_(
             Organization.name.ilike(search_filter),
@@ -69,11 +67,11 @@ if search_query:
                     ind = c.company_profile.industry if c.company_profile else "N/A"
                     st.caption(f"Domain: {c.primary_domain or 'N/A'} | Stage: {stage} | Industry: {ind}")
                     
-                    if c.investments_received:
-                        st.markdown("**Investments Received:**")
-                        for inv in c.investments_received:
-                            fund_str = f" via {inv.fund.fund_name}" if inv.fund else ""
-                            st.write(f"- **{inv.investor.name if inv.investor else 'Unknown'}**{fund_str} ({inv.round_type or 'Unknown Round'})")
+                    if c.financing_rounds:
+                        st.markdown("**Financing Rounds:**")
+                        for rnd in c.financing_rounds:
+                            investors = ", ".join([inv.investor.name for inv in rnd.investors if inv.investor])
+                            st.write(f"- **{rnd.round_name or 'Unknown Round'}**: {investors or 'No investors recorded'}")
                     else:
                         st.write("**Investors:** None recorded")
 
@@ -91,11 +89,10 @@ if search_query:
                     if i.investments_made:
                         st.markdown("**Sample Investments Made:**")
                         for inv in i.investments_made[:5]: # show up to 5
-                            fund_str = f" (via {inv.fund.fund_name})" if inv.fund else ""
-                            comp_name = inv.company.name if inv.company else "Unknown"
-                            inv_str = f"- **{comp_name}**{fund_str}"
-                            if inv.investment_date: inv_str += f" on {inv.investment_date.strftime('%Y-%m-%d')}"
-                            if inv.amount: inv_str += f" ({inv.amount})"
+                            comp_name = inv.round.company.name if inv.round and inv.round.company else "Unknown"
+                            rnd_name = inv.round.round_name if inv.round else "Unknown Round"
+                            inv_str = f"- **{comp_name}** ({rnd_name})"
+                            if inv.amount_numeric: inv_str += f" ({inv.currency_code or ''} {inv.amount_numeric})"
                             st.write(inv_str)
                     else:
                         st.write("**Investments:** None recorded")

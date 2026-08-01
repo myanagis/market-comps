@@ -6,7 +6,7 @@ from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, AuditTrail,
-    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument, Investment
+    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument, FinancingRound, FinancingRoundFact, RoundInvestor, MetricType, MetricObservation
 )
 from market_comps.ingestion.reconciler import log_mutation
 
@@ -115,6 +115,33 @@ def edit_company_dialog(org):
             db.commit()
             st.rerun()
 
+@st.dialog("Metric History")
+def view_metric_history_dialog(company_id, metric_type_code):
+    metric = db.query(MetricType).filter_by(code=metric_type_code).first()
+    if not metric:
+        st.error("Metric type not found.")
+        return
+        
+    st.write(f"### {metric.display_name} History")
+    observations = db.query(MetricObservation).filter_by(company_id=company_id, metric_type_id=metric.id).order_by(MetricObservation.recorded_at.desc()).all()
+    
+    if not observations:
+        st.info("No historical data found.")
+        return
+        
+    data = []
+    for obs in observations:
+        val_str = f"{obs.currency_code or ''} {obs.value_numeric}" if obs.value_numeric else obs.value_text
+        date_str = obs.as_of_date.strftime("%Y-%m-%d") if obs.as_of_date else (obs.period_end.strftime("%Y-%m-%d") if obs.period_end else "")
+        data.append({
+            "Date/Period": date_str,
+            "Value": val_str,
+            "Status": obs.observation_status,
+            "Certainty": f"{obs.confidence_score*100}%" if obs.confidence_score else "N/A",
+            "Recorded": obs.recorded_at.strftime("%Y-%m-%d") if obs.recorded_at else ""
+        })
+    st.dataframe(data, hide_index=True, use_container_width=True)
+
 # Helper to render company details below the table
 def display_company_details(company_id):
     org = db.query(Organization).options(
@@ -122,7 +149,10 @@ def display_company_details(company_id):
         joinedload(Organization.fund_profiles),
         joinedload(Organization.program_profiles).joinedload(ProgramProfile.cohorts),
         joinedload(Organization.program_memberships).joinedload(ProgramMembership.cohort).joinedload(ProgramCohort.program),
-        joinedload(Organization.roles).joinedload(PersonOrganizationRole.person)
+        joinedload(Organization.roles).joinedload(PersonOrganizationRole.person),
+        joinedload(Organization.metric_observations).joinedload(MetricObservation.metric_type),
+        joinedload(Organization.financing_rounds).joinedload(FinancingRound.facts),
+        joinedload(Organization.financing_rounds).joinedload(FinancingRound.investors).joinedload(RoundInvestor.investor)
     ).filter(Organization.id == int(company_id)).first()
 
     if not org:
@@ -206,102 +236,57 @@ def display_company_details(company_id):
                     else:
                         st.caption("No cohorts defined.")
 
-        # Investments & Funding
+        # Metrics & KPIs
         st.divider()
-        st.subheader("💸 Investments & Funding")
-        if org.investments_received:
-            active_investments = [i for i in org.investments_received if i.deleted_at is None]
-            if active_investments:
-                from collections import defaultdict
-                from datetime import datetime, timedelta
-                
-                sorted_investments = sorted(
-                    active_investments, 
-                    key=lambda x: x.investment_date or datetime.min, 
-                    reverse=True
-                )
-            
-            def norm_rt(rt):
-                if not rt: return ""
-                rt = rt.lower().strip()
-                if rt.endswith(" round"): rt = rt[:-6].strip()
-                return rt
-            
-            merged_rounds = []
-            for inv in sorted_investments:
-                matched = False
-                for group in merged_rounds:
-                    if norm_rt(group["round_type"]) == norm_rt(inv.round_type):
-                        group_date = group["date"]
-                        inv_date = inv.investment_date
-                        if group_date and inv_date:
-                            if abs((group_date - inv_date).days) <= 45:
-                                group["investments"].append(inv)
-                                matched = True
-                                break
-                        elif not group_date and not inv_date:
-                            group["investments"].append(inv)
-                            matched = True
-                            break
-                if not matched:
-                    merged_rounds.append({
-                        "round_type": inv.round_type,
-                        "date": inv.investment_date,
-                        "investments": [inv]
-                    })
-                
-            inv_data = []
-            for group in merged_rounds:
-                r_type = group["round_type"] or "Unknown Round"
-                date_str = group["date"].strftime("%b %Y") if group["date"] else "Unknown Date"
-                
-                amounts_raw = [x.total_round_amount for x in group["investments"] if x.total_round_amount]
-                unique_amounts = []
-                for amt in amounts_raw:
-                    # Normalize for deduplication: remove spaces, uppercase, replace .0M with M
-                    norm = amt.upper().replace(" ", "").replace(".0M", "M").replace(".00M", "M").replace(".0K", "K").replace(".0B", "B")
-                    # Also handle if they are literally the same float if parsed, but string replace covers 99% of LLM outputs
-                    if not any(norm == a.upper().replace(" ", "").replace(".0M", "M").replace(".00M", "M").replace(".0K", "K").replace(".0B", "B") for a in unique_amounts):
-                        unique_amounts.append(amt)
-                
-                r_amount = ", ".join(unique_amounts)
-                
-                invs_sorted = sorted(group["investments"], key=lambda x: not x.is_lead)
-                investor_strs = []
-                sources = []
-                for x in invs_sorted:
-                    name = x.investor.name if x.investor else "Unknown"
-                    if x.is_lead:
-                        name = f"⭐ {name} (Lead)"
-                    if x.firm_investment_amount:
-                        name += f" ({x.firm_investment_amount})"
-                    investor_strs.append(name)
+        st.subheader("📊 Metrics & KPIs")
+        if org.metric_observations:
+            # Group by metric_type to get the latest
+            metrics_dict = {}
+            for obs in org.metric_observations:
+                code = obs.metric_type.code
+                if code not in metrics_dict or (obs.recorded_at and metrics_dict[code].recorded_at and obs.recorded_at > metrics_dict[code].recorded_at):
+                    metrics_dict[code] = obs
                     
-                    if x.source_document:
-                        # Add icon for manual upload vs exa search
-                        icon = "📁" if x.source_document.source_type == "MANUAL_UPLOAD" else "🔍"
-                        src = f"{icon} {x.source_document.source_name}"
-                        if x.source_document.source_url:
-                            src += f" ({x.source_document.source_url})"
-                        if src: sources.append(src)
-                        
-                sources = list(set(sources))
-                    
-                inv_data.append({
-                    "Round": r_type,
-                    "Date": date_str,
-                    "Round Amount": r_amount,
-                    "Investors": ", ".join(investor_strs),
-                    "Sources": " | ".join(sources)
-                })
-                
-            st.dataframe(
-                inv_data, 
-                use_container_width=True, 
-                hide_index=True
-            )
+            if metrics_dict:
+                cols = st.columns(min(len(metrics_dict), 4))
+                for i, (code, obs) in enumerate(metrics_dict.items()):
+                    with cols[i % 4]:
+                        val_str = f"{obs.currency_code or ''} {obs.value_numeric}" if obs.value_numeric else obs.value_text
+                        st.metric(label=obs.metric_type.display_name, value=val_str, help=obs.observation_status)
+                        if st.button("View History", key=f"hist_{obs.id}"):
+                            view_metric_history_dialog(org.id, code)
+            else:
+                st.info("No metric data available.")
         else:
-            st.info("No investments recorded for this company.")
+            st.info("No metric data available.")
+
+        # Financing Rounds
+        st.divider()
+        st.subheader("💸 Financing Rounds")
+        if org.financing_rounds:
+            rounds_sorted = sorted(org.financing_rounds, key=lambda x: x.created_at, reverse=True)
+            for rnd in rounds_sorted:
+                with st.expander(f"💰 {rnd.round_name or 'Unknown Round'} - {rnd.status.upper()}"):
+                    fact_amt = next((f.value_text or str(f.value_numeric) for f in rnd.facts if f.fact_type == 'amount_raised'), None)
+                    if fact_amt:
+                        st.write(f"**Amount Raised:** {fact_amt}")
+                    
+                    if rnd.investors:
+                        st.write("**Investors:**")
+                        inv_data = []
+                        for inv in rnd.investors:
+                            name = inv.investor.name if inv.investor else "Unknown"
+                            inv_data.append({
+                                "Investor": name,
+                                "Role": inv.role,
+                                "Status": inv.status,
+                                "Notes": inv.notes
+                            })
+                        st.dataframe(inv_data, hide_index=True, use_container_width=True)
+                    else:
+                        st.caption("No investors recorded.")
+        else:
+            st.info("No financing rounds recorded for this company.")
 
         # People & Roles
         st.divider()
@@ -501,9 +486,6 @@ def display_company_details(company_id):
                         st.caption("Remove this source document from the database.")
                         if st.button("Confirm Delete", key=f"del_doc_{doc.id}", type="primary"):
                             try:
-                                # Soft delete associated investments
-                                db.query(Investment).filter(Investment.source_document_id == doc.id).update({Investment.deleted_at: datetime.utcnow(), Investment.deleted_by: 'USER'}, synchronize_session=False)
-                                
                                 # Soft delete document
                                 db.query(SourceDocument).filter(SourceDocument.id == doc.id).update({SourceDocument.deleted_at: datetime.utcnow(), SourceDocument.deleted_by: 'USER'}, synchronize_session=False)
                                 db.commit()
@@ -716,14 +698,32 @@ with tab_add:
                     db.commit()
                     
                     if linked_investor_id != 0:
-                        inv = Investment(
-                            investor_organization_id=linked_investor_id,
-                            company_organization_id=org.id,
-                            round_type=inv_round,
-                            amount=inv_amount,
-                            investment_date=inv_date
+                        rnd = FinancingRound(
+                            company_id=org.id,
+                            round_name=inv_round,
+                            status='closed'
                         )
-                        db.add(inv)
+                        db.add(rnd)
+                        db.flush()
+                        
+                        if inv_amount:
+                            fact = FinancingRoundFact(
+                                financing_round_id=rnd.id,
+                                fact_type='amount_raised',
+                                value_text=inv_amount,
+                                certainty='company_stated',
+                                value_date=inv_date
+                            )
+                            db.add(fact)
+                            
+                        rinv = RoundInvestor(
+                            financing_round_id=rnd.id,
+                            investor_id=linked_investor_id,
+                            role='participant',
+                            status='invested',
+                            notes=f"Amount: {inv_amount}" if inv_amount else None
+                        )
+                        db.add(rinv)
                         db.commit()
                         st.success(f"Successfully added investment from {investor_opts[linked_investor_id]}!")
                         

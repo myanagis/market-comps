@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 import hashlib
 import requests
 from datetime import datetime
@@ -11,7 +11,7 @@ from market_comps.db.session import SessionLocal
 from market_comps.db.models import (
     SourceDocument, DocumentText, CompanyAugmentationReport,
     PipelineRun, Organization, Person, PersonOrganizationRole,
-    CompanyProfile, PersonEmail, Investment, AuditTrail
+    CompanyProfile, PersonEmail, FinancingRound, FinancingRoundFact, RoundInvestor, AuditTrail
 )
 
 logger = logging.getLogger(__name__)
@@ -634,34 +634,36 @@ def run_augmentation_pipeline(org_id: int):
             if doc_idx is not None and 0 <= doc_idx < len(docs_data):
                 source_doc_id = docs_data[doc_idx].get("db_id")
                 
-            investment = Investment(
-                investor_organization_id=investor_org.id,
-                company_organization_id=org.id,
-                round_type=inv.get("round_type"),
-                total_round_amount=inv.get("total_round_amount"),
-                firm_investment_amount=inv.get("firm_investment_amount"),
-                is_lead=inv.get("is_lead", False),
-                source_document_id=source_doc_id
-            )
-            
-            # Simple date parsing attempt
+            rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=inv.get("round_type")).first()
+            if not rnd:
+                rnd = FinancingRound(company_id=org.id, round_name=inv.get("round_type"), status="closed")
+                db.add(rnd)
+                db.flush()
+                db.add(AuditTrail(canonical_entity_type="FINANCING_ROUND", canonical_entity_id=str(rnd.id), mutation_type="CREATE", source="WEB_AUGMENTATION", created_by="SYSTEM"))
+                
+                if inv.get("total_round_amount"):
+                    fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=source_doc_id)
+                    db.add(fact)
+
             date_str = inv.get("investment_date")
+            inv_date = None
             if date_str:
                 try:
-                    investment.investment_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    inv_date = datetime.strptime(date_str, "%Y-%m-%d")
                 except ValueError:
                     pass
-            
-            db.add(investment)
+
+            rinv = RoundInvestor(
+                financing_round_id=rnd.id,
+                investor_id=investor_org.id,
+                role="lead" if inv.get("is_lead") else "participant",
+                status="invested",
+                notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
+                source_id=source_doc_id,
+                reported_at=inv_date
+            )
+            db.add(rinv)
             db.flush()
-            
-            db.add(AuditTrail(
-                canonical_entity_type="INVESTMENT",
-                canonical_entity_id=str(investment.id),
-                mutation_type="CREATE",
-                source="WEB_AUGMENTATION",
-                created_by="SYSTEM"
-            ))
             
         db.commit()
         run.run_status = "SUCCESS"
@@ -693,13 +695,13 @@ def clear_augmentation_data(org_id: int):
         pipeline_run_ids = [r.pipeline_run_id for r in reports if r.pipeline_run_id]
         
         # Delete investments created by WEB_AUGMENTATION for this company
-        from market_comps.db.models import Investment
+        from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
         from datetime import datetime
         from sqlalchemy import cast, Integer
         db.query(Investment).filter(
             Investment.company_organization_id == org_id,
             Investment.id.in_(db.query(cast(AuditTrail.canonical_entity_id, Integer)).filter_by(canonical_entity_type="INVESTMENT", source="WEB_AUGMENTATION"))
-        ).update({Investment.deleted_at: datetime.utcnow(), Investment.deleted_by: 'USER'}, synchronize_session=False)
+        ).update({Investment.deleted_at: datetime.utcnow(), FinancingRound, FinancingRoundFact, RoundInvestor.deleted_by: 'USER'}, synchronize_session=False)
         
         # Mark Reports as CLEARED
         db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).update({CompanyAugmentationReport.status: "CLEARED"}, synchronize_session=False)
@@ -714,7 +716,7 @@ def clear_augmentation_data(org_id: int):
             
             if doc_ids:
                 # Soft delete investments linked to these documents
-                db.query(Investment).filter(Investment.source_document_id.in_(doc_ids)).update({Investment.deleted_at: datetime.utcnow(), Investment.deleted_by: 'USER'}, synchronize_session=False)
+                db.query(Investment).filter(Investment.source_document_id.in_(doc_ids)).update({Investment.deleted_at: datetime.utcnow(), FinancingRound, FinancingRoundFact, RoundInvestor.deleted_by: 'USER'}, synchronize_session=False)
                 
                 # Soft delete documents (leave DocumentText intact)
                 db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).update({SourceDocument.deleted_at: datetime.utcnow(), SourceDocument.deleted_by: 'USER'}, synchronize_session=False)
@@ -745,7 +747,7 @@ def fetch_jina_content(url: str) -> str:
 def run_manual_url_augmentation(org_id: int, url: str):
     """Augment a company's profile incrementally by reading a single manually provided URL."""
     db = SessionLocal()
-    from market_comps.db.models import Organization, CompanyAugmentationReport, PipelineRun, SourceDocument, DocumentText, Person, PersonOrganizationRole, Investment, CompanyProfile, AuditTrail
+    from market_comps.db.models import Organization, CompanyAugmentationReport, PipelineRun, SourceDocument, DocumentText, Person, PersonOrganizationRole, FinancingRound, FinancingRoundFact, RoundInvestor, CompanyProfile, AuditTrail
     import hashlib
     from datetime import datetime
     
@@ -870,25 +872,37 @@ def run_manual_url_augmentation(org_id: int, url: str):
                 db.flush()
             
             r_type = inv.get("round_type")
-            existing_inv = db.query(Investment).filter_by(investor_organization_id=investor_org.id, company_organization_id=org.id, round_type=r_type).first()
-            
-            if not existing_inv:
-                investment = Investment(
-                    investor_organization_id=investor_org.id,
-                    company_organization_id=org.id,
-                    round_type=r_type,
-                    total_round_amount=inv.get("total_round_amount"),
-                    firm_investment_amount=inv.get("firm_investment_amount"),
-                    is_lead=inv.get("is_lead", False),
-                    source_document_id=src_doc.id
-                )
+            rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=r_type).first()
+            if not rnd:
+                rnd = FinancingRound(company_id=org.id, round_name=r_type, status="closed")
+                db.add(rnd)
+                db.flush()
+                
+                if inv.get("total_round_amount"):
+                    fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=src_doc.id)
+                    db.add(fact)
+
+            existing_rinv = db.query(RoundInvestor).filter_by(financing_round_id=rnd.id, investor_id=investor_org.id).first()
+            if not existing_rinv:
                 date_str = inv.get("investment_date")
+                inv_date = None
                 if date_str:
                     try:
-                        investment.investment_date = datetime.strptime(date_str, "%Y-%m-%d")
-                    except:
+                        inv_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    except ValueError:
                         pass
-                db.add(investment)
+                        
+                rinv = RoundInvestor(
+                    financing_round_id=rnd.id,
+                    investor_id=investor_org.id,
+                    role="lead" if inv.get("is_lead") else "participant",
+                    status="invested",
+                    notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
+                    source_id=src_doc.id,
+                    reported_at=inv_date
+                )
+                db.add(rinv)
+                db.flush()
                 
         db.commit()
         return True

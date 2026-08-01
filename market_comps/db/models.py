@@ -42,8 +42,11 @@ class Organization(Base, TimestampMixin):
     roles = relationship("PersonOrganizationRole", back_populates="organization")
     program_memberships = relationship("ProgramMembership", back_populates="company")
     pipelines = relationship("Pipeline", back_populates="organization")
-    investments_made = relationship("Investment", foreign_keys="[Investment.investor_organization_id]", back_populates="investor")
-    investments_received = relationship("Investment", foreign_keys="[Investment.company_organization_id]", back_populates="company")
+
+    # New relationships for the CRM overhaul
+    metric_observations = relationship("MetricObservation", back_populates="company", cascade="all, delete-orphan")
+    financing_rounds = relationship("FinancingRound", back_populates="company", cascade="all, delete-orphan")
+    investments_made = relationship("RoundInvestor", back_populates="investor", cascade="all, delete-orphan")
 
     @validates('primary_domain')
     def validate_primary_domain(self, key, value):
@@ -220,28 +223,134 @@ class PersonOrganizationRole(Base, TimestampMixin):
     organization = relationship("Organization", back_populates="roles")
 
 
-class Investment(Base, TimestampMixin):
-    __tablename__ = 'investments'
+# ==============================================================================
+# CRM METRICS & FINANCING
+# ==============================================================================
+
+class MetricType(Base, TimestampMixin):
+    __tablename__ = 'metric_types'
 
     id = Column(Integer, primary_key=True, index=True)
-    investor_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
-    company_organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
-    
-    investment_date = Column(DateTime)
-    round_type = Column(String) # e.g., Seed, Series A
-    amount = Column(String) # legacy / general amount string
-    total_round_amount = Column(String)
-    firm_investment_amount = Column(String)
-    is_lead = Column(Boolean, default=False)
-    fund_id = Column(Integer, ForeignKey('fund_profiles.id'), nullable=True)
-    source_document_id = Column(Integer, ForeignKey('source_documents.id'), nullable=True)
-    metadata_json = Column(JSON)
-    deleted_at = Column(DateTime, nullable=True)
-    deleted_by = Column(String, nullable=True)
+    code = Column(String, nullable=False, unique=True, index=True)
+    display_name = Column(String, nullable=False)
+    value_type = Column(String, nullable=False) # currency, integer, decimal, percentage, multiple, text, boolean
+    default_unit = Column(String)
+    default_currency = Column(String)
+    description = Column(String)
+    is_point_in_time = Column(Boolean, nullable=False, default=False)
 
-    investor = relationship("Organization", foreign_keys=[investor_organization_id], back_populates="investments_made")
-    company = relationship("Organization", foreign_keys=[company_organization_id], back_populates="investments_received")
-    fund = relationship("FundProfile")
+    observations = relationship("MetricObservation", back_populates="metric_type", cascade="all, delete-orphan")
+
+
+class MetricObservation(Base):
+    __tablename__ = 'metric_observations'
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    metric_type_id = Column(Integer, ForeignKey('metric_types.id'), nullable=False)
+
+    value_numeric = Column(Float)
+    value_text = Column(String)
+    currency_code = Column(String)
+    unit = Column(String)
+
+    period_start = Column(DateTime)
+    period_end = Column(DateTime)
+    as_of_date = Column(DateTime)
+
+    observation_status = Column(String, nullable=False) # actual, company_estimate, company_guidance, external_estimate, internal_estimate, derived, unverified
+    reporting_basis = Column(String) # fiscal_year, calendar_year, quarter, month, trailing_twelve_months, run_rate, point_in_time, transaction
+
+    reported_at = Column(DateTime)
+    recorded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    
+    confidence_score = Column(Float)
+    supersedes_observation_id = Column(Integer, ForeignKey('metric_observations.id'))
+
+    notes = Column(String)
+    metadata_json = Column(JSON, nullable=False, default={})
+    created_by = Column(String) # UUID or email string
+
+    company = relationship("Organization", back_populates="metric_observations")
+    metric_type = relationship("MetricType", back_populates="observations")
+    observation_sources = relationship("ObservationSource", back_populates="observation", cascade="all, delete-orphan")
+    supersedes = relationship("MetricObservation", remote_side=[id])
+
+
+class ObservationSource(Base):
+    __tablename__ = 'observation_sources'
+
+    observation_id = Column(Integer, ForeignKey('metric_observations.id', ondelete='CASCADE'), primary_key=True)
+    source_id = Column(Integer, ForeignKey('source_documents.id', ondelete='CASCADE'), primary_key=True)
+
+    relationship_type = Column(String, nullable=False) # primary, supporting, corroborating, contradicting, derived_from
+    page_number = Column(Integer)
+    section_name = Column(String)
+    source_excerpt = Column(String)
+
+    observation = relationship("MetricObservation", back_populates="observation_sources")
+    source_document = relationship("SourceDocument")
+
+
+class FinancingRound(Base, TimestampMixin):
+    __tablename__ = 'financing_rounds'
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    round_name = Column(String)
+    status = Column(String, nullable=False, default='rumored') # rumored, raising, announced, closed, cancelled
+
+    company = relationship("Organization", back_populates="financing_rounds")
+    facts = relationship("FinancingRoundFact", back_populates="round", cascade="all, delete-orphan")
+    investors = relationship("RoundInvestor", back_populates="round", cascade="all, delete-orphan")
+
+
+class FinancingRoundFact(Base):
+    __tablename__ = 'financing_round_facts'
+
+    id = Column(Integer, primary_key=True, index=True)
+    financing_round_id = Column(Integer, ForeignKey('financing_rounds.id', ondelete='CASCADE'), nullable=False)
+    
+    fact_type = Column(String, nullable=False) # target_raise, amount_raised, pre_money_valuation, post_money_valuation, etc
+    value_numeric = Column(Float)
+    value_text = Column(String)
+    value_date = Column(DateTime)
+    currency_code = Column(String)
+    
+    certainty = Column(String, nullable=False, default='unknown') # rumored, estimated, company_stated, announced, confirmed, disputed
+    
+    reported_at = Column(DateTime)
+    recorded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    
+    source_id = Column(Integer, ForeignKey('source_documents.id'))
+    notes = Column(String)
+
+    round = relationship("FinancingRound", back_populates="facts")
+    source_document = relationship("SourceDocument")
+
+
+class RoundInvestor(Base):
+    __tablename__ = 'round_investors'
+
+    id = Column(Integer, primary_key=True, index=True)
+    financing_round_id = Column(Integer, ForeignKey('financing_rounds.id', ondelete='CASCADE'), nullable=False)
+    investor_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+
+    role = Column(String) # lead, co-lead, participant, strategic, unknown
+    status = Column(String, nullable=False, default='rumored') # rumored, considering, committed, invested, withdrew, denied
+    
+    amount_numeric = Column(Float)
+    currency_code = Column(String)
+    amount_certainty = Column(String)
+
+    reported_at = Column(DateTime)
+    recorded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    source_id = Column(Integer, ForeignKey('source_documents.id'))
+    notes = Column(String)
+
+    round = relationship("FinancingRound", back_populates="investors")
+    investor = relationship("Organization", back_populates="investments_made")
     source_document = relationship("SourceDocument")
 
 
@@ -361,6 +470,12 @@ class SourceDocument(Base, TimestampMixin):
     file_path = Column(String)
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
     content_hash = Column(String, index=True)
+    
+    # Newly added fields for CRM sources
+    source_tier = Column(Integer) # 1-5
+    publisher = Column(String)
+    published_at = Column(DateTime)
+    
     deleted_at = Column(DateTime, nullable=True)
     deleted_by = Column(String, nullable=True)
 
