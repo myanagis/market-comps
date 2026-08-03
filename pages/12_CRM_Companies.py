@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
-from market_comps.db.session import get_db
+from market_comps.db.session import get_db, get_db_context
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, AuditTrail,
