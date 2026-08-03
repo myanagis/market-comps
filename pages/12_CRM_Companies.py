@@ -316,8 +316,11 @@ def display_company_details(company_id):
                 st.write("**Specific Competitors:**")
                 df_comps = []
                 for comp in ca.analysis_companies:
+                    linked_segs = get_company_segments(db, comp.competitor_company_id)
+                    seg_names = [ls.market_segment.name for ls in linked_segs if ls.market_segment and ls.market_segment.market_id == ca.market_id]
                     df_comps.append({
                         "Competitor": comp.competitor_company.name if comp.competitor_company else "Unknown",
+                        "Segments": ", ".join(seg_names) if seg_names else "Unmapped",
                         "Relationship": comp.relationship_type.replace("_", " ").title(),
                         "Threat": comp.threat_level,
                         "Notes": comp.competitive_notes
