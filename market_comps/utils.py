@@ -1,5 +1,18 @@
 import zoneinfo
 import re
+import re
+
+def normalize_company_name(name: str) -> str:
+    if not name:
+        return ""
+    # Lowercase and remove common suffixes like Inc, Corp, LLC, etc.
+    name = name.lower().strip()
+    name = re.sub(r'\b(inc|corp|corporation|llc|ltd|limited|co|company)\b\.?', '', name)
+    # Remove punctuation
+    name = re.sub(r'[^\w\s]', '', name)
+    # Remove extra spaces
+    name = re.sub(r'\s+', ' ', name).strip()
+    return name
 
 def format_est_datetime(dt):
     if not dt:

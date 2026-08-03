@@ -440,6 +440,64 @@ def display_company_details(company_id):
             SourceDocument.deleted_at == None
         ).all()
         
+        @st.dialog("Source Details", width="large")
+        def view_source_details(doc_id: int):
+            from market_comps.db.models import SourceDocument, DocumentText, ObservationSource, FinancingRoundFact, RoundInvestor
+            with get_db_context() as tdb:
+                doc = tdb.query(SourceDocument).filter_by(id=doc_id).first()
+                if not doc:
+                    st.error("Document not found")
+                    return
+                st.subheader(f"{doc.title or doc.source_url}")
+                
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Trustworthiness", f"Tier {doc.source_tier}" if doc.source_tier else "Unknown")
+                col2.metric("LLM Used", doc.llm_model_used or "N/A")
+                
+                import zoneinfo
+                eastern = zoneinfo.ZoneInfo("America/New_York")
+                tz_time = doc.created_at.replace(tzinfo=zoneinfo.ZoneInfo("UTC")).astimezone(eastern).strftime('%Y-%m-%d %H:%M') if doc.created_at else "Unknown"
+                col3.metric("Extracted At", tz_time)
+                
+                st.divider()
+                st.markdown("### Extracted Data")
+                
+                found_data = False
+                osrcs = tdb.query(ObservationSource).filter_by(source_document_id=doc_id).all()
+                if osrcs:
+                    found_data = True
+                    for osrc in osrcs:
+                        obs = osrc.observation
+                        if obs and obs.metric_type:
+                            st.markdown(f"- **Metric - {obs.metric_type.display_name}**: {obs.value_text} ({obs.observation_status}, {obs.reporting_basis or 'unknown basis'})")
+                        if osrc.source_excerpt:
+                            st.caption(f"Excerpt: \"{osrc.source_excerpt}\"")
+                            
+                facts = tdb.query(FinancingRoundFact).filter_by(source_id=doc_id).all()
+                if facts:
+                    found_data = True
+                    for f in facts:
+                        st.markdown(f"- **Financing Fact**: {f.fact_type} = {f.value_text}")
+                        
+                rinvs = tdb.query(RoundInvestor).filter_by(source_id=doc_id).all()
+                if rinvs:
+                    found_data = True
+                    for r in rinvs:
+                        org_name = r.investor.name if r.investor else "Unknown Investor"
+                        st.markdown(f"- **Round Investor**: {org_name} ({r.role})")
+                        
+                if not found_data:
+                    st.write("No specific facts or metrics linked to this source.")
+                    
+                st.divider()
+                st.markdown("### Raw Content")
+                txt = tdb.query(DocumentText).filter_by(source_document_id=doc_id, data_type="PAGE_TEXT").first()
+                if txt and txt.raw_content:
+                    st.text_area("Content", txt.raw_content, height=300, disabled=True, label_visibility="collapsed")
+                else:
+                    st.info("Raw content not available.")
+
+        
         if docs:
             # Deduplicate by URL
             seen_urls = set()
@@ -478,10 +536,13 @@ def display_company_details(company_id):
                 
                 source_suffix = f" (via {doc.source_name})" if doc.source_name else ""
                 
-                col_info, col_act = st.columns([5, 1])
+                col_info, col_act1, col_act2 = st.columns([5, 1, 1])
                 with col_info:
                     st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} ({date_display})")
-                with col_act:
+                with col_act1:
+                    if st.button("📄 Details", key=f"view_doc_{doc.id}"):
+                        view_source_details(doc.id)
+                with col_act2:
                     with st.popover("🗑️ Remove"):
                         st.caption("Remove this source document from the database.")
                         if st.button("Confirm Delete", key=f"del_doc_{doc.id}", type="primary"):

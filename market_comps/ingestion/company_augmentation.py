@@ -6,7 +6,7 @@ import requests
 from datetime import datetime
 
 from market_comps.config import settings
-from market_comps.llm_client import LLMClient
+from market_comps.llm_client import LLMClient, LLMUsage
 from market_comps.db.session import SessionLocal
 from market_comps.db.models import (
     SourceDocument, DocumentText, CompanyAugmentationReport,
@@ -424,6 +424,79 @@ def extract_investments(documents: List[Dict], target_company_name: str = "") ->
         from market_comps.models import LLMUsage
         return [], LLMUsage()
 
+
+def extract_metrics(documents: List[Dict], target_company_name: str = "") -> Tuple[List[Dict], LLMUsage]:
+    if not documents:
+        from market_comps.models import LLMUsage
+        return [], LLMUsage()
+    client = LLMClient()
+    
+    doc_text_block = ""
+    for i, doc in enumerate(documents):
+        doc_text_block += f"\n\n--- Document {i} (URL: {doc['url']}) ---\n{doc['text']}"
+        
+    target_directive = f"You are extracting data specifically for the company named '{target_company_name}'." if target_company_name else "You are extracting data for a target company."
+        
+    prompt = f"""
+    {target_directive}
+    Extract any specific metrics, KPIs, or financials mentioned in the text that belong to {target_company_name if target_company_name else 'the target company'}.
+    Look for: Revenue, ARR (Annual Recurring Revenue), Post-money valuation, Employee count, Gross margin, or Customer count.
+    
+    Return a JSON object with a 'metrics' array containing objects with:
+    - metric_code: One of ["revenue", "arr", "post_money_valuation", "employee_count", "gross_margin", "customer_count"]
+    - value_text: The literal text value (e.g. "$10M", "1,500", "50%")
+    - value_numeric: The parsed number (e.g. 10000000, 1500, 0.5) if possible
+    - currency_code: e.g. "USD", if applicable
+    - reporting_basis: One of ["fiscal_year", "calendar_year", "quarter", "month", "trailing_twelve_months", "run_rate", "point_in_time", "projected"]
+    - observation_status: One of ["actual", "company_estimate", "company_guidance", "external_estimate"]
+    - period_year: The year this applies to (e.g. 2024), if mentioned
+    - source_doc_index: the integer index of the document (0-based) this was found in
+    - source_excerpt: The specific quote from the text that proves this metric.
+    
+    Only extract clear metrics.
+    
+    DOCUMENTS:
+    {doc_text_block}
+    """
+    
+    schema = {
+        "type": "object",
+        "properties": {
+            "metrics": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "metric_code": {"type": "string"},
+                        "value_text": {"type": "string"},
+                        "value_numeric": {"type": ["number", "null"]},
+                        "currency_code": {"type": ["string", "null"]},
+                        "reporting_basis": {"type": "string"},
+                        "observation_status": {"type": "string"},
+                        "period_year": {"type": ["integer", "null"]},
+                        "source_doc_index": {"type": "integer"},
+                        "source_excerpt": {"type": "string"}
+                    },
+                    "required": ["metric_code", "value_text", "observation_status", "source_doc_index"]
+                }
+            }
+        }
+    }
+    try:
+        result, usage = client.structured_output(prompt=prompt, json_schema=schema, model=settings.default_model)
+        
+        metrics_list = []
+        if isinstance(result, dict) and "metrics" in result:
+            metrics_list = result["metrics"]
+        elif isinstance(result, list):
+            metrics_list = result
+                    
+        return metrics_list, usage
+    except Exception as e:
+        logger.error(f"Metric extraction failed: {e}")
+        from market_comps.models import LLMUsage
+        return [], LLMUsage()
+
 def run_augmentation_pipeline(org_id: int):
     """Main entrypoint for the augmentation pipeline."""
     db = SessionLocal()
@@ -480,6 +553,8 @@ def run_augmentation_pipeline(org_id: int):
                 document_class="augmentation",
                 title=d["title"][:255] if d["title"] else "Web Page",
                 source_url=d["url"],
+                source_tier=3,
+                llm_model_used=settings.default_model,
                 source_name=d["url"].split('/')[2] if '//' in d["url"] else d["url"][:255],
                 document_date=d["date"] if d["date"] else None,
                 content_hash=content_hash
@@ -665,6 +740,59 @@ def run_augmentation_pipeline(org_id: int):
             db.add(rinv)
             db.flush()
             
+
+        # 8. Extract and Upsert Metrics
+        from market_comps.db.models import MetricType, MetricObservation, ObservationSource
+        metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
+        add_usage(u_met)
+        
+        # Load all metric types
+        all_metric_types = db.query(MetricType).all()
+        metric_code_map = {m.code: m.id for m in all_metric_types}
+        
+        for met in metrics_data:
+            mcode = met.get("metric_code")
+            if not mcode or mcode not in metric_code_map:
+                continue
+                
+            doc_idx = met.get("source_doc_index")
+            source_doc_id = None
+            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
+                source_doc_id = docs_data[doc_idx].get("db_id")
+                
+            # Create Observation
+            period_start, period_end = None, None
+            if met.get("period_year"):
+                try:
+                    yr = int(met["period_year"])
+                    period_start = datetime(yr, 1, 1)
+                    period_end = datetime(yr, 12, 31)
+                except:
+                    pass
+                    
+            obs = MetricObservation(
+                company_id=org.id,
+                metric_type_id=metric_code_map[mcode],
+                value_text=met.get("value_text"),
+                value_numeric=met.get("value_numeric"),
+                currency_code=met.get("currency_code"),
+                observation_status=met.get("observation_status") or "actual",
+                reporting_basis=met.get("reporting_basis"),
+                period_start=period_start,
+                period_end=period_end
+            )
+            db.add(obs)
+            db.flush()
+            
+            if source_doc_id:
+                osrc = ObservationSource(
+                    observation_id=obs.id,
+                    source_id=source_doc_id,
+                    source_excerpt=met.get("source_excerpt"),
+                    confidence_score=0.8
+                )
+                db.add(osrc)
+        
         db.commit()
         run.run_status = "SUCCESS"
         run.completed_at = datetime.utcnow()
@@ -694,14 +822,14 @@ def clear_augmentation_data(org_id: int):
         reports = db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).all()
         pipeline_run_ids = [r.pipeline_run_id for r in reports if r.pipeline_run_id]
         
-        # Delete investments created by WEB_AUGMENTATION for this company
+        # Delete financing rounds created by WEB_AUGMENTATION for this company
         from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
         from datetime import datetime
         from sqlalchemy import cast, Integer
-        db.query(Investment).filter(
-            Investment.company_organization_id == org_id,
-            Investment.id.in_(db.query(cast(AuditTrail.canonical_entity_id, Integer)).filter_by(canonical_entity_type="INVESTMENT", source="WEB_AUGMENTATION"))
-        ).update({Investment.deleted_at: datetime.utcnow(), FinancingRound, FinancingRoundFact, RoundInvestor.deleted_by: 'USER'}, synchronize_session=False)
+        db.query(FinancingRound).filter(
+            FinancingRound.company_id == org_id,
+            FinancingRound.id.in_(db.query(cast(AuditTrail.canonical_entity_id, Integer)).filter_by(canonical_entity_type="FINANCING_ROUND", source="WEB_AUGMENTATION"))
+        ).delete(synchronize_session=False)
         
         # Mark Reports as CLEARED
         db.query(CompanyAugmentationReport).filter_by(organization_id=org_id).update({CompanyAugmentationReport.status: "CLEARED"}, synchronize_session=False)
@@ -715,8 +843,7 @@ def clear_augmentation_data(org_id: int):
             doc_ids = [d.id for d in docs]
             
             if doc_ids:
-                # Soft delete investments linked to these documents
-                db.query(Investment).filter(Investment.source_document_id.in_(doc_ids)).update({Investment.deleted_at: datetime.utcnow(), FinancingRound, FinancingRoundFact, RoundInvestor.deleted_by: 'USER'}, synchronize_session=False)
+                # Since we hard delete financing rounds linked to the organization anyway, we don't need to do it by document for now.
                 
                 # Soft delete documents (leave DocumentText intact)
                 db.query(SourceDocument).filter(SourceDocument.id.in_(doc_ids)).update({SourceDocument.deleted_at: datetime.utcnow(), SourceDocument.deleted_by: 'USER'}, synchronize_session=False)
@@ -787,6 +914,8 @@ def run_manual_url_augmentation(org_id: int, url: str):
             document_class="manual_augmentation",
             title="Manual Upload",
             source_url=url,
+            source_tier=1,
+            llm_model_used=settings.default_model,
             source_name=url.split('/')[2] if '//' in url else url[:255],
             source_type="MANUAL_UPLOAD",
             content_hash=content_hash
@@ -904,6 +1033,53 @@ def run_manual_url_augmentation(org_id: int, url: str):
                 db.add(rinv)
                 db.flush()
                 
+
+        # 4. Extract and Upsert Metrics
+        from market_comps.db.models import MetricType, MetricObservation, ObservationSource
+        metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
+        add_usage(u_met)
+        
+        # Load all metric types
+        all_metric_types = db.query(MetricType).all()
+        metric_code_map = {m.code: m.id for m in all_metric_types}
+        
+        for met in metrics_data:
+            mcode = met.get("metric_code")
+            if not mcode or mcode not in metric_code_map:
+                continue
+                
+            # Create Observation
+            period_start, period_end = None, None
+            if met.get("period_year"):
+                try:
+                    yr = int(met["period_year"])
+                    period_start = datetime(yr, 1, 1)
+                    period_end = datetime(yr, 12, 31)
+                except:
+                    pass
+                    
+            obs = MetricObservation(
+                company_id=org.id,
+                metric_type_id=metric_code_map[mcode],
+                value_text=met.get("value_text"),
+                value_numeric=met.get("value_numeric"),
+                currency_code=met.get("currency_code"),
+                observation_status=met.get("observation_status") or "actual",
+                reporting_basis=met.get("reporting_basis"),
+                period_start=period_start,
+                period_end=period_end
+            )
+            db.add(obs)
+            db.flush()
+            
+            osrc = ObservationSource(
+                    observation_id=obs.id,
+                source_id=src_doc.id,
+                source_excerpt=met.get("source_excerpt"),
+                confidence_score=0.8
+            )
+            db.add(osrc)
+            
         db.commit()
         return True
         
@@ -1125,6 +1301,59 @@ def re_synthesize_company_data(org_id: int):
             db.add(investment)
             db.flush()
             
+
+        # 8. Extract and Upsert Metrics
+        from market_comps.db.models import MetricType, MetricObservation, ObservationSource
+        metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
+        add_usage(u_met)
+        
+        # Load all metric types
+        all_metric_types = db.query(MetricType).all()
+        metric_code_map = {m.code: m.id for m in all_metric_types}
+        
+        for met in metrics_data:
+            mcode = met.get("metric_code")
+            if not mcode or mcode not in metric_code_map:
+                continue
+                
+            doc_idx = met.get("source_doc_index")
+            source_doc_id = None
+            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
+                source_doc_id = docs_data[doc_idx].get("db_id")
+                
+            # Create Observation
+            period_start, period_end = None, None
+            if met.get("period_year"):
+                try:
+                    yr = int(met["period_year"])
+                    period_start = datetime(yr, 1, 1)
+                    period_end = datetime(yr, 12, 31)
+                except:
+                    pass
+                    
+            obs = MetricObservation(
+                company_id=org.id,
+                metric_type_id=metric_code_map[mcode],
+                value_text=met.get("value_text"),
+                value_numeric=met.get("value_numeric"),
+                currency_code=met.get("currency_code"),
+                observation_status=met.get("observation_status") or "actual",
+                reporting_basis=met.get("reporting_basis"),
+                period_start=period_start,
+                period_end=period_end
+            )
+            db.add(obs)
+            db.flush()
+            
+            if source_doc_id:
+                osrc = ObservationSource(
+                    observation_id=obs.id,
+                    source_id=source_doc_id,
+                    source_excerpt=met.get("source_excerpt"),
+                    confidence_score=0.8
+                )
+                db.add(osrc)
+        
         db.commit()
         run.run_status = "SUCCESS"
         run.completed_at = datetime.utcnow()

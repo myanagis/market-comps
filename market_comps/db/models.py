@@ -475,6 +475,7 @@ class SourceDocument(Base, TimestampMixin):
     source_tier = Column(Integer) # 1-5
     publisher = Column(String)
     published_at = Column(DateTime)
+    llm_model_used = Column(String)
     
     deleted_at = Column(DateTime, nullable=True)
     deleted_by = Column(String, nullable=True)
