@@ -789,7 +789,7 @@ def run_augmentation_pipeline(org_id: int):
                     observation_id=obs.id,
                     source_id=source_doc_id,
                     source_excerpt=met.get("source_excerpt"),
-                    confidence_score=0.8
+                    relationship_type="primary"
                 )
                 db.add(osrc)
         
@@ -1076,7 +1076,7 @@ def run_manual_url_augmentation(org_id: int, url: str):
                     observation_id=obs.id,
                 source_id=src_doc.id,
                 source_excerpt=met.get("source_excerpt"),
-                confidence_score=0.8
+                relationship_type="primary"
             )
             db.add(osrc)
             
@@ -1350,7 +1350,7 @@ def re_synthesize_company_data(org_id: int):
                     observation_id=obs.id,
                     source_id=source_doc_id,
                     source_excerpt=met.get("source_excerpt"),
-                    confidence_score=0.8
+                    relationship_type="primary"
                 )
                 db.add(osrc)
         
