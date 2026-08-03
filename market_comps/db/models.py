@@ -640,3 +640,105 @@ class CompanyAugmentationReport(Base, TimestampMixin):
 
     organization = relationship("Organization")
     pipeline_run = relationship("PipelineRun")
+
+# ==============================================================================
+# MARKETS AND COMPETITIVE LANDSCAPE
+# ==============================================================================
+
+class Market(Base, TimestampMixin):
+    __tablename__ = 'markets'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    description = Column(String)
+    parent_market_id = Column(Integer, ForeignKey('markets.id'), nullable=True)
+
+    parent_market = relationship("Market", remote_side=[id])
+    segments = relationship("MarketSegment", back_populates="market", cascade="all, delete-orphan")
+    competitive_analyses = relationship("CompetitiveAnalysis", back_populates="market")
+
+
+class MarketSegment(Base, TimestampMixin):
+    __tablename__ = 'market_segments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    market_id = Column(Integer, ForeignKey('markets.id'), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String)
+    segment_type = Column(String, nullable=True)
+    parent_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=True)
+    sort_order = Column(Integer, nullable=True)
+
+    market = relationship("Market", back_populates="segments")
+    parent_segment = relationship("MarketSegment", remote_side=[id])
+    company_segments = relationship("CompanyMarketSegment", back_populates="market_segment", cascade="all, delete-orphan")
+
+
+class CompanyMarketSegment(Base, TimestampMixin):
+    __tablename__ = 'company_market_segments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    market_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=False)
+    
+    is_primary = Column(Boolean, default=False)
+    differentiation = Column(String)
+    notes = Column(String, nullable=True)
+    confidence = Column(Float, nullable=True)
+    source_id = Column(Integer, ForeignKey('source_documents.id'), nullable=True)
+    recorded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    company = relationship("Organization")
+    market_segment = relationship("MarketSegment", back_populates="company_segments")
+    source_document = relationship("SourceDocument")
+
+
+class CompetitiveAnalysis(Base, TimestampMixin):
+    __tablename__ = 'competitive_analyses'
+
+    id = Column(Integer, primary_key=True, index=True)
+    subject_company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    market_id = Column(Integer, ForeignKey('markets.id'), nullable=False)
+    title = Column(String, nullable=False)
+    summary = Column(String)
+    status = Column(String, default="draft") # draft, reviewed, published, archived
+
+    subject_company = relationship("Organization")
+    market = relationship("Market", back_populates="competitive_analyses")
+    analysis_segments = relationship("CompetitiveAnalysisSegment", back_populates="competitive_analysis", cascade="all, delete-orphan")
+    analysis_companies = relationship("CompetitiveAnalysisCompany", back_populates="competitive_analysis", cascade="all, delete-orphan")
+
+
+class CompetitiveAnalysisSegment(Base, TimestampMixin):
+    __tablename__ = 'competitive_analysis_segments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    competitive_analysis_id = Column(Integer, ForeignKey('competitive_analyses.id'), nullable=False)
+    market_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=False)
+    
+    threat_level = Column(String, nullable=True) # enum-like: High, Medium/High, Medium, Medium/Low, Low, N/A
+    threat_level_description = Column(String, nullable=True)
+    competitive_threat = Column(String)
+    analysis_notes = Column(String, nullable=True)
+    sort_order = Column(Integer, nullable=True)
+
+    competitive_analysis = relationship("CompetitiveAnalysis", back_populates="analysis_segments")
+    market_segment = relationship("MarketSegment")
+
+
+class CompetitiveAnalysisCompany(Base, TimestampMixin):
+    __tablename__ = 'competitive_analysis_companies'
+
+    id = Column(Integer, primary_key=True, index=True)
+    competitive_analysis_id = Column(Integer, ForeignKey('competitive_analyses.id'), nullable=False)
+    competitor_company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    
+    relationship_type = Column(String, nullable=False) # direct_competitor, indirect_competitor, substitute, incumbent, adjacent, potential_entrant, partner_competitor
+    threat_level = Column(String, nullable=True) # enum-like
+    threat_level_description = Column(String, nullable=True)
+    competitive_notes = Column(String)
+    included = Column(Boolean, default=True)
+    sort_order = Column(Integer, nullable=True)
+
+    competitive_analysis = relationship("CompetitiveAnalysis", back_populates="analysis_companies")
+    competitor_company = relationship("Organization")

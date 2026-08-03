@@ -6,9 +6,15 @@ from market_comps.db.session import get_db
 from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, AuditTrail,
-    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument, FinancingRound, FinancingRoundFact, RoundInvestor, MetricType, MetricObservation
+    ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument, FinancingRound, FinancingRoundFact, RoundInvestor, MetricType, MetricObservation,
+    Market, MarketSegment, CompanyMarketSegment, CompetitiveAnalysis, CompetitiveAnalysisSegment, CompetitiveAnalysisCompany
 )
 from market_comps.ingestion.reconciler import log_mutation
+from market_comps.crm.competitor_manager import (
+    get_company_segments, get_all_markets, get_market_segments, add_company_to_segment,
+    get_or_create_competitive_analysis, add_competitive_analysis_company,
+    THREAT_LEVELS, RELATIONSHIP_TYPES
+)
 
 st.set_page_config(page_title="Companies Directory", page_icon="🏢", layout="wide")
 st.title("🏢 Companies Directory")
@@ -259,6 +265,94 @@ def display_company_details(company_id):
                 st.info("No metric data available.")
         else:
             st.info("No metric data available.")
+
+        # Market & Competitors
+        st.divider()
+        st.subheader("🗺️ Market & Competitors")
+        
+        # 1. Show existing segment linkages
+        linked_segments = get_company_segments(db, org.id)
+        if linked_segments:
+            st.write("**Participates in:**")
+            for link in linked_segments:
+                seg_name = link.market_segment.name if link.market_segment else "Unknown Segment"
+                m_name = link.market_segment.market.name if link.market_segment and link.market_segment.market else "Unknown Market"
+                st.markdown(f"- **{m_name}** > **{seg_name}** {'(Primary)' if link.is_primary else ''}")
+                if link.differentiation:
+                    st.caption(f"Differentiation: {link.differentiation}")
+        else:
+            st.info("This company is not mapped to any market segments yet.")
+            
+        with st.expander("➕ Link to Market Segment"):
+            with st.form(f"link_seg_{org.id}"):
+                all_markets = get_all_markets(db)
+                m_opts = {m.name: m for m in all_markets}
+                m_sel = st.selectbox("Market", options=list(m_opts.keys()))
+                
+                if m_sel:
+                    segs = get_market_segments(db, m_opts[m_sel].id)
+                    s_opts = {s.name: s for s in segs}
+                    s_sel = st.selectbox("Segment", options=list(s_opts.keys()))
+                    diff_text = st.text_area("Differentiation", placeholder="How does this company differentiate in this segment?")
+                    is_prim = st.checkbox("Is Primary Segment?", value=True)
+                    
+                    if st.form_submit_button("Link Segment"):
+                        if s_sel and diff_text:
+                            add_company_to_segment(db, org.id, s_opts[s_sel].id, diff_text, is_prim)
+                            st.success("Segment linked!")
+                            st.rerun()
+                        else:
+                            st.error("Differentiation text is required.")
+
+        # 2. Competitive Analysis
+        ca = db.query(CompetitiveAnalysis).filter_by(subject_company_id=org.id).first()
+        if ca:
+            st.markdown(f"#### ⚔️ {ca.title}")
+            if ca.summary:
+                st.write(ca.summary)
+                
+            if ca.analysis_companies:
+                st.write("**Specific Competitors:**")
+                df_comps = []
+                for comp in ca.analysis_companies:
+                    df_comps.append({
+                        "Competitor": comp.competitor_company.name if comp.competitor_company else "Unknown",
+                        "Relationship": comp.relationship_type.replace("_", " ").title(),
+                        "Threat": comp.threat_level,
+                        "Notes": comp.competitive_notes
+                    })
+                st.dataframe(pd.DataFrame(df_comps), hide_index=True, use_container_width=True)
+                
+            with st.expander("➕ Add Competitor to Analysis"):
+                with st.form(f"add_comp_{ca.id}"):
+                    # Select from all orgs
+                    all_orgs = db.query(Organization).order_by(Organization.name).all()
+                    org_opts = {o.name: o for o in all_orgs if o.id != org.id}
+                    comp_sel = st.selectbox("Competitor Company", options=list(org_opts.keys()))
+                    rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
+                    threat_sel = st.selectbox("Threat Level", options=THREAT_LEVELS)
+                    notes_text = st.text_area("Competitive Notes")
+                    
+                    if st.form_submit_button("Add Competitor"):
+                        if comp_sel:
+                            add_competitive_analysis_company(
+                                db, ca.id, org_opts[comp_sel].id, rel_sel, threat_sel, None, notes_text
+                            )
+                            st.success("Competitor added!")
+                            st.rerun()
+        else:
+            with st.expander("➕ Start Competitive Analysis"):
+                with st.form(f"start_ca_{org.id}"):
+                    all_markets = get_all_markets(db)
+                    m_opts = {m.name: m for m in all_markets}
+                    m_sel = st.selectbox("Select Market", options=list(m_opts.keys()))
+                    ca_title = st.text_input("Title", value=f"{org.name} Competitive Landscape")
+                    
+                    if st.form_submit_button("Start Analysis"):
+                        if m_sel:
+                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, ca_title)
+                            st.success("Analysis started!")
+                            st.rerun()
 
         # Financing Rounds
         st.divider()
