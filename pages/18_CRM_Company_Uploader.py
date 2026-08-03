@@ -114,30 +114,43 @@ if prompt or st.session_state.get("manual_proceed", False):
                     st.write("### Creating Companies...")
                     
                     created_orgs = []
+                    failed_orgs = []
                     
                     with get_db_context() as db:
                         for comp in st.session_state.pending_companies:
                             with st.status(f"Processing {comp['name']}...", expanded=True) as status:
-                                st.write("Creating database record...")
-                                org = create_company(
-                                    db=db,
-                                    name=comp["name"],
-                                    domain=comp["domain"],
-                                    description=comp["description"]
-                                )
-                                created_orgs.append(org)
-                                
-                                st.write("Running AI Web Augmentation Pipeline...")
                                 try:
+                                    st.write("Creating database record...")
+                                    org = create_company(
+                                        db=db,
+                                        name=comp["name"],
+                                        domain=comp["domain"],
+                                        description=comp["description"]
+                                    )
+                                    # Must commit here so the augmentation pipeline (which uses a new session) can see the org!
+                                    db.commit()
+                                    created_orgs.append(comp["name"])
+                                    
+                                    st.write("Running AI Web Augmentation Pipeline...")
                                     process_new_company(db, org.id)
                                     status.update(label=f"Successfully processed {comp['name']}!", state="complete", expanded=False)
                                 except Exception as e:
-                                    status.update(label=f"Failed augmentation for {comp['name']}: {e}", state="error", expanded=True)
+                                    db.rollback()
+                                    error_msg = f"Failed processing {comp['name']}: {str(e)}"
+                                    status.update(label=error_msg, state="error", expanded=True)
+                                    failed_orgs.append(error_msg)
                                     
-                    st.success(f"Successfully created {len(created_orgs)} companies!")
                     st.session_state.pending_companies = []
                     
                     # Add system message to chat
-                    completion_msg = f"Successfully created and processed {len(created_orgs)} companies!"
+                    completion_msg = f"**Successfully created and processed {len(created_orgs)} companies:**\n"
+                    if created_orgs:
+                        for name in created_orgs:
+                            completion_msg += f"- ✅ {name}\n"
+                    if failed_orgs:
+                        completion_msg += "\n**Errors encountered:**\n"
+                        for err in failed_orgs:
+                            completion_msg += f"- ❌ {err}\n"
+                            
                     st.session_state.uploader_messages.append({"role": "assistant", "content": completion_msg})
                     st.rerun()
