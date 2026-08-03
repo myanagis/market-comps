@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
 
 def get_database_url(direct: bool = False) -> str:
     """Read DB URL from st.secrets or fallback to simple parsing of secrets.toml for Alembic."""
@@ -45,6 +46,15 @@ def _get_active_session_maker():
     return SessionLocal
 
 def get_db():
+    session_factory = _get_active_session_maker()
+    db = session_factory()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@contextmanager
+def get_db_context():
     session_factory = _get_active_session_maker()
     db = session_factory()
     try:
