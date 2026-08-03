@@ -703,7 +703,7 @@ with tab_add:
         selected_themes = st.multiselect("Themes", options=all_themes)
         new_themes = st.text_input("Add New Themes (comma separated)")
         
-        from market_comps.db.models import Investment
+        from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
         st.subheader("Add Investment Firm (Optional)")
         investors = db.query(Organization).filter_by(organization_type="INVESTOR").order_by(Organization.name).all()
         investor_opts = {0: "-- None --"}
