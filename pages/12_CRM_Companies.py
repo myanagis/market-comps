@@ -299,6 +299,7 @@ def display_company_details(company_id):
                     if st.form_submit_button("Link Segment"):
                         if s_sel and diff_text:
                             add_company_to_segment(db, org.id, s_opts[s_sel].id, diff_text, is_prim)
+                            db.commit()
                             st.success("Segment linked!")
                             st.rerun()
                         else:
@@ -338,6 +339,7 @@ def display_company_details(company_id):
                             add_competitive_analysis_company(
                                 db, ca.id, org_opts[comp_sel].id, rel_sel, threat_sel, None, notes_text
                             )
+                            db.commit()
                             st.success("Competitor added!")
                             st.rerun()
         else:
@@ -351,6 +353,7 @@ def display_company_details(company_id):
                     if st.form_submit_button("Start Analysis"):
                         if m_sel:
                             get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, ca_title)
+                            db.commit()
                             st.success("Analysis started!")
                             st.rerun()
 

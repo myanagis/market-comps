@@ -33,6 +33,7 @@ with get_db_context() as db:
             if st.form_submit_button("Create Market"):
                 if m_name:
                     create_market(db, m_name, m_desc)
+                    db.commit()
                     st.success(f"Market '{m_name}' created!")
                     st.rerun()
                 else:
