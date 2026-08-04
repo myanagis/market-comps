@@ -338,12 +338,14 @@ def display_company_details(company_id):
                     
                     market_segments = get_market_segments(db, ca.market_id)
                     seg_opts = {s.name: s.id for s in market_segments}
-                    selected_seg_names = st.multiselect("Also map to Segments (Optional)", options=list(seg_opts.keys()))
+                    selected_seg_names = st.multiselect("Also map to Segments", options=list(seg_opts.keys()))
                     
                     notes_text = st.text_area("Competitive Notes")
                     
                     if st.form_submit_button("Add Competitor"):
-                        if comp_sel:
+                        if not selected_seg_names:
+                            st.error("Please select at least one market segment to map the competitor to.")
+                        elif comp_sel:
                             comp_id = org_opts[comp_sel].id
                             add_competitive_analysis_company(
                                 db, ca.id, comp_id, rel_sel, threat_sel, None, notes_text
