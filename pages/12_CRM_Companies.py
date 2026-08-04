@@ -571,7 +571,7 @@ def display_company_details(company_id):
                 st.markdown("### Extracted Data")
                 
                 found_data = False
-                osrcs = tdb.query(ObservationSource).filter_by(source_document_id=doc_id).all()
+                osrcs = tdb.query(ObservationSource).filter_by(source_id=doc_id).all()
                 if osrcs:
                     found_data = True
                     for osrc in osrcs:
