@@ -268,7 +268,11 @@ def display_company_details(company_id):
 
         # Market & Competitors
         st.divider()
-        st.subheader("🗺️ Market & Competitors")
+        col_mhead1, col_mhead2 = st.columns([3, 1])
+        with col_mhead1:
+            st.subheader("🗺️ Market & Competitors")
+        with col_mhead2:
+            st.page_link("pages/21_Market_Map.py", label="Open Market Map", icon="🗺️")
         
         # Determine all markets this company participates in or analyzes
         my_segs = get_company_segments(db, org.id)
@@ -278,20 +282,6 @@ def display_company_details(company_id):
         all_my_market_ids = sorted(list(linked_market_ids | ca_market_ids))
 
         all_markets = get_all_markets(db)
-
-        # Global Action to Add Market Analysis if needed
-        unlinked_markets = [m for m in all_markets if m.id not in ca_market_ids]
-        if unlinked_markets:
-            with st.popover("➕ Add Market Analysis"):
-                with st.form(f"start_ca_{org.id}"):
-                    m_opts = {m.name: m for m in unlinked_markets}
-                    m_sel = st.selectbox("Select Market", options=list(m_opts.keys()))
-                    if st.form_submit_button("Create Analysis"):
-                        if m_sel:
-                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, f"{org.name} {m_sel} Landscape")
-                            db.commit()
-                            st.success("Analysis created!")
-                            st.rerun()
 
         if not all_my_market_ids:
             st.info("This company is not yet mapped to any markets or segments.")
@@ -306,8 +296,20 @@ def display_company_details(company_id):
                 ca = get_or_create_competitive_analysis(db, org.id, m_id, f"{org.name} {market.name} Landscape")
                 db.commit()
                 
-            if ca and ca.summary:
-                st.caption(ca.summary)
+            with st.expander(f"📝 Market Dynamics & Competition Notes ({market.name})"):
+                with st.form(f"market_notes_form_{ca.id if ca else m_id}"):
+                    m_notes = st.text_area(
+                        "Market Dynamics, What Market Values Most & Key Standouts",
+                        value=ca.summary if (ca and ca.summary) else "",
+                        placeholder="e.g. What market info stands out, key trends, what buyers value most, market opportunities...",
+                        help="Free-text notes on overall market observations."
+                    )
+                    if st.form_submit_button("Save Market Notes"):
+                        if ca:
+                            ca.summary = m_notes
+                            db.commit()
+                            st.success("Market notes saved!")
+                            st.rerun()
 
             # -------------------------------------------------------------
             # ##### Segments
@@ -522,6 +524,20 @@ def display_company_details(company_id):
                                     st.rerun()
 
             st.divider()
+
+        # Global Action to Add New Market Analysis at the bottom
+        unlinked_markets = [m for m in all_markets if m.id not in ca_market_ids]
+        if unlinked_markets:
+            with st.popover("➕ Add New Market Analysis"):
+                with st.form(f"start_ca_bottom_{org.id}"):
+                    m_opts = {m.name: m for m in unlinked_markets}
+                    m_sel = st.selectbox("Select Market to Analyze", options=list(m_opts.keys()))
+                    if st.form_submit_button("Create Market Analysis"):
+                        if m_sel:
+                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, f"{org.name} {m_sel} Landscape")
+                            db.commit()
+                            st.success("Market Analysis created!")
+                            st.rerun()
 
         # Financing Rounds
         st.divider()
