@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from market_comps.db.models import (
     Market, 
     MarketSegment, 
-    CompanyMarketSegment,
+    MarketSegmentCompanyLink,
     CompetitiveAnalysis,
     CompetitiveAnalysisSegment,
     CompetitiveAnalysisCompany,
@@ -67,9 +67,9 @@ def add_company_to_segment(
     differentiation: str,
     is_primary: bool = False,
     notes: Optional[str] = None
-) -> CompanyMarketSegment:
+) -> MarketSegmentCompanyLink:
     # Ensure it's not a duplicate
-    existing = db.query(CompanyMarketSegment).filter_by(
+    existing = db.query(MarketSegmentCompanyLink).filter_by(
         company_id=company_id,
         market_segment_id=market_segment_id
     ).first()
@@ -81,7 +81,7 @@ def add_company_to_segment(
         db.flush()
         return existing
         
-    link = CompanyMarketSegment(
+    link = MarketSegmentCompanyLink(
         company_id=company_id,
         market_segment_id=market_segment_id,
         is_primary=is_primary,
@@ -92,8 +92,8 @@ def add_company_to_segment(
     db.flush()
     return link
 
-def get_company_segments(db: Session, company_id: int) -> List[CompanyMarketSegment]:
-    return db.query(CompanyMarketSegment).filter_by(company_id=company_id).all()
+def get_company_segments(db: Session, company_id: int) -> List[MarketSegmentCompanyLink]:
+    return db.query(MarketSegmentCompanyLink).filter_by(company_id=company_id).all()
 
 # ==============================================================================
 # COMPETITIVE ANALYSIS
@@ -123,19 +123,49 @@ def get_or_create_competitive_analysis(
     db.flush()
     return ca
 
+def add_competitive_analysis_segment(
+    db: Session,
+    competitive_analysis_id: int,
+    market_segment_id: int,
+    threat_level: Optional[str] = None,
+    analysis_notes: Optional[str] = None
+) -> CompetitiveAnalysisSegment:
+    existing = db.query(CompetitiveAnalysisSegment).filter_by(
+        competitive_analysis_id=competitive_analysis_id,
+        market_segment_id=market_segment_id
+    ).first()
+    if existing:
+        if threat_level: existing.threat_level = threat_level
+        if analysis_notes: existing.analysis_notes = analysis_notes
+        db.flush()
+        return existing
+    
+    seg = CompetitiveAnalysisSegment(
+        competitive_analysis_id=competitive_analysis_id,
+        market_segment_id=market_segment_id,
+        threat_level=threat_level,
+        analysis_notes=analysis_notes
+    )
+    db.add(seg)
+    db.flush()
+    return seg
+
+
 def add_competitive_analysis_company(
     db: Session,
     competitive_analysis_id: int,
     competitor_company_id: int,
-    relationship_type: str,
-    threat_level: str,
+    market_segment_id: Optional[int] = None,
+    relationship_type: str = "direct_competitor",
+    threat_level: Optional[str] = None,
     threat_level_description: Optional[str] = None,
     competitive_notes: Optional[str] = None
 ) -> CompetitiveAnalysisCompany:
     
     existing = db.query(CompetitiveAnalysisCompany).filter_by(
         competitive_analysis_id=competitive_analysis_id,
-        competitor_company_id=competitor_company_id
+        competitor_company_id=competitor_company_id,
+        market_segment_id=market_segment_id
     ).first()
     
     if existing:
@@ -149,6 +179,7 @@ def add_competitive_analysis_company(
     comp = CompetitiveAnalysisCompany(
         competitive_analysis_id=competitive_analysis_id,
         competitor_company_id=competitor_company_id,
+        market_segment_id=market_segment_id,
         relationship_type=relationship_type,
         threat_level=threat_level,
         threat_level_description=threat_level_description,

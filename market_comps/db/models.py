@@ -671,11 +671,11 @@ class MarketSegment(Base, TimestampMixin):
 
     market = relationship("Market", back_populates="segments")
     parent_segment = relationship("MarketSegment", remote_side=[id])
-    company_segments = relationship("CompanyMarketSegment", back_populates="market_segment", cascade="all, delete-orphan")
+    company_segments = relationship("MarketSegmentCompanyLink", back_populates="market_segment", cascade="all, delete-orphan")
 
 
-class CompanyMarketSegment(Base, TimestampMixin):
-    __tablename__ = 'company_market_segments'
+class MarketSegmentCompanyLink(Base, TimestampMixin):
+    __tablename__ = 'market_segment_company_links'
 
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
@@ -732,6 +732,7 @@ class CompetitiveAnalysisCompany(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     competitive_analysis_id = Column(Integer, ForeignKey('competitive_analyses.id'), nullable=False)
     competitor_company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    market_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=True)
     
     relationship_type = Column(String, nullable=False) # direct_competitor, indirect_competitor, substitute, incumbent, adjacent, potential_entrant, partner_competitor
     threat_level = Column(String, nullable=True) # enum-like
@@ -742,3 +743,4 @@ class CompetitiveAnalysisCompany(Base, TimestampMixin):
 
     competitive_analysis = relationship("CompetitiveAnalysis", back_populates="analysis_companies")
     competitor_company = relationship("Organization")
+    market_segment = relationship("MarketSegment")

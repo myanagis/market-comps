@@ -5,7 +5,7 @@ from sqlalchemy import func
 
 from market_comps.db.session import get_db_context
 from market_comps.db.models import (
-    Market, MarketSegment, CompanyMarketSegment, Organization
+    Market, MarketSegment, MarketSegmentCompanyLink, Organization
 )
 from market_comps.crm.competitor_manager import (
     get_all_markets, create_market, create_market_segment, get_market_segments
@@ -75,9 +75,9 @@ with get_db_context() as db:
             # Group companies by segment using a single query
             # We want to mimic the SQL query provided by the user
             segment_data = (
-                db.query(MarketSegment.name, Organization.name, CompanyMarketSegment.differentiation)
-                .join(CompanyMarketSegment, CompanyMarketSegment.market_segment_id == MarketSegment.id)
-                .join(Organization, Organization.id == CompanyMarketSegment.company_id)
+                db.query(MarketSegment.name, Organization.name, MarketSegmentCompanyLink.differentiation)
+                .join(MarketSegmentCompanyLink, MarketSegmentCompanyLink.market_segment_id == MarketSegment.id)
+                .join(Organization, Organization.id == MarketSegmentCompanyLink.company_id)
                 .filter(MarketSegment.market_id == selected_market.id)
                 .order_by(MarketSegment.sort_order, Organization.name)
                 .all()
