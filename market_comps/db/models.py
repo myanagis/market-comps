@@ -698,7 +698,7 @@ class CompetitiveAnalysis(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     subject_company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     market_id = Column(Integer, ForeignKey('markets.id'), nullable=False)
-    title = Column(String, nullable=True)
+    title = Column(String, nullable=False, default="Competitive Landscape")
     summary = Column(String)
     status = Column(String, default="draft") # draft, reviewed, published, archived
 
