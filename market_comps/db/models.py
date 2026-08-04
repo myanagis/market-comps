@@ -30,7 +30,7 @@ class Organization(Base, TimestampMixin):
     street1 = Column(String)
     street2 = Column(String)
     zip_code = Column(String)
-    organization_type = Column(String)
+    organization_type = Column(String, nullable=False, default="COMPANY")
     description = Column(String)
     status = Column(String)
     is_active = Column(Boolean, default=True)
