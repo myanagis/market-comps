@@ -343,66 +343,54 @@ def display_company_details(company_id):
             all_orgs = db.query(Organization).order_by(Organization.name).all()
             org_opts = {o.name: o for o in all_orgs if o.id != org.id}
 
+            ca_companies_map = {(c.market_segment_id, c.competitor_company_id): c for c in ca.analysis_companies}
+
             for analysis_segment in ca.analysis_segments:
                 seg = analysis_segment.market_segment
                 st.markdown(f"###### 🎯 {seg.name} (Threat: {analysis_segment.threat_level or 'Unknown'})")
                 if analysis_segment.analysis_notes:
                     st.caption(analysis_segment.analysis_notes)
                 
-                # Get companies for this segment
-                seg_comps = [c for c in ca.analysis_companies if c.market_segment_id == seg.id]
-                if seg_comps:
+                # Pull ALL companies mapped to this segment globally
+                segment_links = db.query(MarketSegmentCompanyLink).filter_by(market_segment_id=seg.id).all()
+                # Exclude the subject company itself
+                segment_links = [link for link in segment_links if link.company_id != org.id]
+                
+                if segment_links:
                     df_comps = []
-                    for comp in seg_comps:
+                    for link in segment_links:
+                        comp_org = link.company
+                        if not comp_org: continue
+                        
+                        # Check if we have subject-specific notes/threat in the analysis
+                        ca_comp = ca_companies_map.get((seg.id, comp_org.id))
+                        
                         df_comps.append({
-                            "Competitor": comp.competitor_company.name if comp.competitor_company else "Unknown",
-                            "Relationship": comp.relationship_type.replace("_", " ").title(),
-                            "Threat Level": comp.threat_level or "N/A",
-                            "Notes": comp.competitive_notes
+                            "Competitor": comp_org.name,
+                            "Differentiation (Global)": link.differentiation or "",
+                            "Relationship (Local)": ca_comp.relationship_type.replace("_", " ").title() if ca_comp else "",
+                            "Threat (Local)": ca_comp.threat_level if ca_comp else "",
+                            "Notes (Local)": ca_comp.competitive_notes if ca_comp else ""
                         })
                     st.dataframe(pd.DataFrame(df_comps), hide_index=True, use_container_width=True)
                 else:
-                    st.write("No competitors mapped yet.")
+                    st.write("No competitors mapped to this segment yet.")
                     
-                with st.expander(f"➕ Add Competitor to {seg.name}"):
+                with st.expander(f"➕ Add / Edit Competitor for {seg.name}"):
                     with st.form(f"add_comp_{ca.id}_seg_{seg.id}"):
                         comp_sel = st.selectbox("Competitor Company", options=list(org_opts.keys()))
                         rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
                         threat_sel = st.selectbox("Threat Level", options=THREAT_LEVELS)
                         notes_text = st.text_area("Competitive Notes")
-                        if st.form_submit_button("Add Competitor"):
+                        if st.form_submit_button("Save Competitor"):
                             if comp_sel:
                                 comp_id = org_opts[comp_sel].id
                                 add_company_to_segment(db, comp_id, seg.id, differentiation="Mapped via Competitive Landscape", is_primary=False)
                                 add_competitive_analysis_company(db, ca.id, comp_id, seg.id, rel_sel, threat_sel, None, notes_text)
                                 db.commit()
-                                st.success("Competitor added!")
+                                st.success("Competitor saved!")
                                 st.rerun()
                 st.divider()
-
-            # --- Overall Key Competitors ---
-            st.markdown("##### Overall Key Competitors")
-            global_comps = [c for c in ca.analysis_companies if c.market_segment_id is None]
-            if global_comps:
-                df_global = []
-                for comp in global_comps:
-                    df_global.append({
-                        "Competitor": comp.competitor_company.name if comp.competitor_company else "Unknown",
-                        "Notes": comp.competitive_notes
-                    })
-                st.dataframe(pd.DataFrame(df_global), hide_index=True, use_container_width=True)
-            
-            with st.expander("➕ Flag Overall Competitor"):
-                with st.form(f"add_global_comp_{ca.id}"):
-                    comp_sel = st.selectbox("Competitor Company", options=list(org_opts.keys()))
-                    notes_text = st.text_area("Overall Notes")
-                    if st.form_submit_button("Flag Competitor"):
-                        if comp_sel:
-                            comp_id = org_opts[comp_sel].id
-                            add_competitive_analysis_company(db, ca.id, comp_id, None, "direct_competitor", None, None, notes_text)
-                            db.commit()
-                            st.success("Competitor flagged!")
-                            st.rerun()
         else:
             with st.expander("➕ Start Competitive Analysis"):
                 with st.form(f"start_ca_{org.id}"):
