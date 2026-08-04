@@ -45,18 +45,18 @@ with get_db_context() as db:
         selected_market_name = st.selectbox("Select a Market", options=list(market_options.keys()))
         selected_market = market_options[selected_market_name]
         
-        st.subheader(f"Market: {selected_market.name}")
+        st.markdown(f"#### Market: {selected_market.name}")
         if selected_market.description:
             st.caption(selected_market.description)
             
         segments = get_market_segments(db, selected_market.id)
         
         # -------------------------------------------------------------
-        # #### Segments
+        # ##### Segments
         # -------------------------------------------------------------
-        st.markdown("#### Segments")
-        
         col_s1, col_s2 = st.columns([3, 1])
+        with col_s1:
+            st.markdown("##### Segments")
         with col_s2:
             with st.popover("➕ Add Segment"):
                 with st.form("new_segment_form_map"):
@@ -115,11 +115,11 @@ with get_db_context() as db:
             st.info("No segments in this market yet.")
 
         # -------------------------------------------------------------
-        # #### Companies
+        # ##### Companies
         # -------------------------------------------------------------
-        st.markdown("#### Companies")
-        
         col_c1, col_c2 = st.columns([3, 1])
+        with col_c1:
+            st.markdown("##### Companies")
         with col_c2:
             with st.popover("➕ Link Company to Segment"):
                 with st.form("link_company_map_form"):
@@ -156,10 +156,9 @@ with get_db_context() as db:
                 comp_map_data.append({
                     "_company_id": link.company_id,
                     "_segment_id": link.market_segment_id,
-                    "Company": comp_org.name,
-                    "Segment": seg_obj.name,
-                    "Differentiation": link.differentiation or "",
-                    "Primary Segment?": "⭐" if link.is_primary else ""
+                    "Company (Read Only)": comp_org.name,
+                    "Segment (Read Only)": seg_obj.name,
+                    "Differentiation": link.differentiation or ""
                 })
             
             df_comp_map = pd.DataFrame(comp_map_data)
@@ -171,10 +170,9 @@ with get_db_context() as db:
                 column_config={
                     "_company_id": None,
                     "_segment_id": None,
-                    "Company": st.column_config.TextColumn(disabled=True),
-                    "Segment": st.column_config.TextColumn(disabled=True),
-                    "Differentiation": st.column_config.TextColumn(disabled=False),
-                    "Primary Segment?": st.column_config.TextColumn(disabled=True)
+                    "Company (Read Only)": st.column_config.TextColumn(disabled=True),
+                    "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
+                    "Differentiation": st.column_config.TextColumn(disabled=False)
                 },
                 key=f"data_editor_map_comp_{selected_market.id}"
             )

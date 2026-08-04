@@ -320,7 +320,7 @@ def display_company_details(company_id):
             market = db.query(Market).get(m_id)
             if not market: continue
             
-            st.markdown(f"### Market: {market.name}")
+            st.markdown(f"#### Market: {market.name}")
             ca = db.query(CompetitiveAnalysis).filter_by(subject_company_id=org.id, market_id=m_id).first()
             if not ca:
                 ca = get_or_create_competitive_analysis(db, org.id, m_id, f"{org.name} {market.name} Landscape")
@@ -330,9 +330,23 @@ def display_company_details(company_id):
                 st.caption(ca.summary)
 
             # -------------------------------------------------------------
-            # #### Segments
+            # ##### Segments
             # -------------------------------------------------------------
-            st.markdown("#### Segments")
+            col_sh1, col_sh2 = st.columns([3, 1])
+            with col_sh1:
+                st.markdown("##### Segments")
+            with col_sh2:
+                with st.popover("➕ Add Segment"):
+                    with st.form(f"add_seg_market_{ca.id if ca else m_id}"):
+                        s_name = st.text_input("Segment Name")
+                        s_desc = st.text_area("Description")
+                        if st.form_submit_button("Create Segment"):
+                            if s_name:
+                                create_market_segment(db, m_id, s_name, s_desc)
+                                db.commit()
+                                st.success(f"Segment '{s_name}' created!")
+                                st.rerun()
+
             market_segments = get_market_segments(db, m_id)
             ca_segs_map = {cas.market_segment_id: cas for cas in ca.analysis_segments} if ca else {}
             my_seg_links_map = {link.market_segment_id: link for link in my_segs if link.market_segment_id}
@@ -348,9 +362,8 @@ def display_company_details(company_id):
                     
                     seg_df_data.append({
                         "_seg_id": seg_obj.id,
-                        "Segment": seg_obj.name,
-                        "Primary?": "⭐" if (link and link.is_primary) else "",
-                        "Differentiation / Info": link.differentiation if link else "",
+                        "Segment (Read Only)": seg_obj.name,
+                        "Differentiation / Info (Read Only)": link.differentiation if link else "",
                         "Threat Level": threat_val,
                         "Threat Notes": notes_val
                     })
@@ -363,9 +376,8 @@ def display_company_details(company_id):
                     use_container_width=True,
                     column_config={
                         "_seg_id": None,
-                        "Segment": st.column_config.TextColumn(disabled=True),
-                        "Primary?": st.column_config.TextColumn(disabled=True),
-                        "Differentiation / Info": st.column_config.TextColumn(disabled=True),
+                        "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
+                        "Differentiation / Info (Read Only)": st.column_config.TextColumn(disabled=True),
                         "Threat Level": st.column_config.SelectboxColumn(
                             options=THREAT_LEVELS,
                             required=True
@@ -389,9 +401,33 @@ def display_company_details(company_id):
                 st.info("No segments defined in this market yet.")
 
             # -------------------------------------------------------------
-            # #### Companies
+            # ##### Companies
             # -------------------------------------------------------------
-            st.markdown("#### Companies")
+            col_ch1, col_ch2 = st.columns([3, 1])
+            with col_ch1:
+                st.markdown("##### Companies")
+            with col_ch2:
+                with st.popover("➕ Add Competitor"):
+                    all_orgs = db.query(Organization).order_by(Organization.name).all()
+                    org_opts = {o.name: o.id for o in all_orgs if o.id != org.id}
+                    seg_opts = {s.name: s.id for s in market_segments}
+                    if seg_opts and org_opts:
+                        with st.form(f"add_comp_form_{ca.id if ca else m_id}"):
+                            comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
+                            seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
+                            rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
+                            notes_text = st.text_area("Competitive Notes")
+                            if st.form_submit_button("Add Competitor"):
+                                if comp_sel and seg_sel:
+                                    comp_id = org_opts[comp_sel]
+                                    s_id = seg_opts[seg_sel]
+                                    add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis", is_primary=False)
+                                    add_competitive_analysis_company(db, ca.id, comp_id, s_id, rel_sel, None, None, notes_text)
+                                    db.commit()
+                                    st.success("Competitor added!")
+                                    st.rerun()
+                    else:
+                        st.write("Ensure segments exist in this market.")
             
             all_m_seg_ids = [s.id for s in market_segments]
             m_company_links = db.query(MarketSegmentCompanyLink).filter(
@@ -436,9 +472,9 @@ def display_company_details(company_id):
                     comp_df_data.append({
                         "_comp_id": cid,
                         "_seg_id": cdata["seg_id"],
-                        "Company": cdata["name"],
-                        "Segments": ", ".join(cdata["segments"]),
-                        "Differentiation (Global)": " | ".join(cdata["differentiation"]),
+                        "Company (Read Only)": cdata["name"],
+                        "Segments (Read Only)": ", ".join(cdata["segments"]),
+                        "Differentiation (Read Only)": " | ".join(cdata["differentiation"]),
                         "Relationship": cdata["relationship"] if cdata["relationship"] in rel_display_options else rel_display_options[0],
                         "Notes": cdata["notes"]
                     })
@@ -452,9 +488,9 @@ def display_company_details(company_id):
                     column_config={
                         "_comp_id": None,
                         "_seg_id": None,
-                        "Company": st.column_config.TextColumn(disabled=True),
-                        "Segments": st.column_config.TextColumn(disabled=True),
-                        "Differentiation (Global)": st.column_config.TextColumn(disabled=True),
+                        "Company (Read Only)": st.column_config.TextColumn(disabled=True),
+                        "Segments (Read Only)": st.column_config.TextColumn(disabled=True),
+                        "Differentiation (Read Only)": st.column_config.TextColumn(disabled=True),
                         "Relationship": st.column_config.SelectboxColumn(
                             options=rel_display_options,
                             required=True
