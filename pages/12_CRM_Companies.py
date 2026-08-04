@@ -492,7 +492,7 @@ def display_company_details(company_id):
                                     if comp_sel and seg_sel:
                                         comp_id = org_opts[comp_sel]
                                         s_id = seg_opts[seg_sel]
-                                        add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis", is_primary=False)
+                                        add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis")
                                         add_competitive_analysis_company(db, ca.id, comp_id, s_id, rel_sel, None, None, notes_text)
                                         db.commit()
                                         st.success("Competitor added!")
@@ -515,7 +515,7 @@ def display_company_details(company_id):
                                 if comp_sel and seg_sel:
                                     comp_id = org_opts[comp_sel]
                                     s_id = seg_opts[seg_sel]
-                                    add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis", is_primary=False)
+                                    add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis")
                                     add_competitive_analysis_company(db, ca.id, comp_id, s_id, rel_sel, None, None, notes_text)
                                     db.commit()
                                     st.success("Competitor added!")

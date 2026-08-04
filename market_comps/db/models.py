@@ -681,7 +681,6 @@ class MarketSegmentCompanyLink(Base, TimestampMixin):
     company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     market_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=False)
     
-    is_primary = Column(Boolean, default=False)
     differentiation = Column(String)
     notes = Column(String, nullable=True)
     confidence = Column(Float, nullable=True)
@@ -699,7 +698,7 @@ class CompetitiveAnalysis(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     subject_company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     market_id = Column(Integer, ForeignKey('markets.id'), nullable=False)
-    title = Column(String, nullable=False)
+    title = Column(String, nullable=True)
     summary = Column(String)
     status = Column(String, default="draft") # draft, reviewed, published, archived
 
@@ -717,8 +716,6 @@ class CompetitiveAnalysisSegment(Base, TimestampMixin):
     market_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=False)
     
     threat_level = Column(String, nullable=True) # enum-like: High, Medium/High, Medium, Medium/Low, Low, N/A
-    threat_level_description = Column(String, nullable=True)
-    competitive_threat = Column(String)
     analysis_notes = Column(String, nullable=True)
     sort_order = Column(Integer, nullable=True)
 
@@ -734,9 +731,7 @@ class CompetitiveAnalysisCompany(Base, TimestampMixin):
     competitor_company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     market_segment_id = Column(Integer, ForeignKey('market_segments.id'), nullable=True)
     
-    relationship_type = Column(String, nullable=False) # direct_competitor, indirect_competitor, substitute, incumbent, adjacent, potential_entrant, partner_competitor
-    threat_level = Column(String, nullable=True) # enum-like
-    threat_level_description = Column(String, nullable=True)
+    relationship_type = Column(String, nullable=False, default="direct_competitor") # direct_competitor, indirect_competitor, substitute, incumbent, adjacent, potential_entrant, partner_competitor
     competitive_notes = Column(String)
     included = Column(Boolean, default=True)
     sort_order = Column(Integer, nullable=True)

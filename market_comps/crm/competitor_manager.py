@@ -65,7 +65,6 @@ def add_company_to_segment(
     company_id: int,
     market_segment_id: int,
     differentiation: str,
-    is_primary: bool = False,
     notes: Optional[str] = None
 ) -> MarketSegmentCompanyLink:
     # Ensure it's not a duplicate
@@ -76,7 +75,6 @@ def add_company_to_segment(
     
     if existing:
         existing.differentiation = differentiation
-        existing.is_primary = is_primary
         existing.notes = notes
         db.flush()
         return existing
@@ -84,7 +82,6 @@ def add_company_to_segment(
     link = MarketSegmentCompanyLink(
         company_id=company_id,
         market_segment_id=market_segment_id,
-        is_primary=is_primary,
         differentiation=differentiation,
         notes=notes
     )
