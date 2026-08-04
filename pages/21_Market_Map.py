@@ -54,25 +54,7 @@ with get_db_context() as db:
         # -------------------------------------------------------------
         # ##### Segments
         # -------------------------------------------------------------
-        col_s1, col_s2 = st.columns([3, 1])
-        with col_s1:
-            st.markdown("##### Segments")
-        with col_s2:
-            with st.popover("➕ Add Segment"):
-                with st.form("new_segment_form_map"):
-                    s_name = st.text_input("Segment Name")
-                    s_desc = st.text_area("Description")
-                    s_type = st.text_input("Segment Type (Optional)", placeholder="e.g. Technology, Competitor class")
-                    s_sort = st.number_input("Sort Order", value=0, step=10)
-                    if st.form_submit_button("Create Segment"):
-                        if s_name:
-                            seg = create_market_segment(db, selected_market.id, s_name, s_desc, s_type)
-                            seg.sort_order = s_sort
-                            db.commit()
-                            st.success(f"Segment '{s_name}' added!")
-                            st.rerun()
-                        else:
-                            st.error("Segment name is required.")
+        st.markdown("##### Segments")
 
         if segments:
             seg_map_data = []
@@ -100,45 +82,55 @@ with get_db_context() as db:
                 key=f"data_editor_map_seg_{selected_market.id}"
             )
             
-            if st.button("💾 Save Segment Edits", key=f"save_map_seg_btn_{selected_market.id}"):
-                for _, row in edited_seg_map_df.iterrows():
-                    s_obj = db.query(MarketSegment).get(int(row["_seg_id"]))
-                    if s_obj:
-                        s_obj.name = row["Segment Name"]
-                        s_obj.description = row["Description"]
-                        s_obj.segment_type = row["Segment Type"]
-                        s_obj.sort_order = int(row["Sort Order"])
-                db.commit()
-                st.success("Segment edits saved!")
-                st.rerun()
+            col_sb1, col_sb2 = st.columns([1, 1])
+            with col_sb1:
+                if st.button("💾 Save Segment Edits", key=f"save_map_seg_btn_{selected_market.id}"):
+                    for _, row in edited_seg_map_df.iterrows():
+                        s_obj = db.query(MarketSegment).get(int(row["_seg_id"]))
+                        if s_obj:
+                            s_obj.name = row["Segment Name"]
+                            s_obj.description = row["Description"]
+                            s_obj.segment_type = row["Segment Type"]
+                            s_obj.sort_order = int(row["Sort Order"])
+                    db.commit()
+                    st.success("Segment edits saved!")
+                    st.rerun()
+            with col_sb2:
+                with st.popover("➕ Add Segment"):
+                    with st.form("new_segment_form_map"):
+                        s_name = st.text_input("Segment Name")
+                        s_desc = st.text_area("Description")
+                        s_type = st.text_input("Segment Type (Optional)", placeholder="e.g. Technology, Competitor class")
+                        s_sort = st.number_input("Sort Order", value=0, step=10)
+                        if st.form_submit_button("Create Segment"):
+                            if s_name:
+                                seg = create_market_segment(db, selected_market.id, s_name, s_desc, s_type)
+                                seg.sort_order = s_sort
+                                db.commit()
+                                st.success(f"Segment '{s_name}' added!")
+                                st.rerun()
+                            else:
+                                st.error("Segment name is required.")
         else:
             st.info("No segments in this market yet.")
+            with st.popover("➕ Add Segment"):
+                with st.form("new_segment_form_map_empty"):
+                    s_name = st.text_input("Segment Name")
+                    s_desc = st.text_area("Description")
+                    s_type = st.text_input("Segment Type (Optional)", placeholder="e.g. Technology, Competitor class")
+                    s_sort = st.number_input("Sort Order", value=0, step=10)
+                    if st.form_submit_button("Create Segment"):
+                        if s_name:
+                            seg = create_market_segment(db, selected_market.id, s_name, s_desc, s_type)
+                            seg.sort_order = s_sort
+                            db.commit()
+                            st.success(f"Segment '{s_name}' added!")
+                            st.rerun()
 
         # -------------------------------------------------------------
         # ##### Companies
         # -------------------------------------------------------------
-        col_c1, col_c2 = st.columns([3, 1])
-        with col_c1:
-            st.markdown("##### Companies")
-        with col_c2:
-            with st.popover("➕ Link Company to Segment"):
-                with st.form("link_company_map_form"):
-                    all_orgs = db.query(Organization).order_by(Organization.name).all()
-                    org_opts = {o.name: o.id for o in all_orgs}
-                    seg_opts = {s.name: s.id for s in segments}
-                    if org_opts and seg_opts:
-                        comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
-                        seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
-                        diff_text = st.text_area("Differentiation", placeholder="How does this company differentiate in this segment?")
-                        if st.form_submit_button("Link Company"):
-                            if comp_sel and seg_sel:
-                                from market_comps.crm.competitor_manager import add_company_to_segment
-                                add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
-                                db.commit()
-                                st.success("Company linked to segment!")
-                                st.rerun()
-                    else:
-                        st.write("Ensure companies and segments exist.")
+        st.markdown("##### Companies")
 
         segment_links = (
             db.query(MarketSegmentCompanyLink)
@@ -177,16 +169,53 @@ with get_db_context() as db:
                 key=f"data_editor_map_comp_{selected_market.id}"
             )
             
-            if st.button("💾 Save Company Differentiation Edits", key=f"save_map_comp_btn_{selected_market.id}"):
-                for _, row in edited_comp_map_df.iterrows():
-                    link_obj = db.query(MarketSegmentCompanyLink).filter_by(
-                        company_id=int(row["_company_id"]),
-                        market_segment_id=int(row["_segment_id"])
-                    ).first()
-                    if link_obj:
-                        link_obj.differentiation = row["Differentiation"]
-                db.commit()
-                st.success("Company differentiation edits saved!")
-                st.rerun()
+            col_cb1, col_cb2 = st.columns([1, 1])
+            with col_cb1:
+                if st.button("💾 Save Company Differentiation Edits", key=f"save_map_comp_btn_{selected_market.id}"):
+                    for _, row in edited_comp_map_df.iterrows():
+                        link_obj = db.query(MarketSegmentCompanyLink).filter_by(
+                            company_id=int(row["_company_id"]),
+                            market_segment_id=int(row["_segment_id"])
+                        ).first()
+                        if link_obj:
+                            link_obj.differentiation = row["Differentiation"]
+                    db.commit()
+                    st.success("Company differentiation edits saved!")
+                    st.rerun()
+            with col_cb2:
+                with st.popover("➕ Link Company to Segment"):
+                    with st.form("link_company_map_form"):
+                        all_orgs = db.query(Organization).order_by(Organization.name).all()
+                        org_opts = {o.name: o.id for o in all_orgs}
+                        seg_opts = {s.name: s.id for s in segments}
+                        if org_opts and seg_opts:
+                            comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
+                            seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
+                            diff_text = st.text_area("Differentiation", placeholder="How does this company differentiate in this segment?")
+                            if st.form_submit_button("Link Company"):
+                                if comp_sel and seg_sel:
+                                    from market_comps.crm.competitor_manager import add_company_to_segment
+                                    add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
+                                    db.commit()
+                                    st.success("Company linked to segment!")
+                                    st.rerun()
+                        else:
+                            st.write("Ensure companies and segments exist.")
         else:
             st.info("No companies linked to segments in this market yet.")
+            with st.popover("➕ Link Company to Segment"):
+                with st.form("link_company_map_form_empty"):
+                    all_orgs = db.query(Organization).order_by(Organization.name).all()
+                    org_opts = {o.name: o.id for o in all_orgs}
+                    seg_opts = {s.name: s.id for s in segments}
+                    if org_opts and seg_opts:
+                        comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
+                        seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
+                        diff_text = st.text_area("Differentiation", placeholder="How does this company differentiate in this segment?")
+                        if st.form_submit_button("Link Company"):
+                            if comp_sel and seg_sel:
+                                from market_comps.crm.competitor_manager import add_company_to_segment
+                                add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
+                                db.commit()
+                                st.success("Company linked to segment!")
+                                st.rerun()

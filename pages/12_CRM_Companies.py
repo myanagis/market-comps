@@ -279,36 +279,16 @@ def display_company_details(company_id):
 
         all_markets = get_all_markets(db)
 
-        # Global Action to Link to a Market or Start Competitive Analysis
-        col_m1, col_m2 = st.columns([1, 1])
-        with col_m1:
-            with st.expander("➕ Link Company to Market Segment"):
-                with st.form(f"link_seg_{org.id}"):
-                    m_opts = {m.name: m for m in all_markets}
-                    m_sel = st.selectbox("Market", options=list(m_opts.keys()))
-                    if m_sel:
-                        segs = get_market_segments(db, m_opts[m_sel].id)
-                        s_opts = {s.name: s for s in segs}
-                        s_sel = st.selectbox("Segment", options=list(s_opts.keys()))
-                        diff_text = st.text_area("Differentiation", placeholder="How does this company differentiate in this segment?")
-                        is_prim = st.checkbox("Is Primary Segment?", value=True)
-                        if st.form_submit_button("Link Segment"):
-                            if s_sel and diff_text:
-                                add_company_to_segment(db, org.id, s_opts[s_sel].id, diff_text, is_prim)
-                                db.commit()
-                                st.success("Segment linked!")
-                                st.rerun()
-                            else:
-                                st.error("Differentiation text is required.")
-        with col_m2:
-            with st.expander("➕ Add Market Analysis"):
+        # Global Action to Add Market Analysis if needed
+        unlinked_markets = [m for m in all_markets if m.id not in ca_market_ids]
+        if unlinked_markets:
+            with st.popover("➕ Add Market Analysis"):
                 with st.form(f"start_ca_{org.id}"):
-                    m_opts = {m.name: m for m in all_markets if m.id not in ca_market_ids}
+                    m_opts = {m.name: m for m in unlinked_markets}
                     m_sel = st.selectbox("Select Market", options=list(m_opts.keys()))
-                    ca_title = st.text_input("Title", value=f"{org.name} Analysis")
                     if st.form_submit_button("Create Analysis"):
                         if m_sel:
-                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, ca_title)
+                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, f"{org.name} {m_sel} Landscape")
                             db.commit()
                             st.success("Analysis created!")
                             st.rerun()
@@ -332,21 +312,7 @@ def display_company_details(company_id):
             # -------------------------------------------------------------
             # ##### Segments
             # -------------------------------------------------------------
-            col_sh1, col_sh2 = st.columns([3, 1])
-            with col_sh1:
-                st.markdown("##### Segments")
-            with col_sh2:
-                with st.popover("➕ Add Segment"):
-                    with st.form(f"add_seg_market_{ca.id if ca else m_id}"):
-                        s_name = st.text_input("Segment Name")
-                        s_desc = st.text_area("Description")
-                        if st.form_submit_button("Create Segment"):
-                            if s_name:
-                                create_market_segment(db, m_id, s_name, s_desc)
-                                db.commit()
-                                st.success(f"Segment '{s_name}' created!")
-                                st.rerun()
-
+            st.markdown("##### Segments")
             market_segments = get_market_segments(db, m_id)
             ca_segs_map = {cas.market_segment_id: cas for cas in ca.analysis_segments} if ca else {}
             my_seg_links_map = {link.market_segment_id: link for link in my_segs if link.market_segment_id}
@@ -387,47 +353,46 @@ def display_company_details(company_id):
                     key=f"data_editor_seg_{ca.id if ca else m_id}"
                 )
                 
-                if st.button("💾 Save Segment Edits", key=f"save_seg_btn_{ca.id if ca else m_id}"):
-                    from market_comps.crm.competitor_manager import add_competitive_analysis_segment
-                    for _, row in edited_seg_df.iterrows():
-                        s_id = int(row["_seg_id"])
-                        t_val = row["Threat Level"]
-                        n_val = row["Threat Notes"]
-                        add_competitive_analysis_segment(db, ca.id, s_id, t_val, n_val)
-                    db.commit()
-                    st.success("Segment edits saved!")
-                    st.rerun()
+                col_sb1, col_sb2 = st.columns([1, 1])
+                with col_sb1:
+                    if st.button("💾 Save Segment Edits", key=f"save_seg_btn_{ca.id if ca else m_id}"):
+                        from market_comps.crm.competitor_manager import add_competitive_analysis_segment
+                        for _, row in edited_seg_df.iterrows():
+                            s_id = int(row["_seg_id"])
+                            t_val = row["Threat Level"]
+                            n_val = row["Threat Notes"]
+                            add_competitive_analysis_segment(db, ca.id, s_id, t_val, n_val)
+                        db.commit()
+                        st.success("Segment edits saved!")
+                        st.rerun()
+                with col_sb2:
+                    with st.popover("➕ Add Segment to Market"):
+                        with st.form(f"add_seg_market_{ca.id if ca else m_id}"):
+                            s_name = st.text_input("Segment Name")
+                            s_desc = st.text_area("Description")
+                            if st.form_submit_button("Create Segment"):
+                                if s_name:
+                                    create_market_segment(db, m_id, s_name, s_desc)
+                                    db.commit()
+                                    st.success(f"Segment '{s_name}' created!")
+                                    st.rerun()
             else:
                 st.info("No segments defined in this market yet.")
+                with st.popover("➕ Add Segment to Market"):
+                    with st.form(f"add_seg_market_empty_{ca.id if ca else m_id}"):
+                        s_name = st.text_input("Segment Name")
+                        s_desc = st.text_area("Description")
+                        if st.form_submit_button("Create Segment"):
+                            if s_name:
+                                create_market_segment(db, m_id, s_name, s_desc)
+                                db.commit()
+                                st.success(f"Segment '{s_name}' created!")
+                                st.rerun()
 
             # -------------------------------------------------------------
             # ##### Companies
             # -------------------------------------------------------------
-            col_ch1, col_ch2 = st.columns([3, 1])
-            with col_ch1:
-                st.markdown("##### Companies")
-            with col_ch2:
-                with st.popover("➕ Add Competitor"):
-                    all_orgs = db.query(Organization).order_by(Organization.name).all()
-                    org_opts = {o.name: o.id for o in all_orgs if o.id != org.id}
-                    seg_opts = {s.name: s.id for s in market_segments}
-                    if seg_opts and org_opts:
-                        with st.form(f"add_comp_form_{ca.id if ca else m_id}"):
-                            comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
-                            seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
-                            rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
-                            notes_text = st.text_area("Competitive Notes")
-                            if st.form_submit_button("Add Competitor"):
-                                if comp_sel and seg_sel:
-                                    comp_id = org_opts[comp_sel]
-                                    s_id = seg_opts[seg_sel]
-                                    add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis", is_primary=False)
-                                    add_competitive_analysis_company(db, ca.id, comp_id, s_id, rel_sel, None, None, notes_text)
-                                    db.commit()
-                                    st.success("Competitor added!")
-                                    st.rerun()
-                    else:
-                        st.write("Ensure segments exist in this market.")
+            st.markdown("##### Companies")
             
             all_m_seg_ids = [s.id for s in market_segments]
             m_company_links = db.query(MarketSegmentCompanyLink).filter(
@@ -500,18 +465,61 @@ def display_company_details(company_id):
                     key=f"data_editor_comp_{ca.id if ca else m_id}"
                 )
                 
-                if st.button("💾 Save Competitor Edits", key=f"save_comp_btn_{ca.id if ca else m_id}"):
-                    for _, row in edited_comp_df.iterrows():
-                        c_id = int(row["_comp_id"])
-                        s_id = int(row["_seg_id"]) if pd.notnull(row["_seg_id"]) else None
-                        rel_str = rel_map_reverse.get(row["Relationship"], "direct_competitor")
-                        n_str = row["Notes"]
-                        add_competitive_analysis_company(db, ca.id, c_id, s_id, rel_str, None, None, n_str)
-                    db.commit()
-                    st.success("Competitor edits saved!")
-                    st.rerun()
+                col_cb1, col_cb2 = st.columns([1, 1])
+                with col_cb1:
+                    if st.button("💾 Save Competitor Edits", key=f"save_comp_btn_{ca.id if ca else m_id}"):
+                        for _, row in edited_comp_df.iterrows():
+                            c_id = int(row["_comp_id"])
+                            s_id = int(row["_seg_id"]) if pd.notnull(row["_seg_id"]) else None
+                            rel_str = rel_map_reverse.get(row["Relationship"], "direct_competitor")
+                            n_str = row["Notes"]
+                            add_competitive_analysis_company(db, ca.id, c_id, s_id, rel_str, None, None, n_str)
+                        db.commit()
+                        st.success("Competitor edits saved!")
+                        st.rerun()
+                with col_cb2:
+                    with st.popover("➕ Add Competitor"):
+                        all_orgs = db.query(Organization).order_by(Organization.name).all()
+                        org_opts = {o.name: o.id for o in all_orgs if o.id != org.id}
+                        seg_opts = {s.name: s.id for s in market_segments}
+                        if seg_opts and org_opts:
+                            with st.form(f"add_comp_form_{ca.id if ca else m_id}"):
+                                comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
+                                seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
+                                rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
+                                notes_text = st.text_area("Competitive Notes")
+                                if st.form_submit_button("Add Competitor"):
+                                    if comp_sel and seg_sel:
+                                        comp_id = org_opts[comp_sel]
+                                        s_id = seg_opts[seg_sel]
+                                        add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis", is_primary=False)
+                                        add_competitive_analysis_company(db, ca.id, comp_id, s_id, rel_sel, None, None, notes_text)
+                                        db.commit()
+                                        st.success("Competitor added!")
+                                        st.rerun()
+                        else:
+                            st.write("Ensure segments exist in this market.")
             else:
                 st.info("No competitor companies mapped to this market yet.")
+                with st.popover("➕ Add Competitor"):
+                    all_orgs = db.query(Organization).order_by(Organization.name).all()
+                    org_opts = {o.name: o.id for o in all_orgs if o.id != org.id}
+                    seg_opts = {s.name: s.id for s in market_segments}
+                    if seg_opts and org_opts:
+                        with st.form(f"add_comp_form_empty_{ca.id if ca else m_id}"):
+                            comp_sel = st.selectbox("Company", options=list(org_opts.keys()))
+                            seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
+                            rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
+                            notes_text = st.text_area("Competitive Notes")
+                            if st.form_submit_button("Add Competitor"):
+                                if comp_sel and seg_sel:
+                                    comp_id = org_opts[comp_sel]
+                                    s_id = seg_opts[seg_sel]
+                                    add_company_to_segment(db, comp_id, s_id, differentiation="Mapped via Market Analysis", is_primary=False)
+                                    add_competitive_analysis_company(db, ca.id, comp_id, s_id, rel_sel, None, None, notes_text)
+                                    db.commit()
+                                    st.success("Competitor added!")
+                                    st.rerun()
 
             st.divider()
 
