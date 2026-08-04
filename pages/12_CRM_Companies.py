@@ -335,13 +335,21 @@ def display_company_details(company_id):
                     comp_sel = st.selectbox("Competitor Company", options=list(org_opts.keys()))
                     rel_sel = st.selectbox("Relationship Type", options=RELATIONSHIP_TYPES, format_func=lambda x: x.replace("_", " ").title())
                     threat_sel = st.selectbox("Threat Level", options=THREAT_LEVELS)
+                    
+                    market_segments = get_market_segments(db, ca.market_id)
+                    seg_opts = {s.name: s.id for s in market_segments}
+                    selected_seg_names = st.multiselect("Also map to Segments (Optional)", options=list(seg_opts.keys()))
+                    
                     notes_text = st.text_area("Competitive Notes")
                     
                     if st.form_submit_button("Add Competitor"):
                         if comp_sel:
+                            comp_id = org_opts[comp_sel].id
                             add_competitive_analysis_company(
-                                db, ca.id, org_opts[comp_sel].id, rel_sel, threat_sel, None, notes_text
+                                db, ca.id, comp_id, rel_sel, threat_sel, None, notes_text
                             )
+                            for seg_name in selected_seg_names:
+                                add_company_to_segment(db, comp_id, seg_opts[seg_name], differentiation="Mapped via Competitive Landscape", is_primary=False)
                             db.commit()
                             st.success("Competitor added!")
                             st.rerun()
