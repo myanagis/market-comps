@@ -525,7 +525,10 @@ def display_company_details(company_id):
                         st.info(summary_text)
                     
                     for quote in d.get("evidenced_data", []):
-                        st.markdown(f"- \"{quote}\"")
+                        if isinstance(quote, dict):
+                            st.markdown(f"- \"{quote.get('quote')}\" (Source: {quote.get('source_url')})")
+                        else:
+                            st.markdown(f"- \"{quote}\"")
         elif latest_report and latest_report.status == "FAILED":
             st.error(f"Last augmentation failed: {latest_report.error_message}")
 
