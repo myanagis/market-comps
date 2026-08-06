@@ -543,9 +543,15 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("💸 Financing Rounds")
         if org.financing_rounds:
-            rounds_sorted = sorted(org.financing_rounds, key=lambda x: x.created_at, reverse=True)
+            from datetime import datetime as dt_cls
+            def get_rnd_sort_key(r):
+                dates = [inv.reported_at for inv in r.investors if inv.reported_at]
+                return max(dates) if dates else (r.created_at or dt_cls.min)
+            rounds_sorted = sorted(org.financing_rounds, key=get_rnd_sort_key, reverse=True)
             for rnd in rounds_sorted:
-                with st.expander(f"💰 {rnd.round_name or 'Unknown Round'} - {rnd.status.upper()}"):
+                dates = [inv.reported_at for inv in rnd.investors if inv.reported_at]
+                date_str = f" ({max(dates).strftime('%b %Y')})" if dates else ""
+                with st.expander(f"💰 {rnd.round_name or 'Unknown Round'}{date_str} - {rnd.status.upper()}"):
                     fact_amt = next((f.value_text or str(f.value_numeric) for f in rnd.facts if f.fact_type == 'amount_raised'), None)
                     if fact_amt:
                         st.write(f"**Amount Raised:** {fact_amt}")
@@ -555,10 +561,12 @@ def display_company_details(company_id):
                         inv_data = []
                         for inv in rnd.investors:
                             name = inv.investor.name if inv.investor else "Unknown"
+                            inv_date_lbl = inv.reported_at.strftime("%Y-%m-%d") if inv.reported_at else "Unknown Date"
                             inv_data.append({
                                 "Investor": name,
                                 "Role": inv.role,
                                 "Status": inv.status,
+                                "Date": inv_date_lbl,
                                 "Notes": inv.notes
                             })
                         st.dataframe(inv_data, hide_index=True, use_container_width=True)
@@ -642,6 +650,17 @@ def display_company_details(company_id):
                 import time
                 time.sleep(1)
                 st.rerun()
+
+        with st.expander("ℹ️ How Search & Source Filtering Works"):
+            st.markdown("""
+            **Exa Search Protocol & Guardrails:**
+            1. **Query Generation**: LLM constructs 4 queries targeting Overview, Team, Traction, and Funding for `{org.name}`.
+            2. **Exa Retrieval**: Fetches top web page contents.
+            3. **Quality & Relevance Checks**:
+               - ⚠️ **Junk / Error Filter**: Drops pages with <150 chars, 404s, or Cloudflare/Captcha blocks from LLM prompt inputs.
+               - 🛑 **Entity Relevance Filter**: Verifies that page text/URL matches target company name or domain.
+            4. **Data Auditability**: Flagged documents are saved with error badges so you maintain 100% data provenance without polluting AI extractions.
+            """)
                 
         st.markdown("**Manual URL Ingestion**")
         col_man1, col_man2 = st.columns([3, 1])
@@ -821,9 +840,19 @@ def display_company_details(company_id):
                 
                 source_suffix = f" (via {doc.source_name})" if doc.source_name else ""
                 
+                status_val = getattr(doc, "extraction_status", "SUCCESS") or "SUCCESS"
+                if status_val == "FAILED_JUNK":
+                    badge_str = " ⚠️ `[Errored/Blocked Page]`"
+                elif status_val == "FAILED_RELEVANCE":
+                    badge_str = " 🛑 `[Name Mismatch]`"
+                else:
+                    badge_str = " 🟢"
+                    
+                err_detail = f" — *{doc.extraction_error}*" if getattr(doc, "extraction_error", None) else ""
+                
                 col_info, col_act1, col_act2 = st.columns([5, 1, 1])
                 with col_info:
-                    st.markdown(f"- **{doc.document_type}**: {url_display}{source_suffix} ({date_display})")
+                    st.markdown(f"- **{doc.document_type}**{badge_str}: {url_display}{source_suffix} ({date_display}){err_detail}")
                 with col_act1:
                     if st.button("📄 Details", key=f"view_doc_{doc.id}"):
                         view_source_details(doc.id)

@@ -114,54 +114,53 @@ def fetch_exa_results(queries: List[str], company_name: str = "", company_domain
                     
                 raw_text = (item.get("text") or "").strip()
                 title = (item.get("title") or "").strip()
+                text_lower = raw_text[:2000].lower()
+                
+                status = "SUCCESS"
+                err_msg = None
                 
                 # --- GUARDRAIL 1: Quality & Error Page Filter ---
                 if len(raw_text) < 150:
-                    logger.info(f"Skipping short/empty doc ({len(raw_text)} chars): {item_url}")
-                    continue
-                    
-                text_lower = raw_text[:2000].lower()
-                if any(sig in text_lower for sig in JUNK_TEXT_SIGNATURES):
-                    logger.info(f"Skipping junk/error page: {item_url}")
-                    continue
-                
-                # --- GUARDRAIL 2: Entity Relevance Filter ---
-                try:
-                    url_parsed = urlparse(item_url)
-                    netloc = url_parsed.netloc.lower()
-                except Exception:
-                    netloc = item_url.lower()
-                    url_parsed = None
-                
-                is_relevant = False
-                if domain_clean and domain_clean in netloc:
-                    is_relevant = True
+                    status = "FAILED_JUNK"
+                    err_msg = f"Insufficient content ({len(raw_text)} chars)"
+                elif any(sig in text_lower for sig in JUNK_TEXT_SIGNATURES):
+                    status = "FAILED_JUNK"
+                    err_msg = "Blocked, login, or 404 error page detected"
                 else:
-                    path_str = url_parsed.path.lower() if url_parsed else ""
-                    match_in_url = any(t in netloc or t in path_str for t in comp_tokens)
-                    match_in_title = any(t in title.lower() for t in comp_tokens)
-                    match_in_text = any(t in text_lower for t in comp_tokens)
+                    # --- GUARDRAIL 2: Entity Relevance Filter ---
+                    try:
+                        url_parsed = urlparse(item_url)
+                        netloc = url_parsed.netloc.lower()
+                    except Exception:
+                        netloc = item_url.lower()
+                        url_parsed = None
                     
-                    if comp_tokens:
-                        is_relevant = match_in_url or match_in_title or match_in_text
-                    else:
+                    if domain_clean and domain_clean in netloc:
                         is_relevant = True
+                    else:
+                        path_str = url_parsed.path.lower() if url_parsed else ""
+                        match_in_url = any(t in netloc or t in path_str for t in comp_tokens)
+                        match_in_title = any(t in title.lower() for t in comp_tokens)
+                        match_in_text = any(t in text_lower for t in comp_tokens)
+                        is_relevant = (match_in_url or match_in_title or match_in_text) if comp_tokens else True
                         
-                if not is_relevant:
-                    logger.info(f"Skipping irrelevant search result for '{company_name}': {item_url}")
-                    continue
+                    if not is_relevant:
+                        status = "FAILED_RELEVANCE"
+                        err_msg = f"Did not match target company name ({company_name})"
                     
                 seen_urls.add(item_url.lower())
                 all_results.append({
                     "title": title or "Web Page",
                     "url": item_url,
                     "text": raw_text,
-                    "date": item.get("publishedDate", "")
+                    "date": item.get("publishedDate", ""),
+                    "extraction_status": status,
+                    "extraction_error": err_msg
                 })
         except Exception as e:
             logger.error(f"Exa search failed for query '{query}': {e}")
             
-    return all_results[:8]
+    return all_results[:12]
 
 def process_and_score_evidence(documents: List[Dict]) -> Dict:
     """Process documents into the required schema and score them."""
@@ -461,12 +460,16 @@ def extract_investments(documents: List[Dict], target_company_name: str = "") ->
     Extract any specific funding rounds or investments mentioned in the text that were received by {target_company_name if target_company_name else 'the target company'} (or its direct subsidiaries).
     DO NOT extract investments made by or into other unrelated companies, investors, or competitors mentioned in the text!
     
+    CRITICAL DATE INSTRUCTION:
+    Every investment round MUST have an estimated or explicit date (`investment_date` formatted as YYYY-MM-DD or YYYY-01-01).
+    If exact day is not given, estimate the year and month from context or document publication date.
+    
     Return a JSON object with an 'investments' array containing objects with:
     - investor_name: The name of the firm or person who invested
     - round_type: e.g. "Series A", "Seed", "Venture Round"
     - total_round_amount: The total amount raised in the round (e.g. "$10M")
     - firm_investment_amount: The specific amount this investor contributed, if mentioned (e.g. "$2M")
-    - investment_date: When the round happened (YYYY-MM-DD or similar)
+    - investment_date: When the round happened (YYYY-MM-DD or YYYY-01-01)
     - is_lead: boolean, true if this investor lead the round
     - source_doc_index: the integer index of the document (0-based) this was found in
     
@@ -656,6 +659,8 @@ def run_augmentation_pipeline(org_id: int):
                 llm_model_used=settings.default_model,
                 source_name=d["url"].split('/')[2] if '//' in d["url"] else d["url"][:255],
                 document_date=d["date"] if d["date"] else None,
+                extraction_status=d.get("extraction_status", "SUCCESS"),
+                extraction_error=d.get("extraction_error"),
                 content_hash=content_hash
             )
             db.add(src_doc)
@@ -672,8 +677,13 @@ def run_augmentation_pipeline(org_id: int):
             
         db.commit()
         
+        # Filter strictly valid docs for LLM synthesis
+        valid_docs = [d for d in docs_data if d.get("extraction_status") == "SUCCESS"]
+        if not valid_docs:
+            valid_docs = docs_data # Fallback if all flagged
+        
         # 3 & 4. Process and Score
-        extracted_data, u_score = process_and_score_evidence(docs_data)
+        extracted_data, u_score = process_and_score_evidence(valid_docs)
         add_usage(u_score)
         
         # Extract scoring into separate field for ease of use
@@ -692,7 +702,7 @@ def run_augmentation_pipeline(org_id: int):
         report.status = "SUCCESS"
         
         # 5. Extract and Upsert Basics
-        basics, u_basics = extract_company_basics(docs_data)
+        basics, u_basics = extract_company_basics(valid_docs)
         add_usage(u_basics)
         if basics.get("website"): org.website_url = basics["website"]
         if basics.get("description_short"): org.description = basics["description_short"]
@@ -716,7 +726,7 @@ def run_augmentation_pipeline(org_id: int):
         db.flush()
 
         # 6. Extract and Upsert Entities (Founders / Team)
-        people, u_people = extract_entities(docs_data, target_company_name=org.name)
+        people, u_people = extract_entities(valid_docs, target_company_name=org.name)
         add_usage(u_people)
         for p in people:
             first = p.get("first_name")
@@ -779,7 +789,7 @@ def run_augmentation_pipeline(org_id: int):
                 role.title = "Founder & " + (role.title or "Executive")
         
         # 7. Extract and Upsert Investments
-        investments_data, u_inv = extract_investments(docs_data, target_company_name=org.name)
+        investments_data, u_inv = extract_investments(valid_docs, target_company_name=org.name)
         add_usage(u_inv)
         for inv in investments_data:
             investor_name = inv.get("investor_name")
@@ -848,7 +858,7 @@ def run_augmentation_pipeline(org_id: int):
 
         # 8. Extract and Upsert Metrics
         from market_comps.db.models import MetricType, MetricObservation, ObservationSource
-        metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
+        metrics_data, u_met = extract_metrics(valid_docs, target_company_name=org.name)
         add_usage(u_met)
         
         # Load all metric types

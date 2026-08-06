@@ -50,6 +50,22 @@ Different AI models have different knowledge cutoffs, training biases, and reaso
 A final "summarizer" model then synthesizes all the responses, deduplicates the information, highlights where models agree or disagree, and ensures every claim is cited with the original source URL. This significantly reduces hallucinations and provides a much more robust answer than any single model could.
 </div>
 
+<div class="faq-q">How does the Web Search & Exa Ingestion Pipeline work?</div>
+<div class="faq-a">
+When you run <b>Web Profile Augmentation</b> on a company, the pipeline follows a 4-step automated search protocol:
+<br><br>
+1. <b>Query Generation</b>: An LLM generates 4 targeted search queries tailored to the company name, domain, and description (covering Overview, Team/Founders, News/Traction, and Funding Rounds).
+<br>
+2. <b>Exa Neural Search</b>: Queries are sent to Exa AI to fetch full-text web pages.
+<br>
+3. <b>Quality & Entity Relevance Guardrails</b>:
+   <ul>
+     <li><b>Junk / Error Filter</b>: Pages with &lt; 150 characters, 404 errors, Cloudflare checks, or login walls are flagged with an error status (⚠️ <i>Blocked/Errored Page</i>) and excluded from AI prompt synthesis.</li>
+     <li><b>Entity Relevance Filter</b>: Validates that returned pages actually mention the target company name or domain. Mismatched pages are tagged 🛑 <i>Name Mismatch</i>.</li>
+   </ul>
+4. <b>Structured Extraction & Provenance</b>: Only verified, high-quality documents are synthesized into metrics, team roles, and funding rounds. All documents (including flagged ones) remain visible in your Sources list for complete data auditability.
+</div>
+
 <div class="faq-q">Where does the financial data come from?</div>
 <div class="faq-a">
 When you use the <b>Public Comps</b> feature to fetch market data (like Market Cap, EV/Revenue, Gross Margin, etc.), that data is pulled in real-time from <b>Yahoo Finance</b> using the `yfinance` library. The LLMs are only used to <i>identify</i> the correct ticker symbols; the actual financial numbers are live market data, never hallucinated by an AI.

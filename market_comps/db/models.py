@@ -471,11 +471,13 @@ class SourceDocument(Base, TimestampMixin):
     source_identifier = Column(String) # external ID / checksum / docsend ID / etc.
     content_hash = Column(String, index=True)
     
-    # Newly added fields for CRM sources
+    # Newly added fields for CRM sources & pipeline status
     source_tier = Column(Integer) # 1-5
     publisher = Column(String)
     published_at = Column(DateTime)
     llm_model_used = Column(String)
+    extraction_status = Column(String, default="SUCCESS") # SUCCESS, FAILED_JUNK, FAILED_RELEVANCE, FAILED_FETCH
+    extraction_error = Column(String, nullable=True)
     
     deleted_at = Column(DateTime, nullable=True)
     deleted_by = Column(String, nullable=True)
