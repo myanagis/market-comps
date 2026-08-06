@@ -613,8 +613,11 @@ def display_company_details(company_id):
             if st.button("Augment via Web Search", key=f"btn_aug_{org.id}", use_container_width=True):
                 with st.spinner("Searching the web and extracting evidence..."):
                     from market_comps.ingestion.company_augmentation import run_augmentation_pipeline
-                    run_augmentation_pipeline(org.id)
-                st.success("Augmentation Complete! Please refresh if the page does not reload automatically.")
+                    try:
+                        run_augmentation_pipeline(org.id)
+                        st.success("Augmentation Complete! Reloading...")
+                    except Exception as e:
+                        st.error(f"Augmentation error: {e}")
                 import time
                 time.sleep(1)
                 st.rerun()

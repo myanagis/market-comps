@@ -71,13 +71,25 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
         f"{company_name} funding rounds investors amounts"
     ], LLMUsage()
 
-def fetch_exa_results(queries: List[str]) -> List[Dict]:
-    """Fetch results from Exa API."""
+from urllib.parse import urlparse
+
+JUNK_TEXT_SIGNATURES = [
+    "404 not found", "access denied", "cloudflare", "just a moment...",
+    "enable javascript", "403 forbidden", "security check", "sign in to linkedin",
+    "log in to continue", "cookies required", "page not found"
+]
+
+def fetch_exa_results(queries: List[str], company_name: str = "", company_domain: str = "") -> List[Dict]:
+    """Fetch results from Exa API with strict guardrails on relevance and document quality."""
     if not settings.exa_api_key:
         raise ValueError("EXA_API_KEY is not set.")
         
     all_results = []
     seen_urls = set()
+    
+    # Normalize company tokens for relevance check
+    comp_tokens = [t.lower() for t in company_name.replace("-", " ").replace(".", " ").split() if len(t) > 2] if company_name else []
+    domain_clean = company_domain.lower().replace("http://", "").replace("https://", "").replace("www.", "").split('/')[0] if company_domain else ""
     
     for query in queries:
         url = "https://api.exa.ai/search"
@@ -87,27 +99,69 @@ def fetch_exa_results(queries: List[str]) -> List[Dict]:
         }
         data = {
             "query": query,
-            "numResults": 3,
+            "numResults": 4,
             "contents": {"text": True}
         }
         try:
-            response = requests.post(url, json=data, headers=headers)
+            response = requests.post(url, json=data, headers=headers, timeout=15)
             response.raise_for_status()
             res_json = response.json()
             
             for item in res_json.get("results", []):
-                if item["url"] not in seen_urls:
-                    seen_urls.add(item["url"])
-                    all_results.append({
-                        "title": item.get("title", ""),
-                        "url": item.get("url", ""),
-                        "text": item.get("text", ""),
-                        "date": item.get("publishedDate", "")
-                    })
+                item_url = (item.get("url") or "").strip()
+                if not item_url or item_url.lower() in seen_urls:
+                    continue
+                    
+                raw_text = (item.get("text") or "").strip()
+                title = (item.get("title") or "").strip()
+                
+                # --- GUARDRAIL 1: Quality & Error Page Filter ---
+                if len(raw_text) < 150:
+                    logger.info(f"Skipping short/empty doc ({len(raw_text)} chars): {item_url}")
+                    continue
+                    
+                text_lower = raw_text[:2000].lower()
+                if any(sig in text_lower for sig in JUNK_TEXT_SIGNATURES):
+                    logger.info(f"Skipping junk/error page: {item_url}")
+                    continue
+                
+                # --- GUARDRAIL 2: Entity Relevance Filter ---
+                try:
+                    url_parsed = urlparse(item_url)
+                    netloc = url_parsed.netloc.lower()
+                except Exception:
+                    netloc = item_url.lower()
+                    url_parsed = None
+                
+                is_relevant = False
+                if domain_clean and domain_clean in netloc:
+                    is_relevant = True
+                else:
+                    path_str = url_parsed.path.lower() if url_parsed else ""
+                    match_in_url = any(t in netloc or t in path_str for t in comp_tokens)
+                    match_in_title = any(t in title.lower() for t in comp_tokens)
+                    match_in_text = any(t in text_lower for t in comp_tokens)
+                    
+                    if comp_tokens:
+                        is_relevant = match_in_url or match_in_title or match_in_text
+                    else:
+                        is_relevant = True
+                        
+                if not is_relevant:
+                    logger.info(f"Skipping irrelevant search result for '{company_name}': {item_url}")
+                    continue
+                    
+                seen_urls.add(item_url.lower())
+                all_results.append({
+                    "title": title or "Web Page",
+                    "url": item_url,
+                    "text": raw_text,
+                    "date": item.get("publishedDate", "")
+                })
         except Exception as e:
             logger.error(f"Exa search failed for query '{query}': {e}")
             
-    return all_results
+    return all_results[:8]
 
 def process_and_score_evidence(documents: List[Dict]) -> Dict:
     """Process documents into the required schema and score them."""
@@ -586,7 +640,7 @@ def run_augmentation_pipeline(org_id: int):
         add_usage(u_queries)
         
         # 2. Fetch Data
-        docs_data = fetch_exa_results(queries)
+        docs_data = fetch_exa_results(queries, company_name=org.name, company_domain=org.primary_domain or "")
         run.exa_calls += len(queries)
         run.exa_estimated_cost_usd += len(queries) * 0.005
         
@@ -754,9 +808,10 @@ def run_augmentation_pipeline(org_id: int):
             if doc_idx is not None and 0 <= doc_idx < len(docs_data):
                 source_doc_id = docs_data[doc_idx].get("db_id")
                 
-            rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=inv.get("round_type")).first()
+            rname = inv.get("round_type") or "Venture Round"
+            rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=rname).first()
             if not rnd:
-                rnd = FinancingRound(company_id=org.id, round_name=inv.get("round_type"), status="closed")
+                rnd = FinancingRound(company_id=org.id, round_name=rname, status="closed")
                 db.add(rnd)
                 db.flush()
                 db.add(AuditTrail(canonical_entity_type="FINANCING_ROUND", canonical_entity_id=str(rnd.id), mutation_type="CREATE", source="WEB_AUGMENTATION", created_by="SYSTEM"))
@@ -773,17 +828,22 @@ def run_augmentation_pipeline(org_id: int):
                 except ValueError:
                     pass
 
-            rinv = RoundInvestor(
+            existing_rinv = db.query(RoundInvestor).filter_by(
                 financing_round_id=rnd.id,
-                investor_id=investor_org.id,
-                role="lead" if inv.get("is_lead") else "participant",
-                status="invested",
-                notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
-                source_id=source_doc_id,
-                reported_at=inv_date
-            )
-            db.add(rinv)
-            db.flush()
+                investor_id=investor_org.id
+            ).first()
+            if not existing_rinv:
+                rinv = RoundInvestor(
+                    financing_round_id=rnd.id,
+                    investor_id=investor_org.id,
+                    role="lead" if inv.get("is_lead") else "participant",
+                    status="invested",
+                    notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
+                    source_id=source_doc_id,
+                    reported_at=inv_date
+                )
+                db.add(rinv)
+                db.flush()
             
 
         # 8. Extract and Upsert Metrics
