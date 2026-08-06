@@ -894,7 +894,8 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("📜 Audit Trail")
         filters = [
-            (AuditTrail.canonical_entity_type == "ORGANIZATION") & (AuditTrail.canonical_entity_id == str(org.id))
+            (AuditTrail.canonical_entity_type == "ORGANIZATION") & (AuditTrail.canonical_entity_id == str(org.id)),
+            AuditTrail.canonical_entity_type.in_(["COMPETITIVE_ANALYSIS", "COMPETITIVE_ANALYSIS_COMPANY", "COMPETITIVE_ANALYSIS_SEGMENT", "MARKET_SEGMENT_LINK"])
         ]
         if org.company_profile:
             filters.append((AuditTrail.canonical_entity_type == "COMPANY_PROFILE") & (AuditTrail.canonical_entity_id == str(org.company_profile.id)))

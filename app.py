@@ -23,6 +23,19 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# 1b. Startup DB Migration Runner
+@st.cache_resource
+def auto_run_db_migrations():
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        print(f"Startup alembic migration warning: {e}")
+
+auto_run_db_migrations()
+
 # 2. Session State Initialization
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
