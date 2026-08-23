@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
+import json
+import threading
 from typing import List, Dict, Any
 
-from market_comps.db.session import get_db_context
+from market_comps.db.session import get_db_context, SessionLocal
 from market_comps.db.models import Organization
 from market_comps.crm.company_manager import find_existing_company, create_company, process_new_company
 from market_comps.ingestion.uploader_agent import UploaderChatAgent
@@ -47,6 +49,8 @@ if st.session_state.pending_companies:
     st.subheader("📋 Pending Companies")
     df = pd.DataFrame(st.session_state.pending_companies)
     st.dataframe(df, use_container_width=True)
+    
+    do_augmentation = st.toggle("Run AI Web Augmentation on new companies", value=True)
     
     col1, col2, _ = st.columns([1, 1, 4])
     with col1:
@@ -146,9 +150,23 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     db.commit()
                                     created_orgs.append(comp["name"])
                                     
-                                    st.write("Running AI Web Augmentation Pipeline...")
-                                    process_new_company(db, org.id)
-                                    status.update(label=f"Successfully processed {comp['name']}!", state="complete", expanded=False)
+                                    if do_augmentation:
+                                        st.write("Queuing AI Web Augmentation Pipeline in background...")
+                                        
+                                        def run_augmentation(org_id):
+                                            local_db = SessionLocal()
+                                            try:
+                                                process_new_company(local_db, org_id)
+                                            except Exception as e:
+                                                import logging
+                                                logging.error(f"Augmentation failed for org {org_id}: {e}")
+                                            finally:
+                                                local_db.close()
+                                                
+                                        threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
+                                        status.update(label=f"Successfully queued {comp['name']}!", state="complete", expanded=False)
+                                    else:
+                                        status.update(label=f"Successfully created {comp['name']}!", state="complete", expanded=False)
                                 except Exception as e:
                                     db.rollback()
                                     error_msg = f"Failed processing {comp['name']}: {str(e)}"
