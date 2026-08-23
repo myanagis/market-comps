@@ -34,7 +34,9 @@ def get_all_company_themes(db):
     for (t,) in profiles:
         if t and isinstance(t, list):
             themes.update(t)
-    return sorted(list(themes# Fetch and query data
+    return sorted(list(themes))
+
+# Fetch and query data
 with tab_dir:
     st.markdown("### Search & Filter")
     col_search, col_filter, col_own = st.columns([2, 1, 1])

@@ -157,37 +157,37 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     
                     st.session_state.pending_companies = []
                     
-                elif action_type == "process_link":
-                    url = action_data.get("url")
-                    target_name = action_data.get("target_entity_name")
-                    target_type = action_data.get("target_entity_type")
-                    
-                    if not url or not target_name:
-                        st.error("Missing URL or target entity name from agent.")
-                    else:
-                        with st.status(f"Processing link for {target_name}...", expanded=True) as status:
-                            try:
-                                with get_db_context() as db:
-                                    # For now, we only support mapping to Organizations (Company/Investor)
-                                    st.write(f"Looking up {target_type}: {target_name}...")
-                                    org = db.query(Organization).filter(Organization.name.ilike(f"%{target_name}%")).first()
+            elif action_type == "process_link":
+                url = action_data.get("url")
+                target_name = action_data.get("target_entity_name")
+                target_type = action_data.get("target_entity_type")
+                
+                if not url or not target_name:
+                    st.error("Missing URL or target entity name from agent.")
+                else:
+                    with st.status(f"Processing link for {target_name}...", expanded=True) as status:
+                        try:
+                            with get_db_context() as db:
+                                # For now, we only support mapping to Organizations (Company/Investor)
+                                st.write(f"Looking up {target_type}: {target_name}...")
+                                org = db.query(Organization).filter(Organization.name.ilike(f"%{target_name}%")).first()
+                                
+                                if not org:
+                                    st.write(f"Could not find {target_type} named '{target_name}'. Creating it now...")
+                                    org = create_company(
+                                        db=db,
+                                        name=target_name,
+                                        created_by="AgenticUploads"
+                                    )
+                                    if target_type and target_type.lower() == "investor":
+                                        org.organization_type = "INVESTOR"
+                                    db.commit()
                                     
-                                    if not org:
-                                        st.write(f"Could not find {target_type} named '{target_name}'. Creating it now...")
-                                        org = create_company(
-                                            db=db,
-                                            name=target_name,
-                                            created_by="AgenticUploads"
-                                        )
-                                        if target_type and target_type.lower() == "investor":
-                                            org.organization_type = "INVESTOR"
-                                        db.commit()
-                                        
-                                    st.write(f"Found/Created {org.name}. Scraping and running extraction pipeline...")
-                                    run_manual_url_augmentation(org.id, url)
-                                    status.update(label=f"Successfully extracted data from link and updated {org.name}!", state="complete", expanded=False)
-                                    st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully extracted data from the link and filed it under **{org.name}**."})
-                            except Exception as e:
-                                status.update(label=f"Failed to process link: {str(e)}", state="error", expanded=True)
-                                st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process link: {str(e)}"})
-                        st.rerun()
+                                st.write(f"Found/Created {org.name}. Scraping and running extraction pipeline...")
+                                run_manual_url_augmentation(org.id, url)
+                                status.update(label=f"Successfully extracted data from link and updated {org.name}!", state="complete", expanded=False)
+                                st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully extracted data from the link and filed it under **{org.name}**."})
+                        except Exception as e:
+                            status.update(label=f"Failed to process link: {str(e)}", state="error", expanded=True)
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process link: {str(e)}"})
+                    st.rerun()
