@@ -8,8 +8,8 @@ from market_comps.llm_client import LLMClient
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-You are an intelligent CRM assistant specialized in extracting company names and details from raw text.
-The user will provide you with a block of text containing one or more companies to add to their CRM.
+You are an intelligent CRM assistant specialized in extracting company names and details from raw text, and processing web links (news, PRs, articles).
+The user will provide you with a block of text containing one or more companies to add to their CRM, OR a web link to process.
 Your job is to parse the text into structured JSON actions to manage the upload process.
 
 You have access to a list of "Pending Companies" that are currently staged to be created.
@@ -17,8 +17,9 @@ The user might provide more details about the pending companies, or they might a
 
 Valid action types:
 1. `extract`: Use this when the user provides new text that contains companies. Extract the company names, domains (if any), and a brief description.
-2. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask the user for it.
-3. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
+2. `process_link`: Use this when the user provides a web URL (e.g. news article, press release) AND specifies where it should be filed (e.g., Company, Investor, Market Map).
+3. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
+4. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies, but one or more are missing a domain/website, you SHOULD use the `clarify` action to ask for the domain, because the AI augmentation pipeline works best with a website.
 However, if the user explicitly says they don't know the domain, or tells you to proceed anyway, use the `proceed` action.
@@ -31,7 +32,7 @@ ACTION_SCHEMA = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["extract", "clarify", "proceed"],
+            "enum": ["extract", "clarify", "proceed", "process_link"],
             "description": "The type of action to perform based on user input."
         },
         "message": {
@@ -50,6 +51,19 @@ ACTION_SCHEMA = {
                 },
                 "required": ["name"]
             }
+        },
+        "url": {
+            "type": ["string", "null"],
+            "description": "The web URL to process (used when action is 'process_link')."
+        },
+        "target_entity_type": {
+            "type": ["string", "null"],
+            "enum": ["Company", "Investor", "Market Map", null],
+            "description": "The type of entity to file the web link data to."
+        },
+        "target_entity_name": {
+            "type": ["string", "null"],
+            "description": "The specific name of the entity to file the web link data to."
         }
     },
     "required": ["action", "message"]
@@ -98,14 +112,17 @@ Based on the rules, what is the appropriate JSON action?
             
             # Defensive unpacking
             if "action" not in parsed_json:
-                for possible_action in ["extract", "clarify", "proceed"]:
+                for possible_action in ["extract", "clarify", "proceed", "process_link"]:
                     if possible_action in parsed_json:
                         inner_data = parsed_json[possible_action]
                         if isinstance(inner_data, dict):
                             parsed_json = {
                                 "action": possible_action,
                                 "message": inner_data.get("message", "Processing..."),
-                                "extracted_companies": inner_data.get("extracted_companies", [])
+                                "extracted_companies": inner_data.get("extracted_companies", []),
+                                "url": inner_data.get("url"),
+                                "target_entity_type": inner_data.get("target_entity_type"),
+                                "target_entity_name": inner_data.get("target_entity_name")
                             }
                         break
                         

@@ -151,9 +151,11 @@ pg = st.navigation({
     "CRM": [
         st.Page("pages/17_CRM_Record_Lookup.py", title="Record Lookup", icon="🔍"),
         st.Page("pages/15_CRM_Document_Upload.py", title="Document Upload", icon="📄"),
-        st.Page("pages/18_CRM_Company_Uploader.py", title="Company Uploader", icon="📤"),
-        st.Page("pages/12_CRM_Companies.py", title="Companies", icon="🏢"),
-        st.Page("pages/21_Market_Map.py", title="Market Map", icon="🗺️"),
+        st.Page("pages/18_CRM_Agentic_Uploads.py", title="Agentic Uploads", icon="📤"),
+        st.Page("pages/12_CRM_Companies.py", title="Companies Directory", icon="🏢", url_path="companies"),
+        st.Page("pages/13_CRM_Company_Details.py", title="Company Details", icon="🏢", url_path="company"),
+        st.Page("pages/21_Market_Map.py", title="Market Map", icon="🗺️", url_path="markets"),
+        st.Page("pages/22_Market_Map_Details.py", title="Market Map Details", icon="🗺️", url_path="market"),
         st.Page("pages/12_CRM_Investment_Firms.py", title="Investment Firms", icon="🏦"),
         st.Page("pages/12_CRM_People.py", title="People", icon="👤"),
         st.Page("pages/14_CRM_Programs_Cohorts.py", title="Programs & Cohorts", icon="🚀"),
@@ -175,6 +177,7 @@ pg = st.navigation({
         st.Page("pages/19_Company_Name_Mapper.py", title="Company Name Mapper", icon="🏷️"),
     ],
     "Admin": [
+        st.Page("pages/02_Admin_Database_Schema.py", title="Database Schema", icon="🗄️"),
         st.Page("pages/16_Admin.py", title="Admin DB Manager", icon="🔒"),
         st.Page("pages/20_System_Dashboard.py", title="System Dashboard", icon="⚙️"),
         st.Page("pages/90_Recent_Documents.py", title="Recent Documents", icon="📄"),

@@ -31,14 +31,12 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
     We need to research a company named '{company_name}' (domain: {company_domain}).
     Description: {company_description or 'None provided'}
     
-    Please generate exactly 4 highly targeted search queries to find information on this company to fill out an investment memo.
+    Please generate exactly 2 highly targeted search queries to find information on this company to fill out an investment memo.
     Queries should target:
     1. General overview, product, and differentiation
-    2. Team, founders, and key personnel
-    3. Recent traction, news, or press releases
-    4. Specific funding rounds, investment amounts, and lead investors
+    2. Recent traction, news, funding rounds, and key personnel
     
-    Return a JSON object with a 'queries' array containing ONLY the 4 strings.
+    Return a JSON object with a 'queries' array containing ONLY the 2 strings.
     """
     try:
         schema = {
@@ -56,9 +54,9 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
             model=settings.default_model
         )
         if isinstance(result, dict) and "queries" in result:
-            return result["queries"][:4], usage
+            return result["queries"][:2], usage
         elif isinstance(result, list):
-            return result[:4], usage
+            return result[:2], usage
     except Exception as e:
         logger.error(f"Failed to generate search queries: {e}")
     
@@ -66,9 +64,7 @@ def generate_search_queries(company_name: str, company_domain: str, company_desc
     from market_comps.models import LLMUsage
     return [
         f"{company_name} company overview product",
-        f"{company_name} team founders",
-        f"{company_name} news traction",
-        f"{company_name} funding rounds investors amounts"
+        f"{company_name} news traction team funding"
     ], LLMUsage()
 
 from urllib.parse import urlparse
@@ -99,7 +95,7 @@ def fetch_exa_results(queries: List[str], company_name: str = "", company_domain
         }
         data = {
             "query": query,
-            "numResults": 4,
+            "numResults": 2,
             "contents": {"text": True}
         }
         try:
@@ -599,6 +595,227 @@ def extract_metrics(documents: List[Dict], target_company_name: str = "") -> Tup
         from market_comps.models import LLMUsage
         return [], LLMUsage()
 
+def run_extraction_on_documents(db, org, docs_data, run):
+    """Shared function to run extraction and upserts on a set of documents."""
+    from market_comps.db.models import Person, PersonEmail, PersonOrganizationRole, AuditTrail, FinancingRound, FinancingRoundFact, RoundInvestor, Organization, CompanyProfile
+    from market_comps.db.models import MetricType, MetricObservation, ObservationSource
+    from datetime import datetime
+    
+    def add_usage(u):
+        if u and run:
+            run.llm_total_tokens += u.total_tokens
+            run.llm_estimated_cost_usd += u.estimated_cost_usd
+
+    # 1. Extract and Upsert Basics
+    basics, u_basics = extract_company_basics(docs_data)
+    add_usage(u_basics)
+    if basics:
+        if basics.get("website") and not org.website_url: org.website_url = basics["website"]
+        if basics.get("description_short") and not org.description: org.description = basics["description_short"]
+        
+        loc = basics.get("hq_location")
+        if loc and not org.city:
+            parts = [p.strip() for p in loc.split(",")]
+            if len(parts) >= 1: org.city = parts[0]
+            if len(parts) >= 2: org.state = parts[1]
+            if len(parts) >= 3: org.country = parts[2]
+            
+        profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+        if not profile:
+            profile = CompanyProfile(organization_id=org.id)
+            db.add(profile)
+        
+        if basics.get("founded_year") and not profile.founded_year: profile.founded_year = basics["founded_year"]
+        if basics.get("sector") and not profile.industry: profile.industry = basics["sector"]
+        if basics.get("subsector") and not profile.subindustry: profile.subindustry = basics["subsector"]
+        
+    db.flush()
+
+    # 2. Extract and Upsert Entities (Founders / Team)
+    people, u_people = extract_entities(docs_data, target_company_name=org.name)
+    add_usage(u_people)
+    for p in people:
+        first = p.get("first_name")
+        last = p.get("last_name")
+        if not first or not last: continue
+        
+        full_name = f"{first} {last}"
+        person = db.query(Person).filter(Person.full_name.ilike(full_name)).first()
+        if not person:
+            person = Person(
+                first_name=first,
+                last_name=last,
+                full_name=full_name,
+                city=p.get("city"),
+                linkedin_url=p.get("linkedin_url"),
+                country="US"
+            )
+            db.add(person)
+            db.flush()
+            
+            db.add(AuditTrail(
+                canonical_entity_type="PERSON",
+                canonical_entity_id=str(person.id),
+                mutation_type="CREATE",
+                source="WEB_AUGMENTATION",
+                created_by="SYSTEM"
+            ))
+        
+        if p.get("email"):
+            existing_email = db.query(PersonEmail).filter_by(person_id=person.id, email=p["email"]).first()
+            if not existing_email:
+                email_record = PersonEmail(
+                    person_id=person.id,
+                    email=p["email"],
+                    organization_id=org.id,
+                    is_primary=True
+                )
+                db.add(email_record)
+        
+        title = p.get("title") or ("Founder" if p.get("is_founder") else "Executive")
+        role = db.query(PersonOrganizationRole).filter_by(person_id=person.id, organization_id=org.id).first()
+        if not role:
+            role = PersonOrganizationRole(
+                person_id=person.id,
+                organization_id=org.id,
+                title=title,
+                source="WEB_AUGMENTATION"
+            )
+            db.add(role)
+            db.flush()
+            
+            db.add(AuditTrail(
+                canonical_entity_type="PERSON_ROLE",
+                canonical_entity_id=str(role.id),
+                mutation_type="CREATE",
+                source="WEB_AUGMENTATION",
+                created_by="SYSTEM"
+            ))
+        elif p.get("is_founder") and "founder" not in (role.title or "").lower():
+            role.title = "Founder & " + (role.title or "Executive")
+    
+    db.flush()
+    
+    # 3. Extract and Upsert Investments
+    investments_data, u_inv = extract_investments(docs_data, target_company_name=org.name)
+    add_usage(u_inv)
+    for inv in investments_data:
+        investor_name = inv.get("investor_name")
+        if not investor_name: continue
+        
+        investor_org = db.query(Organization).filter(Organization.name.ilike(investor_name)).first()
+        if not investor_org:
+            investor_org = Organization(
+                name=investor_name,
+                organization_type="INVESTOR",
+                status="ACTIVE"
+            )
+            db.add(investor_org)
+            db.flush()
+            
+            db.add(AuditTrail(
+                canonical_entity_type="ORGANIZATION",
+                canonical_entity_id=str(investor_org.id),
+                mutation_type="CREATE",
+                source="WEB_AUGMENTATION",
+                created_by="SYSTEM"
+            ))
+        
+        doc_idx = inv.get("source_doc_index")
+        source_doc_id = None
+        if doc_idx is not None and 0 <= doc_idx < len(docs_data):
+            source_doc_id = docs_data[doc_idx].get("db_id")
+            
+        rname = inv.get("round_type") or "Venture Round"
+        rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=rname).first()
+        if not rnd:
+            rnd = FinancingRound(company_id=org.id, round_name=rname, status="closed")
+            db.add(rnd)
+            db.flush()
+            db.add(AuditTrail(canonical_entity_type="FINANCING_ROUND", canonical_entity_id=str(rnd.id), mutation_type="CREATE", source="WEB_AUGMENTATION", created_by="SYSTEM"))
+            
+            if inv.get("total_round_amount"):
+                fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=source_doc_id)
+                db.add(fact)
+
+        date_str = inv.get("investment_date")
+        inv_date = None
+        if date_str:
+            try:
+                inv_date = datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                pass
+
+        existing_rinv = db.query(RoundInvestor).filter_by(
+            financing_round_id=rnd.id,
+            investor_id=investor_org.id
+        ).first()
+        if not existing_rinv:
+            rinv = RoundInvestor(
+                financing_round_id=rnd.id,
+                investor_id=investor_org.id,
+                role="lead" if inv.get("is_lead") else "participant",
+                status="invested",
+                notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
+                source_id=source_doc_id,
+                reported_at=inv_date
+            )
+            db.add(rinv)
+            db.flush()
+
+    # 4. Extract and Upsert Metrics
+    metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
+    add_usage(u_met)
+    
+    # Load all metric types
+    all_metric_types = db.query(MetricType).all()
+    metric_code_map = {m.code: m.id for m in all_metric_types}
+    
+    for met in metrics_data:
+        mcode = met.get("metric_code")
+        if not mcode or mcode not in metric_code_map:
+            continue
+            
+        doc_idx = met.get("source_doc_index")
+        source_doc_id = None
+        if doc_idx is not None and 0 <= doc_idx < len(docs_data):
+            source_doc_id = docs_data[doc_idx].get("db_id")
+            
+        # Create Observation
+        period_start, period_end = None, None
+        if met.get("period_year"):
+            try:
+                yr = int(met["period_year"])
+                period_start = datetime(yr, 1, 1)
+                period_end = datetime(yr, 12, 31)
+            except:
+                pass
+                
+        obs = MetricObservation(
+            company_id=org.id,
+            metric_type_id=metric_code_map[mcode],
+            value_text=met.get("value_text"),
+            value_numeric=met.get("value_numeric"),
+            currency_code=met.get("currency_code"),
+            observation_status=met.get("observation_status") or "actual",
+            reporting_basis=met.get("reporting_basis"),
+            period_start=period_start,
+            period_end=period_end
+        )
+        db.add(obs)
+        db.flush()
+        
+        if source_doc_id:
+            osrc = ObservationSource(
+                observation_id=obs.id,
+                source_id=source_doc_id,
+                source_excerpt=met.get("source_excerpt"),
+                relationship_type="primary"
+            )
+            db.add(osrc)
+    
+    db.flush()
+
 def run_augmentation_pipeline(org_id: int):
     """Main entrypoint for the augmentation pipeline."""
     db = SessionLocal()
@@ -701,212 +918,8 @@ def run_augmentation_pipeline(org_id: int):
         report.scoring_json = scoring
         report.status = "SUCCESS"
         
-        # 5. Extract and Upsert Basics
-        basics, u_basics = extract_company_basics(valid_docs)
-        add_usage(u_basics)
-        if basics.get("website"): org.website_url = basics["website"]
-        if basics.get("description_short"): org.description = basics["description_short"]
-        
-        loc = basics.get("hq_location")
-        if loc:
-            parts = [p.strip() for p in loc.split(",")]
-            if len(parts) >= 1: org.city = parts[0]
-            if len(parts) >= 2: org.state = parts[1]
-            if len(parts) >= 3: org.country = parts[2]
-            
-        profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
-        if not profile:
-            profile = CompanyProfile(organization_id=org.id)
-            db.add(profile)
-        
-        if basics.get("founded_year"): profile.founded_year = basics["founded_year"]
-        if basics.get("sector"): profile.industry = basics["sector"]
-        if basics.get("subsector"): profile.subindustry = basics["subsector"]
-        
-        db.flush()
-
-        # 6. Extract and Upsert Entities (Founders / Team)
-        people, u_people = extract_entities(valid_docs, target_company_name=org.name)
-        add_usage(u_people)
-        for p in people:
-            first = p.get("first_name")
-            last = p.get("last_name")
-            if not first or not last: continue
-            
-            full_name = f"{first} {last}"
-            person = db.query(Person).filter(Person.full_name.ilike(full_name)).first()
-            if not person:
-                person = Person(
-                    first_name=first,
-                    last_name=last,
-                    full_name=full_name,
-                    city=p.get("city"),
-                    linkedin_url=p.get("linkedin_url"),
-                    country="US"
-                )
-                db.add(person)
-                db.flush()
-                
-                db.add(AuditTrail(
-                    canonical_entity_type="PERSON",
-                    canonical_entity_id=str(person.id),
-                    mutation_type="CREATE",
-                    source="WEB_AUGMENTATION",
-                    created_by="SYSTEM"
-                ))
-            
-            if p.get("email"):
-                existing_email = db.query(PersonEmail).filter_by(person_id=person.id, email=p["email"]).first()
-                if not existing_email:
-                    email_record = PersonEmail(
-                        person_id=person.id,
-                        email=p["email"],
-                        organization_id=org.id,
-                        is_primary=True
-                    )
-                    db.add(email_record)
-            
-            title = p.get("title") or ("Founder" if p.get("is_founder") else "Executive")
-            role = db.query(PersonOrganizationRole).filter_by(person_id=person.id, organization_id=org.id).first()
-            if not role:
-                role = PersonOrganizationRole(
-                    person_id=person.id,
-                    organization_id=org.id,
-                    title=title,
-                    source="WEB_AUGMENTATION"
-                )
-                db.add(role)
-                db.flush()
-                
-                db.add(AuditTrail(
-                    canonical_entity_type="PERSON_ROLE",
-                    canonical_entity_id=str(role.id),
-                    mutation_type="CREATE",
-                    source="WEB_AUGMENTATION",
-                    created_by="SYSTEM"
-                ))
-            elif p.get("is_founder") and "founder" not in (role.title or "").lower():
-                role.title = "Founder & " + (role.title or "Executive")
-        
-        # 7. Extract and Upsert Investments
-        investments_data, u_inv = extract_investments(valid_docs, target_company_name=org.name)
-        add_usage(u_inv)
-        for inv in investments_data:
-            investor_name = inv.get("investor_name")
-            if not investor_name: continue
-            
-            investor_org = db.query(Organization).filter(Organization.name.ilike(investor_name)).first()
-            if not investor_org:
-                investor_org = Organization(
-                    name=investor_name,
-                    organization_type="INVESTOR",
-                    status="ACTIVE"
-                )
-                db.add(investor_org)
-                db.flush()
-                
-                db.add(AuditTrail(
-                    canonical_entity_type="ORGANIZATION",
-                    canonical_entity_id=str(investor_org.id),
-                    mutation_type="CREATE",
-                    source="WEB_AUGMENTATION",
-                    created_by="SYSTEM"
-                ))
-            
-            doc_idx = inv.get("source_doc_index")
-            source_doc_id = None
-            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
-                source_doc_id = docs_data[doc_idx].get("db_id")
-                
-            rname = inv.get("round_type") or "Venture Round"
-            rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=rname).first()
-            if not rnd:
-                rnd = FinancingRound(company_id=org.id, round_name=rname, status="closed")
-                db.add(rnd)
-                db.flush()
-                db.add(AuditTrail(canonical_entity_type="FINANCING_ROUND", canonical_entity_id=str(rnd.id), mutation_type="CREATE", source="WEB_AUGMENTATION", created_by="SYSTEM"))
-                
-                if inv.get("total_round_amount"):
-                    fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=source_doc_id)
-                    db.add(fact)
-
-            date_str = inv.get("investment_date")
-            inv_date = None
-            if date_str:
-                try:
-                    inv_date = datetime.strptime(date_str, "%Y-%m-%d")
-                except ValueError:
-                    pass
-
-            existing_rinv = db.query(RoundInvestor).filter_by(
-                financing_round_id=rnd.id,
-                investor_id=investor_org.id
-            ).first()
-            if not existing_rinv:
-                rinv = RoundInvestor(
-                    financing_round_id=rnd.id,
-                    investor_id=investor_org.id,
-                    role="lead" if inv.get("is_lead") else "participant",
-                    status="invested",
-                    notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
-                    source_id=source_doc_id,
-                    reported_at=inv_date
-                )
-                db.add(rinv)
-                db.flush()
-            
-
-        # 8. Extract and Upsert Metrics
-        from market_comps.db.models import MetricType, MetricObservation, ObservationSource
-        metrics_data, u_met = extract_metrics(valid_docs, target_company_name=org.name)
-        add_usage(u_met)
-        
-        # Load all metric types
-        all_metric_types = db.query(MetricType).all()
-        metric_code_map = {m.code: m.id for m in all_metric_types}
-        
-        for met in metrics_data:
-            mcode = met.get("metric_code")
-            if not mcode or mcode not in metric_code_map:
-                continue
-                
-            doc_idx = met.get("source_doc_index")
-            source_doc_id = None
-            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
-                source_doc_id = docs_data[doc_idx].get("db_id")
-                
-            # Create Observation
-            period_start, period_end = None, None
-            if met.get("period_year"):
-                try:
-                    yr = int(met["period_year"])
-                    period_start = datetime(yr, 1, 1)
-                    period_end = datetime(yr, 12, 31)
-                except:
-                    pass
-                    
-            obs = MetricObservation(
-                company_id=org.id,
-                metric_type_id=metric_code_map[mcode],
-                value_text=met.get("value_text"),
-                value_numeric=met.get("value_numeric"),
-                currency_code=met.get("currency_code"),
-                observation_status=met.get("observation_status") or "actual",
-                reporting_basis=met.get("reporting_basis"),
-                period_start=period_start,
-                period_end=period_end
-            )
-            db.add(obs)
-            db.flush()
-            
-            if source_doc_id:
-                osrc = ObservationSource(
-                    observation_id=obs.id,
-                    source_id=source_doc_id,
-                    source_excerpt=met.get("source_excerpt"),
-                    relationship_type="primary"
-                )
-                db.add(osrc)
+        # 5-8. Extract and Upsert Basics, Entities, Investments, Metrics
+        run_extraction_on_documents(db, org, valid_docs, run)
         
         db.commit()
         run.run_status = "SUCCESS"
@@ -1049,152 +1062,9 @@ def run_manual_url_augmentation(org_id: int, url: str):
         
         docs_data = [{"index": 0, "url": url, "text": text[:15000], "title": "Manual Upload", "db_id": src_doc.id, "date": ""}]
         
-        def add_usage(u):
-            if u:
-                run.llm_total_tokens += u.total_tokens
-                run.llm_estimated_cost_usd += u.estimated_cost_usd
+        # Run unified extraction and upsert
+        run_extraction_on_documents(db, org, docs_data, run)
         
-        # 1. Basics (Upsert only missing fields)
-        basics, u_basics = extract_company_basics(docs_data)
-        add_usage(u_basics)
-        
-        if basics:
-            if basics.get("website") and not org.website_url: org.website_url = basics["website"]
-            if basics.get("description_short") and not org.description: org.description = basics["description_short"]
-            
-            loc = basics.get("hq_location")
-            if loc and not org.city:
-                parts = [p.strip() for p in loc.split(",")]
-                if len(parts) >= 1: org.city = parts[0]
-                if len(parts) >= 2: org.state = parts[1]
-                if len(parts) >= 3: org.country = parts[2]
-                
-            profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
-            if not profile:
-                profile = CompanyProfile(organization_id=org.id)
-                db.add(profile)
-            
-            if basics.get("founded_year") and not profile.founded_year: profile.founded_year = basics["founded_year"]
-            if basics.get("sector") and not profile.industry: profile.industry = basics["sector"]
-            if basics.get("subsector") and not profile.subindustry: profile.subindustry = basics["subsector"]
-            
-        db.flush()
-
-        # 2. People (Incremental Upsert)
-        people, u_people = extract_entities(docs_data)
-        add_usage(u_people)
-        for p in people:
-            first = p.get("first_name")
-            last = p.get("last_name")
-            if not first or not last: continue
-            
-            existing_person = db.query(Person).filter(Person.first_name.ilike(first), Person.last_name.ilike(last)).first()
-            if existing_person:
-                existing_role = db.query(PersonOrganizationRole).filter_by(person_id=existing_person.id, organization_id=org.id).first()
-                if not existing_role:
-                    role = PersonOrganizationRole(person_id=existing_person.id, organization_id=org.id, title=p.get("title"))
-                    db.add(role)
-            else:
-                person = Person(first_name=first, last_name=last, city=p.get("city"), linkedin_url=p.get("linkedin_url"))
-                db.add(person)
-                db.flush()
-                role = PersonOrganizationRole(person_id=person.id, organization_id=org.id, title=p.get("title"))
-                db.add(role)
-        db.flush()
-        
-        # 3. Investments (Incremental Upsert)
-        investments_data, u_inv = extract_investments(docs_data)
-        add_usage(u_inv)
-        for inv in investments_data:
-            investor_name = inv.get("investor_name")
-            if not investor_name: continue
-            
-            investor_org = db.query(Organization).filter(Organization.name.ilike(investor_name)).first()
-            if not investor_org:
-                investor_org = Organization(name=investor_name, organization_type="INVESTOR", status="ACTIVE")
-                db.add(investor_org)
-                db.flush()
-            
-            r_type = inv.get("round_type")
-            rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=r_type).first()
-            if not rnd:
-                rnd = FinancingRound(company_id=org.id, round_name=r_type, status="closed")
-                db.add(rnd)
-                db.flush()
-                
-                if inv.get("total_round_amount"):
-                    fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=src_doc.id)
-                    db.add(fact)
-
-            existing_rinv = db.query(RoundInvestor).filter_by(financing_round_id=rnd.id, investor_id=investor_org.id).first()
-            if not existing_rinv:
-                date_str = inv.get("investment_date")
-                inv_date = None
-                if date_str:
-                    try:
-                        inv_date = datetime.strptime(date_str, "%Y-%m-%d")
-                    except ValueError:
-                        pass
-                        
-                rinv = RoundInvestor(
-                    financing_round_id=rnd.id,
-                    investor_id=investor_org.id,
-                    role="lead" if inv.get("is_lead") else "participant",
-                    status="invested",
-                    notes=f"Firm Amount: {inv.get('firm_investment_amount')}" if inv.get("firm_investment_amount") else None,
-                    source_id=src_doc.id,
-                    reported_at=inv_date
-                )
-                db.add(rinv)
-                db.flush()
-                
-
-        # 4. Extract and Upsert Metrics
-        from market_comps.db.models import MetricType, MetricObservation, ObservationSource
-        metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
-        add_usage(u_met)
-        
-        # Load all metric types
-        all_metric_types = db.query(MetricType).all()
-        metric_code_map = {m.code: m.id for m in all_metric_types}
-        
-        for met in metrics_data:
-            mcode = met.get("metric_code")
-            if not mcode or mcode not in metric_code_map:
-                continue
-                
-            # Create Observation
-            period_start, period_end = None, None
-            if met.get("period_year"):
-                try:
-                    yr = int(met["period_year"])
-                    period_start = datetime(yr, 1, 1)
-                    period_end = datetime(yr, 12, 31)
-                except:
-                    pass
-                    
-            obs = MetricObservation(
-                company_id=org.id,
-                metric_type_id=metric_code_map[mcode],
-                value_text=met.get("value_text"),
-                value_numeric=met.get("value_numeric"),
-                currency_code=met.get("currency_code"),
-                observation_status=met.get("observation_status") or "actual",
-                reporting_basis=met.get("reporting_basis"),
-                period_start=period_start,
-                period_end=period_end
-            )
-            db.add(obs)
-            db.flush()
-            
-            osrc = ObservationSource(
-                    observation_id=obs.id,
-                source_id=src_doc.id,
-                source_excerpt=met.get("source_excerpt"),
-                relationship_type="primary"
-            )
-            db.add(osrc)
-            
         db.commit()
         return True
         
@@ -1303,171 +1173,8 @@ def re_synthesize_company_data(org_id: int):
         report.scoring_json = scoring
         report.status = "SUCCESS"
         
-        # 5. Extract and Upsert Basics
-        basics, u_basics = extract_company_basics(docs_data)
-        add_usage(u_basics)
-        if basics.get("website"): org.website_url = basics["website"]
-        if basics.get("description_short"): org.description = basics["description_short"]
-        
-        loc = basics.get("hq_location")
-        if loc:
-            parts = [p.strip() for p in loc.split(",")]
-            if len(parts) >= 1: org.city = parts[0]
-            if len(parts) >= 2: org.state = parts[1]
-            if len(parts) >= 3: org.country = parts[2]
-            
-        profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
-        if not profile:
-            profile = CompanyProfile(organization_id=org.id)
-            db.add(profile)
-        
-        if basics.get("founded_year"): profile.founded_year = basics["founded_year"]
-        if basics.get("sector"): profile.industry = basics["sector"]
-        if basics.get("subsector"): profile.subindustry = basics["subsector"]
-        
-        db.flush()
-
-        # 6. Extract and Upsert Entities (Founders / Team)
-        people, u_people = extract_entities(docs_data, target_company_name=org.name)
-        add_usage(u_people)
-        for p in people:
-            first = p.get("first_name")
-            last = p.get("last_name")
-            if not first or not last: continue
-            
-            full_name = f"{first} {last}"
-            person = db.query(Person).filter(Person.full_name.ilike(full_name)).first()
-            if not person:
-                person = Person(
-                    first_name=first,
-                    last_name=last,
-                    full_name=full_name,
-                    city=p.get("city"),
-                    linkedin_url=p.get("linkedin_url"),
-                    country="US"
-                )
-                db.add(person)
-                db.flush()
-            
-            if p.get("email"):
-                existing_email = db.query(PersonEmail).filter_by(person_id=person.id, email=p["email"]).first()
-                if not existing_email:
-                    email_record = PersonEmail(
-                        person_id=person.id,
-                        email=p["email"],
-                        organization_id=org.id,
-                        is_primary=True
-                    )
-                    db.add(email_record)
-            
-            title = p.get("title") or ("Founder" if p.get("is_founder") else "Executive")
-            role = db.query(PersonOrganizationRole).filter_by(person_id=person.id, organization_id=org.id).first()
-            if not role:
-                role = PersonOrganizationRole(
-                    person_id=person.id,
-                    organization_id=org.id,
-                    title=title,
-                    source="WEB_AUGMENTATION"
-                )
-                db.add(role)
-                db.flush()
-            elif p.get("is_founder") and "founder" not in (role.title or "").lower():
-                role.title = "Founder & " + (role.title or "Executive")
-        
-        # 7. Extract and Upsert Investments
-        investments_data, u_inv = extract_investments(docs_data, target_company_name=org.name)
-        add_usage(u_inv)
-        for inv in investments_data:
-            investor_name = inv.get("investor_name")
-            if not investor_name: continue
-            
-            investor_org = db.query(Organization).filter(Organization.name.ilike(investor_name)).first()
-            if not investor_org:
-                investor_org = Organization(
-                    name=investor_name,
-                    organization_type="INVESTOR",
-                    status="ACTIVE"
-                )
-                db.add(investor_org)
-                db.flush()
-            
-            doc_idx = inv.get("source_doc_index")
-            source_doc_id = None
-            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
-                source_doc_id = docs_data[doc_idx].get("db_id")
-                
-            investment = Investment(
-                investor_organization_id=investor_org.id,
-                company_organization_id=org.id,
-                round_type=inv.get("round_type"),
-                total_round_amount=inv.get("total_round_amount"),
-                firm_investment_amount=inv.get("firm_investment_amount"),
-                is_lead=inv.get("is_lead", False),
-                source_document_id=source_doc_id
-            )
-            
-            date_str = inv.get("investment_date")
-            if date_str:
-                try:
-                    investment.investment_date = datetime.strptime(date_str, "%Y-%m-%d")
-                except ValueError:
-                    pass
-            
-            db.add(investment)
-            db.flush()
-            
-
-        # 8. Extract and Upsert Metrics
-        from market_comps.db.models import MetricType, MetricObservation, ObservationSource
-        metrics_data, u_met = extract_metrics(docs_data, target_company_name=org.name)
-        add_usage(u_met)
-        
-        # Load all metric types
-        all_metric_types = db.query(MetricType).all()
-        metric_code_map = {m.code: m.id for m in all_metric_types}
-        
-        for met in metrics_data:
-            mcode = met.get("metric_code")
-            if not mcode or mcode not in metric_code_map:
-                continue
-                
-            doc_idx = met.get("source_doc_index")
-            source_doc_id = None
-            if doc_idx is not None and 0 <= doc_idx < len(docs_data):
-                source_doc_id = docs_data[doc_idx].get("db_id")
-                
-            # Create Observation
-            period_start, period_end = None, None
-            if met.get("period_year"):
-                try:
-                    yr = int(met["period_year"])
-                    period_start = datetime(yr, 1, 1)
-                    period_end = datetime(yr, 12, 31)
-                except:
-                    pass
-                    
-            obs = MetricObservation(
-                company_id=org.id,
-                metric_type_id=metric_code_map[mcode],
-                value_text=met.get("value_text"),
-                value_numeric=met.get("value_numeric"),
-                currency_code=met.get("currency_code"),
-                observation_status=met.get("observation_status") or "actual",
-                reporting_basis=met.get("reporting_basis"),
-                period_start=period_start,
-                period_end=period_end
-            )
-            db.add(obs)
-            db.flush()
-            
-            if source_doc_id:
-                osrc = ObservationSource(
-                    observation_id=obs.id,
-                    source_id=source_doc_id,
-                    source_excerpt=met.get("source_excerpt"),
-                    relationship_type="primary"
-                )
-                db.add(osrc)
+        # 5-8. Extract and Upsert Basics, Entities, Investments, Metrics
+        run_extraction_on_documents(db, org, docs_data, run)
         
         db.commit()
         run.run_status = "SUCCESS"

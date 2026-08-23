@@ -5,6 +5,7 @@ Always verify this checklist whenever implementing features or schema changes in
 1. **DB Models & Alembic Migrations**:
    - If adding or modifying SQLAlchemy models in `market_comps/db/models.py`, generate or create a corresponding migration script in `alembic/versions/`.
    - Ensure column types and defaults prevent table lock deadlocks during remote app reboots.
+   - **ERD Schema Validation**: Ensure all new models inherit from `Base` so that they automatically reflect in the dynamic Entity-Relationship Diagram (ERD) on the Admin Database Schema page (`pages/02_Admin_Database_Schema.py`).
 
 2. **`app.py` Page Registration & Startup Migration**:
    - Ensure any new page in `pages/` is explicitly registered in `app.py` under `st.navigation`.

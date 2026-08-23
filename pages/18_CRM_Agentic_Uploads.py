@@ -3,15 +3,30 @@ import pandas as pd
 from typing import List, Dict, Any
 
 from market_comps.db.session import get_db_context
+from market_comps.db.models import Organization
 from market_comps.crm.company_manager import find_existing_company, create_company, process_new_company
 from market_comps.ingestion.uploader_agent import UploaderChatAgent
+from market_comps.ingestion.company_augmentation import run_manual_url_augmentation
 
-st.set_page_config(page_title="Company Uploader", page_icon="📤", layout="wide")
-st.title("📤 Company Uploader (AI Agent)")
+st.set_page_config(page_title="Agentic Uploads", page_icon="📤", layout="wide")
 
-st.markdown("""
-Paste a list of companies below. The AI will extract them, check if they exist in the CRM, ask for any missing websites, and then automatically create the records and run the web ingestion pipeline!
-""")
+col_main, col_sidebar = st.columns([3, 1])
+
+with col_sidebar:
+    st.markdown("### 🤖 Agentic Capabilities")
+    st.info("""
+    I can help you with:
+    - **Create Companies in CRM**: Paste a list of text/companies to bulk-create them.
+    - **Process Web Links**: Paste a URL (News, PRs, Articles) to ingest it.
+    - **File Data to Entities**: Tell me if a link belongs to a Company, Investor, or Market Map, and I will extract facts and file them automatically.
+    """)
+
+with col_main:
+    st.title("📤 Agentic Uploads")
+    
+    st.markdown("""
+    Paste a list of companies or a web link below. The AI will extract data, ask for any missing info, and automatically update the CRM.
+    """)
 
 # Initialize Session State
 if "uploader_messages" not in st.session_state:
@@ -43,8 +58,8 @@ if st.session_state.pending_companies:
             st.session_state.pending_companies = []
             st.rerun()
 
-# Handle Chat Input
-prompt = st.chat_input("E.g., 'Add Acme Corp (acme.com) and Globex...'")
+    # Handle Chat Input
+    prompt = st.chat_input("E.g., 'Add Acme Corp...' or 'Process https://...'")
 
 if prompt or st.session_state.get("manual_proceed", False):
     
@@ -142,15 +157,37 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     
                     st.session_state.pending_companies = []
                     
-                    # Add system message to chat
-                    completion_msg = f"**Successfully created and processed {len(created_orgs)} companies:**\n"
-                    if created_orgs:
-                        for name in created_orgs:
-                            completion_msg += f"- ✅ {name}\n"
-                    if failed_orgs:
-                        completion_msg += "\n**Errors encountered:**\n"
-                        for err in failed_orgs:
-                            completion_msg += f"- ❌ {err}\n"
-                            
-                    st.session_state.uploader_messages.append({"role": "assistant", "content": completion_msg})
-                    st.rerun()
+                elif action_type == "process_link":
+                    url = action_data.get("url")
+                    target_name = action_data.get("target_entity_name")
+                    target_type = action_data.get("target_entity_type")
+                    
+                    if not url or not target_name:
+                        st.error("Missing URL or target entity name from agent.")
+                    else:
+                        with st.status(f"Processing link for {target_name}...", expanded=True) as status:
+                            try:
+                                with get_db_context() as db:
+                                    # For now, we only support mapping to Organizations (Company/Investor)
+                                    st.write(f"Looking up {target_type}: {target_name}...")
+                                    org = db.query(Organization).filter(Organization.name.ilike(f"%{target_name}%")).first()
+                                    
+                                    if not org:
+                                        st.write(f"Could not find {target_type} named '{target_name}'. Creating it now...")
+                                        org = create_company(
+                                            db=db,
+                                            name=target_name,
+                                            created_by="AgenticUploads"
+                                        )
+                                        if target_type and target_type.lower() == "investor":
+                                            org.organization_type = "INVESTOR"
+                                        db.commit()
+                                        
+                                    st.write(f"Found/Created {org.name}. Scraping and running extraction pipeline...")
+                                    run_manual_url_augmentation(org.id, url)
+                                    status.update(label=f"Successfully extracted data from link and updated {org.name}!", state="complete", expanded=False)
+                                    st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully extracted data from the link and filed it under **{org.name}**."})
+                            except Exception as e:
+                                status.update(label=f"Failed to process link: {str(e)}", state="error", expanded=True)
+                                st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process link: {str(e)}"})
+                        st.rerun()

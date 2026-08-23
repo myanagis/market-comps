@@ -31,6 +31,10 @@ class Organization(Base, TimestampMixin):
     street2 = Column(String)
     zip_code = Column(String)
     organization_type = Column(String, nullable=False, default="COMPANY")
+    ownership_type = Column(String, default="PRIVATE") # public, private
+    ticker = Column(String)
+    exchange = Column(String)
+    
     description = Column(String)
     status = Column(String)
     is_active = Column(Boolean, default=True)
@@ -47,6 +51,9 @@ class Organization(Base, TimestampMixin):
     metric_observations = relationship("MetricObservation", back_populates="company", cascade="all, delete-orphan")
     financing_rounds = relationship("FinancingRound", back_populates="company", cascade="all, delete-orphan")
     investments_made = relationship("RoundInvestor", back_populates="investor", cascade="all, delete-orphan")
+
+    transactions_as_target = relationship("Transaction", foreign_keys="[Transaction.target_company_id]", back_populates="target_company", cascade="all, delete-orphan")
+    transactions_as_acquirer = relationship("Transaction", foreign_keys="[Transaction.acquirer_company_id]", back_populates="acquirer_company", cascade="all, delete-orphan")
 
     @validates('primary_domain')
     def validate_primary_domain(self, key, value):
@@ -741,3 +748,63 @@ class CompetitiveAnalysisCompany(Base, TimestampMixin):
     competitive_analysis = relationship("CompetitiveAnalysis", back_populates="analysis_companies")
     competitor_company = relationship("Organization")
     market_segment = relationship("MarketSegment")
+
+class ComparisonSet(Base, TimestampMixin):
+    __tablename__ = 'comparison_sets'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String)
+    set_type = Column(String, nullable=False) # e.g. "Public Comps", "M&A Precedents", "Financing Comps"
+    
+    market_links = relationship("MarketComparisonSetLink", back_populates="comparison_set", cascade="all, delete-orphan")
+    company_links = relationship("ComparisonSetCompanyLink", back_populates="comparison_set", cascade="all, delete-orphan")
+
+class MarketComparisonSetLink(Base, TimestampMixin):
+    __tablename__ = 'market_comparison_set_links'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    market_id = Column(Integer, ForeignKey('markets.id', ondelete="CASCADE"), nullable=False)
+    comparison_set_id = Column(Integer, ForeignKey('comparison_sets.id', ondelete="CASCADE"), nullable=False)
+    
+    notes = Column(String)
+    
+    market = relationship("Market")
+    comparison_set = relationship("ComparisonSet", back_populates="market_links")
+
+class ComparisonSetCompanyLink(Base, TimestampMixin):
+    __tablename__ = 'comparison_set_company_links'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    comparison_set_id = Column(Integer, ForeignKey('comparison_sets.id', ondelete="CASCADE"), nullable=False)
+    company_id = Column(Integer, ForeignKey('organizations.id', ondelete="CASCADE"), nullable=False)
+    
+    notes = Column(String)
+    included = Column(Boolean, default=True)
+    
+    comparison_set = relationship("ComparisonSet", back_populates="company_links")
+    company = relationship("Organization")
+
+class Transaction(Base, TimestampMixin):
+    __tablename__ = 'transactions'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_name = Column(String, nullable=False)
+    transaction_type = Column(String, nullable=False) # ACQUISITION, MERGE, IPO, SPAC, BUYOUT, SPINOFF
+    status = Column(String) # RUMORED, ANNOUNCED, CLOSED, CANCELLED
+    
+    announced_date = Column(DateTime)
+    closed_date = Column(DateTime)
+    
+    target_company_id = Column(Integer, ForeignKey('organizations.id', ondelete="CASCADE"))
+    acquirer_company_id = Column(Integer, ForeignKey('organizations.id', ondelete="CASCADE"))
+    
+    transaction_value_numeric = Column(Float)
+    transaction_value_text = Column(String)
+    currency_code = Column(String)
+    
+    description = Column(String)
+    notes = Column(String)
+    
+    target_company = relationship("Organization", foreign_keys=[target_company_id], back_populates="transactions_as_target")
+    acquirer_company = relationship("Organization", foreign_keys=[acquirer_company_id], back_populates="transactions_as_acquirer")
