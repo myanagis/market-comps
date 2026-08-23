@@ -91,8 +91,8 @@ with tab_dir:
                         
                     st.markdown(f"<div style='margin-bottom:8px; color:gray; font-size:0.9em;'>{' &middot; '.join(meta_tags)}</div>", unsafe_allow_html=True)
                     
-                    domain_md = f"<a href='https://{o.primary_domain}' target='_blank' style='text-decoration:none;'>{o.primary_domain}</a>" if o.primary_domain else ""
-                    st.markdown(f"<div style='font-size:0.95em; margin-bottom:5px;'>{domain_md} &nbsp;&nbsp;&nbsp; <a href='/company?id={o.id}' target='_self' style='text-decoration:none; font-weight:500;'>View profile →</a></div>", unsafe_allow_html=True)
+                    domain_md = f"[{o.primary_domain}](https://{o.primary_domain})" if o.primary_domain else ""
+                    st.markdown(f"{domain_md} &nbsp;&nbsp;&nbsp; [**View profile →**](/company?id={o.id})")
 
 with tab_add:
     with st.form("company_form", clear_on_submit=True):
