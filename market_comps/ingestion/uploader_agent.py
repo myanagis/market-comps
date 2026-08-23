@@ -58,7 +58,7 @@ ACTION_SCHEMA = {
         },
         "target_entity_type": {
             "type": ["string", "null"],
-            "enum": ["Company", "Investor", "Market Map", null],
+            "enum": ["Company", "Investor", "Market Map", None],
             "description": "The type of entity to file the web link data to."
         },
         "target_entity_name": {
