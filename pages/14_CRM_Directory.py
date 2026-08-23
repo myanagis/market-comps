@@ -61,7 +61,7 @@ with tab_search:
                     with c1:
                         st.markdown(f"<div style='font-size:0.9em;'>{domain_md}</div>", unsafe_allow_html=True)
                     with c2:
-                        st.page_link("pages/13_CRM_Company_Details.py", label="View profile →")
+                        st.markdown(f"[**View profile →**](/company?id={o.id})")
                         
         # --- Investment Firms ---
         with col_firm:
@@ -88,7 +88,7 @@ with tab_search:
                     with c1:
                         st.markdown(f"<div style='font-size:0.9em;'>{domain_md}</div>", unsafe_allow_html=True)
                     with c2:
-                        st.page_link("pages/15_CRM_Investment_Firm_Details.py", label="View profile →")
+                        st.markdown(f"[**View profile →**](/investment_firm?id={f.id})")
                         
         # --- People ---
         with col_pe:
@@ -115,7 +115,7 @@ with tab_search:
                     with c1:
                         st.markdown(f"<div style='font-size:0.9em;'>{domain_md}</div>", unsafe_allow_html=True)
                     with c2:
-                        st.page_link("pages/16_CRM_Person_Details.py", label="View profile →")
+                        st.markdown(f"[**View profile →**](/person?id={p.id})")
                         
         # --- Programs ---
         with col_pr:
@@ -138,7 +138,7 @@ with tab_search:
                     
                     c1, c2 = st.columns([1, 1])
                     with c2:
-                        st.page_link("pages/17_CRM_Program_Details.py", label="View profile →")
+                        st.markdown(f"[**View profile →**](/program?id={p.id})")
 
 
 # --- ADD COMPANY ---
