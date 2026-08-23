@@ -43,7 +43,7 @@ with get_db_context() as db:
                             st.caption(m.description)
                     with col_link:
                         st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown(f"[👁️ View Market →](/market?id={m.id})")
+                        st.markdown(f"**[View Market →](/market?id={m.id})**")
                         
     with tab_add:
         with st.form("new_market_form", clear_on_submit=True):

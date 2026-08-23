@@ -65,7 +65,7 @@ with tab_search:
                         
         # --- Investment Firms ---
         with col_firm:
-            st.subheader("🏦 Inv Firms")
+            st.subheader("🏦 Investment Firms")
             q_firm = db.query(Organization).options(joinedload(Organization.investor_profile)).filter(Organization.organization_type == "INVESTOR")
             sf = f"%{search_query}%"
             q_firm = q_firm.filter(or_(Organization.name.ilike(sf), Organization.primary_domain.ilike(sf)))
