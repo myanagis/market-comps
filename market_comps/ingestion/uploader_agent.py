@@ -23,6 +23,7 @@ Valid action types:
 
 If the user provides companies, but one or more are missing a domain/website, you SHOULD use the `clarify` action to ask for the domain, because the AI augmentation pipeline works best with a website.
 However, if the user explicitly says they don't know the domain, or tells you to proceed anyway, use the `proceed` action.
+If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
 
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
 """
@@ -47,7 +48,10 @@ ACTION_SCHEMA = {
                 "properties": {
                     "name": {"type": "string"},
                     "domain": {"type": ["string", "null"]},
-                    "description": {"type": ["string", "null"]}
+                    "description": {"type": ["string", "null"]},
+                    "ticker_symbol": {"type": ["string", "null"]},
+                    "stock_exchange": {"type": ["string", "null"]},
+                    "ownership_type": {"type": ["string", "null"]}
                 },
                 "required": ["name"]
             }

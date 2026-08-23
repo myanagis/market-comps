@@ -97,6 +97,9 @@ if prompt or st.session_state.get("manual_proceed", False):
                         name = comp.get("name")
                         domain = comp.get("domain")
                         desc = comp.get("description")
+                        ticker = comp.get("ticker_symbol")
+                        exchange = comp.get("stock_exchange")
+                        ownership = comp.get("ownership_type")
                         
                         if not name:
                             continue
@@ -121,7 +124,10 @@ if prompt or st.session_state.get("manual_proceed", False):
                             st.session_state.pending_companies.append({
                                 "name": name,
                                 "domain": domain,
-                                "description": desc
+                                "description": desc,
+                                "ticker_symbol": ticker,
+                                "stock_exchange": exchange,
+                                "ownership_type": ownership
                             })
                 
                 st.rerun()
@@ -144,7 +150,10 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         db=db,
                                         name=comp["name"],
                                         domain=comp["domain"],
-                                        description=comp["description"]
+                                        description=comp["description"],
+                                        ticker_symbol=comp.get("ticker_symbol"),
+                                        stock_exchange=comp.get("stock_exchange"),
+                                        ownership_type=comp.get("ownership_type")
                                     )
                                     # Must commit here so the augmentation pipeline (which uses a new session) can see the org!
                                     db.commit()

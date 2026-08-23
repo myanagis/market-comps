@@ -28,7 +28,16 @@ def find_existing_company(db: Session, name: str, domain: Optional[str] = None) 
             
     return None
 
-def create_company(db: Session, name: str, domain: Optional[str] = None, description: Optional[str] = None, created_by: str = "UploaderAgent") -> Organization:
+def create_company(
+    db: Session, 
+    name: str, 
+    domain: Optional[str] = None, 
+    description: Optional[str] = None, 
+    ticker_symbol: Optional[str] = None,
+    stock_exchange: Optional[str] = None,
+    ownership_type: Optional[str] = None,
+    created_by: str = "UploaderAgent"
+) -> Organization:
     """
     Creates a new Organization, its CompanyProfile, and an AuditTrail.
     """
@@ -44,6 +53,9 @@ def create_company(db: Session, name: str, domain: Optional[str] = None, descrip
         primary_domain=clean_domain,
         website_url=f"https://{clean_domain}" if clean_domain else None,
         description=description,
+        ticker_symbol=ticker_symbol,
+        stock_exchange=stock_exchange,
+        ownership_type=ownership_type,
         status="active"
     )
     db.add(org)
