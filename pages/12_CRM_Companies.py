@@ -38,12 +38,8 @@ def get_all_company_themes(db):
 
 # Fetch and query data
 with tab_dir:
-    st.markdown("### Search & Filter")
-    col_search, col_filter, col_own = st.columns([2, 1, 1])
-    search_query = col_search.text_input("Search Companies...", placeholder="Search by name, domain, or website...")
-    status_filter = col_filter.selectbox("Status", ["ACTIVE", "ALL", "INACTIVE", "ACQUIRED", "DEFUNCT"])
-    ownership_filter = col_own.selectbox("Ownership", ["ALL", "PRIVATE", "PUBLIC"])
-    
+    st.markdown("### Search")
+    search_query = st.text_input("Search Companies...", placeholder="Search by name, domain, or website...", label_visibility="collapsed")
     st.divider()
     
     q = db.query(Organization).options(
@@ -59,51 +55,44 @@ with tab_dir:
                 Organization.primary_domain.ilike(search_filter)
             )
         )
-        
-    if status_filter != "ALL":
-        q = q.filter(Organization.status == status_filter)
 
-    if ownership_filter != "ALL":
-        q = q.filter(func.upper(Organization.ownership_type) == ownership_filter)
-
-    orgs = q.order_by(Organization.created_at.desc()).limit(100).all()
+    # Sort alphabetically
+    orgs = q.order_by(Organization.name).limit(100).all()
 
     if not orgs:
         st.info("No company records found.")
     else:
         st.markdown(f"**Showing {len(orgs)} companies**")
         
-        # Build Custom Premium List View
-        for o in orgs:
-            with st.container(border=True):
-                col_info, col_link = st.columns([5, 1])
-                
-                with col_info:
-                    st.subheader(o.name)
+        # Build Custom Narrow List View
+        col_list, col_pad = st.columns([2, 1])
+        with col_list:
+            for o in orgs:
+                with st.container(border=True):
+                    st.markdown(f"<h4 style='margin-bottom:0; margin-top:0;'>{o.name}</h4>", unsafe_allow_html=True)
                     
-                    # Construct meta tags (Industry · City · Stage)
+                    # Construct meta tags
                     meta_tags = []
+                    if o.company_profile and o.company_profile.industry: 
+                        meta_tags.append(o.company_profile.industry)
+                        
+                    locs = [l for l in [o.city, o.state, o.country] if l]
+                    if locs:
+                        meta_tags.append(", ".join(locs))
+                        
+                    if o.company_profile and o.company_profile.company_stage: 
+                        meta_tags.append(o.company_profile.company_stage)
+                        
                     if o.ownership_type and o.ownership_type.upper() == "PUBLIC":
                         ticker_str = f" ({o.exchange}: {o.ticker})" if o.ticker and o.exchange else (f" ({o.ticker})" if o.ticker else "")
                         meta_tags.append(f"Public{ticker_str}")
-                    if o.company_profile:
-                        if o.company_profile.industry: meta_tags.append(o.company_profile.industry)
-                    if o.city: meta_tags.append(o.city)
-                    if o.company_profile:
-                        if o.company_profile.company_stage: meta_tags.append(o.company_profile.company_stage)
+                    else:
+                        meta_tags.append("Private")
                         
-                    if meta_tags:
-                        st.markdown(f"*{' · '.join(meta_tags)}*")
-                        
-                    if o.primary_domain:
-                        st.markdown(f"[{o.primary_domain}](https://{o.primary_domain})")
-                        
-                    if o.status and o.status.upper() != "ACTIVE":
-                        st.warning(f"Status: {o.status}")
-                        
-                with col_link:
-                    st.markdown("<br><br>", unsafe_allow_html=True)
-                    st.markdown(f"[👁️ View profile →](/company?id={o.id})")
+                    st.markdown(f"<div style='margin-bottom:8px; color:gray; font-size:0.9em;'>{' &middot; '.join(meta_tags)}</div>", unsafe_allow_html=True)
+                    
+                    domain_md = f"[{o.primary_domain}](https://{o.primary_domain})" if o.primary_domain else ""
+                    st.markdown(f"<div style='font-size:0.95em;'>{domain_md} &nbsp;&nbsp;&nbsp; <a href='/company?id={o.id}' target='_self'>View profile →</a></div>", unsafe_allow_html=True)
 
 with tab_add:
     with st.form("company_form", clear_on_submit=True):
