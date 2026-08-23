@@ -61,6 +61,22 @@ def log_mutation(
 # ==============================================================================
 # ENTITY RECONCILIATION
 # ==============================================================================
+import re
+
+def normalize_company_name(name: str) -> str:
+    """Normalize company names for robust deduplication matching."""
+    if not name:
+        return ""
+    name = name.lower().strip()
+    # Remove common suffixes and prefixes
+    name = re.sub(r'^(the\s+)', '', name)
+    name = re.sub(r'\s+(inc\.?|llc\.?|corp\.?|corporation|ltd\.?|limited|co\.?|company|ventures|fund|partners|capital|group|holdings)\b', '', name)
+    # Remove punctuation
+    name = re.sub(r'[^\w\s]', '', name)
+    # Remove extra spaces
+    name = re.sub(r'\s+', ' ', name).strip()
+    return name
+
 
 def reconcile_organization(
     db: Session,
@@ -90,12 +106,24 @@ def reconcile_organization(
         parsed_url = urlparse(company_url)
         domain = parsed_url.netloc.replace("www.", "")
 
+    # Normalize name for robust matching
+    norm_name = normalize_company_name(name)
+
     # Find existing org
     org = None
     if domain:
         org = db.query(Organization).filter_by(primary_domain=domain).first()
-    if not org:
-        org = db.query(Organization).filter_by(normalized_name=name.lower()).first()
+    if not org and norm_name:
+        # Search all orgs to find a normalized match (this can be optimized for large databases)
+        # We will use SQLAlchemy's replace and lower to do a best-effort database-side check, 
+        # or we can pull all names and check in python if the DB is small enough.
+        # Since it's SQLite, pulling all names or using ilike is feasible.
+        all_orgs = db.query(Organization).all()
+        for o in all_orgs:
+            if normalize_company_name(o.name) == norm_name:
+                org = o
+                break
+
 
     # Upsert
     is_new = False
@@ -120,7 +148,7 @@ def reconcile_organization(
         is_new = True
         org = Organization(
             name=name,
-            normalized_name=name.lower(),
+            normalized_name=norm_name,
             primary_domain=domain or None,
             website_url=company_url,
             description=payload.get("description"),

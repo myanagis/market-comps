@@ -186,118 +186,12 @@ def display_person_details(person_id):
             st.info("No mutation entries found.")
 
 # Fetch and query data
-with tab_dir:
-    search_query = st.text_input("Search People...", placeholder="Search by name...")
 
-q = db.query(Person)
-if search_query:
-    search_filter = f"%{search_query}%"
-    q = q.filter(
-        or_(
-            Person.full_name.ilike(search_filter),
-            Person.first_name.ilike(search_filter),
-            Person.last_name.ilike(search_filter)
-        )
-    )
-
-people = q.order_by(Person.created_at.desc()).limit(200).all()
-
-# Prepare Dataframe
-data = []
-for p in people:
-    data.append({
-        "ID": str(p.id),
-        "Name": p.full_name or f"{p.first_name} {p.last_name}",
-        "LinkedIn": p.linkedin_url,
-        "City": p.city,
-        "State": p.state,
-        "Created": p.created_at.strftime("%Y-%m-%d") if p.created_at else ""
-    })
-
-df = pd.DataFrame(data)
-
-if df.empty:
-    st.info("No people records found.")
+person_id = st.query_params.get('id')
+col_back, _ = st.columns([1, 5])
+with col_back:
+    st.page_link('pages/14_CRM_Directory.py', label='← Back to Directory')
+if person_id:
+    display_person_details(person_id)
 else:
-    st.write("👆 *Select a person row below to inspect full details.*")
-    
-    event = st.dataframe(
-        df,
-        key="grid_people",
-        on_select="rerun",
-        selection_mode="single-row",
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "ID": None, # Hide ID
-            "LinkedIn": st.column_config.LinkColumn("LinkedIn"),
-            "Created": st.column_config.DateColumn("Created")
-        }
-    )
-    
-    selection = event.get("selection", {})
-    rows = selection.get("rows", [])
-    
-    if rows:
-        st.divider()
-        selected_row_idx = rows[0]
-        selected_person_id = df.iloc[selected_row_idx]["ID"]
-        display_person_details(selected_person_id)
-
-with tab_add:
-    from market_comps.db.models import Organization
-    with st.form("person_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        first_name = col1.text_input("First Name *")
-        last_name = col2.text_input("Last Name *")
-        linkedin = st.text_input("LinkedIn URL")
-        city = col1.text_input("City")
-        bio = st.text_area("Bio")
-        
-        st.subheader("Add Current Role (Optional)")
-        companies = db.query(Organization).filter_by(organization_type="COMPANY").order_by(Organization.name).all()
-        company_opts = {0: "-- None --"}
-        company_opts.update({c.id: c.name for c in companies})
-        
-        col3, col4 = st.columns(2)
-        linked_company_id = col3.selectbox("Select Company", options=list(company_opts.keys()), format_func=lambda x: company_opts[x])
-        role_title = col4.text_input("Title (e.g. CEO, Founder)")
-        start_date = col3.date_input("Start Date", value=None)
-        
-        submitted = st.form_submit_button("Create Person")
-        if submitted:
-            if not first_name or not last_name:
-                st.error("First and Last Name are required.")
-            else:
-                try:
-                    full_name = f"{first_name} {last_name}"
-                    p = db.query(Person).filter_by(first_name=first_name, last_name=last_name).first()
-                    action_str = "updated" if p else "created"
-                    
-                    if p:
-                        p.full_name = full_name
-                        if linkedin: p.linkedin_url = linkedin
-                        if city: p.city = city
-                        if bio: p.bio = bio
-                    else:
-                        p = Person(first_name=first_name, last_name=last_name, full_name=full_name, linkedin_url=linkedin, city=city, bio=bio)
-                        db.add(p)
-                        
-                    db.commit()
-                    
-                    if linked_company_id != 0:
-                        role = PersonOrganizationRole(
-                            person_id=p.id,
-                            organization_id=linked_company_id,
-                            title=role_title,
-                            start_date=start_date,
-                            is_current=True
-                        )
-                        db.add(role)
-                        db.commit()
-                        st.success(f"Successfully linked role at {company_opts[linked_company_id]}!")
-                        
-                    st.success(f"Successfully {action_str} person: {full_name}!")
-                except Exception as e:
-                    db.rollback()
-                    st.error(f"Error saving to DB: {str(e)}")
+    st.info('No Person ID provided.')
