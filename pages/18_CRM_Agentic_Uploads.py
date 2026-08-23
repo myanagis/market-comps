@@ -58,8 +58,8 @@ if st.session_state.pending_companies:
             st.session_state.pending_companies = []
             st.rerun()
 
-    # Handle Chat Input
-    prompt = st.chat_input("E.g., 'Add Acme Corp...' or 'Process https://...'")
+# Handle Chat Input
+prompt = st.chat_input("E.g., 'Add Acme Corp...' or 'Process https://...'")
 
 if prompt or st.session_state.get("manual_proceed", False):
     
