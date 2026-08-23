@@ -1014,7 +1014,7 @@ company_id = st.query_params.get("id")
 
 col_back, _ = st.columns([1, 5])
 with col_back:
-    st.page_link("pages/12_CRM_Companies.py", label="← Back to Directory")
+    st.page_link("pages/14_CRM_Directory.py", label="← Back to Directory")
 
 if company_id:
     display_company_details(company_id)
