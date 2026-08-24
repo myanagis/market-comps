@@ -228,8 +228,9 @@ with get_db_context() as db:
             sets_by_type[stype] = []
         sets_by_type[stype].append(cset)
 
-    STANDARD_SET_TYPES = ["Public Comps", "Financing Comps", "M&A Precedents", "Competitors", "Investors", "Other"]
-    all_types = list(dict.fromkeys(STANDARD_SET_TYPES + list(sets_by_type.keys())))
+    all_types = list(sets_by_type.keys())
+    if not all_types:
+        st.info("No comparison groups exist for this market yet.")
 
     for stype in all_types:
         csets = sets_by_type.get(stype, [])
@@ -293,3 +294,24 @@ with get_db_context() as db:
                         st.rerun()
                         
         st.write("") # spacing
+
+    with st.popover("➕ Add Comparison Group"):
+        with st.form("add_comp_group"):
+            st.write("Add a new comparison group to this market map.")
+            STANDARD_SET_TYPES = ["Public Comps", "Financing Comps", "M&A Precedents", "Competitors", "Investors", "Other"]
+            new_type = st.selectbox("Group Type", STANDARD_SET_TYPES)
+            custom_type = st.text_input("Or create custom group type")
+            
+            if st.form_submit_button("Create Group"):
+                final_type = custom_type.strip() if custom_type.strip() else new_type
+                db_stype = "Investor Comps" if final_type == "Investors" else final_type
+                
+                new_set = ComparisonSet(name=f"{market.name} - {final_type}", set_type=db_stype)
+                db.add(new_set)
+                db.flush()
+                
+                new_link = MarketComparisonSetLink(market_id=market.id, comparison_set_id=new_set.id)
+                db.add(new_link)
+                db.commit()
+                st.success(f"Group '{final_type}' created!")
+                st.rerun()
