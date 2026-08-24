@@ -42,6 +42,11 @@ def get_all_fund_themes(db):
             themes.update(t)
     return sorted(list(themes))
 
+def get_all_sectors(db):
+    from market_comps.db.models import Sector
+    sectors = db.query(Sector).order_by(Sector.name).all()
+    return [s.name for s in sectors]
+
 @st.dialog("Edit Investment Firm")
 def edit_firm_dialog(org):
     with st.form("edit_firm"):
@@ -69,8 +74,17 @@ def edit_firm_dialog(org):
         with col3:
             investor_type = st.text_input("Investor Type", value=prof.investor_type if prof else "")
             founded = st.number_input("Founded Year", value=prof.founded_year if prof and prof.founded_year else None, step=1, placeholder="YYYY")
+            check_min = st.number_input("Check Size Min ($M)", value=prof.check_size_min if prof else None, step=0.1)
         with col4:
-            preferred_stage = st.text_input("Preferred Stage", value=prof.preferred_stage if prof else "")
+            preferred_stage = st.text_input("Preferred Stage (Legacy)", value=prof.preferred_stage if prof else "")
+            check_max = st.number_input("Check Size Max ($M)", value=prof.check_size_max if prof else None, step=0.1)
+            
+        stages_val = st.text_input("Stages (comma separated)", value=",".join(prof.stages) if prof and prof.stages else "")
+        specialties_val = st.text_input("Specialties (comma separated)", value=",".join(prof.specialties) if prof and prof.specialties else "")
+        
+        all_sectors = get_all_sectors(db)
+        selected_sectors = st.multiselect("Sectors", options=all_sectors, default=prof.sectors if prof and prof.sectors else [])
+        new_sectors = st.text_input("Add New Sectors (comma separated)")
             
         user_notes = st.text_area("User Notes", value=prof.user_notes if prof else "")
         all_themes = get_all_investor_themes(db)
@@ -115,7 +129,23 @@ def edit_firm_dialog(org):
             check_and_update("INVESTOR_PROFILE", prof.id, "investor_type", prof.investor_type, investor_type, prof)
             check_and_update("INVESTOR_PROFILE", prof.id, "preferred_stage", prof.preferred_stage, preferred_stage, prof)
             check_and_update("INVESTOR_PROFILE", prof.id, "founded_year", prof.founded_year, founded if founded else None, prof)
+            check_and_update("INVESTOR_PROFILE", prof.id, "check_size_min", prof.check_size_min, check_min if check_min else None, prof)
+            check_and_update("INVESTOR_PROFILE", prof.id, "check_size_max", prof.check_size_max, check_max if check_max else None, prof)
             check_and_update("INVESTOR_PROFILE", prof.id, "user_notes", prof.user_notes, user_notes, prof)
+            
+            check_and_update("INVESTOR_PROFILE", prof.id, "stages", prof.stages, [s.strip() for s in stages_val.split(",")] if stages_val else None, prof)
+            check_and_update("INVESTOR_PROFILE", prof.id, "specialties", prof.specialties, [s.strip() for s in specialties_val.split(",")] if specialties_val else None, prof)
+            
+            final_sectors = list(selected_sectors)
+            if new_sectors:
+                new_sec_list = [s.strip() for s in new_sectors.split(",") if s.strip()]
+                final_sectors.extend(new_sec_list)
+                from market_comps.db.models import Sector
+                for ns in new_sec_list:
+                    if not db.query(Sector).filter_by(name=ns).first():
+                        db.add(Sector(name=ns))
+            final_sectors = list(set(final_sectors))
+            check_and_update("INVESTOR_PROFILE", prof.id, "sectors", prof.sectors, final_sectors, prof)
             
             final_themes = list(selected_themes)
             if new_themes:
@@ -216,8 +246,25 @@ def display_investor_details(investor_id):
         with col_b2:
             if org.investor_profile:
                 st.write(f"**Investor Type:** {org.investor_profile.investor_type or 'N/A'}")
-                st.write(f"**Preferred Stage:** {org.investor_profile.preferred_stage or 'N/A'}")
                 st.write(f"**Founded Year:** {org.investor_profile.founded_year or 'N/A'}")
+                
+                check_min = org.investor_profile.check_size_min
+                check_max = org.investor_profile.check_size_max
+                if check_min or check_max:
+                    st.write(f"**Typical Check:** ${check_min or '?'}M - ${check_max or '?'}M")
+                
+                if org.investor_profile.stages:
+                    st.write(f"**Stages:**")
+                    st.markdown(" ".join([f"`{s}`" for s in org.investor_profile.stages]))
+                    
+                if org.investor_profile.sectors:
+                    st.write(f"**Sectors:**")
+                    st.markdown(" ".join([f"`{s}`" for s in org.investor_profile.sectors]))
+                    
+                if org.investor_profile.specialties:
+                    st.write(f"**Specialties:**")
+                    st.markdown(" ".join([f"`{s}`" for s in org.investor_profile.specialties]))
+                    
                 if org.investor_profile.themes:
                     st.write(f"**Themes:** {', '.join(org.investor_profile.themes)}")
                 if org.investor_profile.user_notes:

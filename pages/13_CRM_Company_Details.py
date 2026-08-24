@@ -34,6 +34,11 @@ def get_all_company_themes(db):
             themes.update(t)
     return sorted(list(themes))
 
+def get_all_sectors(db):
+    from market_comps.db.models import Sector
+    sectors = db.query(Sector).order_by(Sector.name).all()
+    return [s.name for s in sectors]
+
 @st.dialog("Edit Company")
 def edit_company_dialog(org):
     with st.form("edit_company"):
@@ -72,6 +77,10 @@ def edit_company_dialog(org):
         all_themes = get_all_company_themes(db)
         selected_themes = st.multiselect("Themes", options=all_themes, default=prof.themes if prof and prof.themes else [])
         new_themes = st.text_input("Add New Themes (comma separated)")
+        
+        all_sectors = get_all_sectors(db)
+        selected_sectors = st.multiselect("Sectors", options=all_sectors, default=prof.sectors if prof and prof.sectors else [])
+        new_sectors = st.text_input("Add New Sectors (comma separated)")
             
         if st.form_submit_button("Save Changes"):
             user = st.session_state.get("user_email", "SYSTEM")
@@ -121,7 +130,18 @@ def edit_company_dialog(org):
                 final_themes.extend([t.strip() for t in new_themes.split(",") if t.strip()])
             final_themes = list(set(final_themes))
             
+            final_sectors = list(selected_sectors)
+            if new_sectors:
+                new_sec_list = [s.strip() for s in new_sectors.split(",") if s.strip()]
+                final_sectors.extend(new_sec_list)
+                from market_comps.db.models import Sector
+                for ns in new_sec_list:
+                    if not db.query(Sector).filter_by(name=ns).first():
+                        db.add(Sector(name=ns))
+            final_sectors = list(set(final_sectors))
+            
             check_and_update("COMPANY_PROFILE", prof.id, "themes", prof.themes, final_themes, prof)
+            check_and_update("COMPANY_PROFILE", prof.id, "sectors", prof.sectors, final_sectors, prof)
             
             db.commit()
             st.rerun()
@@ -256,6 +276,13 @@ def display_company_details(company_id):
                 
         st.write(" | ".join(info_parts))
         
+        if org.company_profile:
+            if org.company_profile.sectors:
+                st.write(f"**Sectors:**")
+                st.markdown(" ".join([f"`{s}`" for s in org.company_profile.sectors]))
+            if org.company_profile.themes:
+                st.write(f"**Themes:** {', '.join(org.company_profile.themes)}")
+
         if org.status and org.status.upper() != "ACTIVE":
             st.warning(f"**Status:** {org.status}")
             

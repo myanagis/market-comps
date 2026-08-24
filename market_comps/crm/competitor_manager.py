@@ -31,8 +31,8 @@ RELATIONSHIP_TYPES = [
 def get_all_markets(db: Session) -> List[Market]:
     return db.query(Market).order_by(Market.name).all()
 
-def create_market(db: Session, name: str, description: Optional[str] = None, created_by: str = "USER") -> Market:
-    market = Market(name=name.strip(), description=description)
+def create_market(db: Session, name: str, description: Optional[str] = None, sectors: Optional[List[str]] = None, created_by: str = "USER") -> Market:
+    market = Market(name=name.strip(), description=description, sectors=sectors)
     db.add(market)
     db.flush()
     db.add(AuditTrail(

@@ -347,8 +347,13 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
     - description_short: A concise description of what the company does (under 20 words)
     - hq_location: The headquarters location (City, State, Country)
     - founded_year: The year the company was founded (integer)
-    - sector: The broad industry category
-    - subsector: The more specific market or niche
+    - sectors: A list of broad industry categories or sectors (e.g., ["B2B SaaS", "Fintech"])
+    
+    If the target is an INVESTMENT FIRM, also extract:
+    - investor_stages: A list of typical investment stages (e.g., ["Seed", "Series A", "Growth Equity"])
+    - investor_specialties: A list of specialties or specific focus areas (e.g., ["Climate Tech", "Hard Tech", "B2B"])
+    - check_size_min: The minimum typical investment check size (float, in millions USD. e.g., 1.5)
+    - check_size_max: The maximum typical investment check size (float, in millions USD. e.g., 10.0)
     
     DOCUMENTS:
     {doc_text_block}
@@ -361,8 +366,11 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
             "description_short": {"type": ["string", "null"]},
             "hq_location": {"type": ["string", "null"]},
             "founded_year": {"type": ["integer", "null"]},
-            "sector": {"type": ["string", "null"]},
-            "subsector": {"type": ["string", "null"]}
+            "sectors": {"type": ["array", "null"], "items": {"type": "string"}},
+            "investor_stages": {"type": ["array", "null"], "items": {"type": "string"}},
+            "investor_specialties": {"type": ["array", "null"], "items": {"type": "string"}},
+            "check_size_min": {"type": ["number", "null"]},
+            "check_size_max": {"type": ["number", "null"]}
         }
     }
     
@@ -597,7 +605,7 @@ def extract_metrics(documents: List[Dict], target_company_name: str = "") -> Tup
 
 def run_extraction_on_documents(db, org, docs_data, run):
     """Shared function to run extraction and upserts on a set of documents."""
-    from market_comps.db.models import Person, PersonEmail, PersonOrganizationRole, AuditTrail, FinancingRound, FinancingRoundFact, RoundInvestor, Organization, CompanyProfile
+    from market_comps.db.models import Person, PersonEmail, PersonOrganizationRole, AuditTrail, FinancingRound, FinancingRoundFact, RoundInvestor, Organization, CompanyProfile, InvestorProfile
     from market_comps.db.models import MetricType, MetricObservation, ObservationSource
     from datetime import datetime
     
@@ -620,14 +628,25 @@ def run_extraction_on_documents(db, org, docs_data, run):
             if len(parts) >= 2: org.state = parts[1]
             if len(parts) >= 3: org.country = parts[2]
             
-        profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
-        if not profile:
-            profile = CompanyProfile(organization_id=org.id)
-            db.add(profile)
-        
-        if basics.get("founded_year") and not profile.founded_year: profile.founded_year = basics["founded_year"]
-        if basics.get("sector") and not profile.industry: profile.industry = basics["sector"]
-        if basics.get("subsector") and not profile.subindustry: profile.subindustry = basics["subsector"]
+        is_investor = (org.organization_type == "INVESTOR")
+        if is_investor:
+            profile = db.query(InvestorProfile).filter_by(organization_id=org.id).first()
+            if not profile:
+                profile = InvestorProfile(organization_id=org.id)
+                db.add(profile)
+            if basics.get("founded_year") and not profile.founded_year: profile.founded_year = basics["founded_year"]
+            if basics.get("sectors") and not profile.sectors: profile.sectors = basics["sectors"]
+            if basics.get("investor_stages") and not profile.stages: profile.stages = basics["investor_stages"]
+            if basics.get("investor_specialties") and not profile.specialties: profile.specialties = basics["investor_specialties"]
+            if basics.get("check_size_min") is not None and profile.check_size_min is None: profile.check_size_min = basics["check_size_min"]
+            if basics.get("check_size_max") is not None and profile.check_size_max is None: profile.check_size_max = basics["check_size_max"]
+        else:
+            profile = db.query(CompanyProfile).filter_by(organization_id=org.id).first()
+            if not profile:
+                profile = CompanyProfile(organization_id=org.id)
+                db.add(profile)
+            if basics.get("founded_year") and not profile.founded_year: profile.founded_year = basics["founded_year"]
+            if basics.get("sectors") and not profile.sectors: profile.sectors = basics["sectors"]
         
     db.flush()
 

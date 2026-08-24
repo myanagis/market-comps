@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON, Float, Text
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON, Float, Text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, validates
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -71,6 +71,14 @@ class Organization(Base, TimestampMixin):
         return value if value else None
 
 
+class Sector(Base, TimestampMixin):
+    __tablename__ = 'sectors'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True)
+    description = Column(String)
+
+
 class CompanyProfile(Base, TimestampMixin):
     __tablename__ = 'company_profiles'
 
@@ -81,6 +89,7 @@ class CompanyProfile(Base, TimestampMixin):
     subindustry = Column(String)
     company_stage = Column(String)
     themes = Column(JSON)
+    sectors = Column(JSON)
 
     organization = relationship("Organization", back_populates="company_profile")
 
@@ -94,6 +103,11 @@ class InvestorProfile(Base, TimestampMixin):
     preferred_stage = Column(String)
     founded_year = Column(Integer)
     themes = Column(JSON)
+    sectors = Column(JSON)
+    stages = Column(JSON)
+    specialties = Column(JSON)
+    check_size_min = Column(Float)
+    check_size_max = Column(Float)
     user_notes = Column(String)
 
     organization = relationship("Organization", back_populates="investor_profile")
@@ -660,6 +674,7 @@ class Market(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
     description = Column(String)
+    sectors = Column(JSON)
     parent_market_id = Column(Integer, ForeignKey('markets.id'), nullable=True)
 
     parent_market = relationship("Market", remote_side=[id])
@@ -755,10 +770,10 @@ class ComparisonSet(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(String)
-    set_type = Column(String, nullable=False) # e.g. "Public Comps", "M&A Precedents", "Financing Comps"
+    set_type = Column(String, nullable=False) # e.g. "Public Comps", "M&A Precedents", "Financing Comps" - Should be controlled via application logic
     
     market_links = relationship("MarketComparisonSetLink", back_populates="comparison_set", cascade="all, delete-orphan")
-    company_links = relationship("ComparisonSetCompanyLink", back_populates="comparison_set", cascade="all, delete-orphan")
+    organization_links = relationship("ComparisonSetOrganizationLink", back_populates="comparison_set", cascade="all, delete-orphan")
 
 class MarketComparisonSetLink(Base, TimestampMixin):
     __tablename__ = 'market_comparison_set_links'
@@ -771,19 +786,27 @@ class MarketComparisonSetLink(Base, TimestampMixin):
     
     market = relationship("Market")
     comparison_set = relationship("ComparisonSet", back_populates="market_links")
+    
+    __table_args__ = (
+        UniqueConstraint('market_id', 'comparison_set_id', name='uq_market_comparison_set'),
+    )
 
-class ComparisonSetCompanyLink(Base, TimestampMixin):
-    __tablename__ = 'comparison_set_company_links'
+class ComparisonSetOrganizationLink(Base, TimestampMixin):
+    __tablename__ = 'comparison_set_organization_links'
     
     id = Column(Integer, primary_key=True, index=True)
     comparison_set_id = Column(Integer, ForeignKey('comparison_sets.id', ondelete="CASCADE"), nullable=False)
-    company_id = Column(Integer, ForeignKey('organizations.id', ondelete="CASCADE"), nullable=False)
+    organization_id = Column(Integer, ForeignKey('organizations.id', ondelete="CASCADE"), nullable=False)
     
     notes = Column(String)
     included = Column(Boolean, default=True)
     
-    comparison_set = relationship("ComparisonSet", back_populates="company_links")
-    company = relationship("Organization")
+    comparison_set = relationship("ComparisonSet", back_populates="organization_links")
+    organization = relationship("Organization")
+    
+    __table_args__ = (
+        UniqueConstraint('comparison_set_id', 'organization_id', name='uq_comparison_set_organization'),
+    )
 
 class Transaction(Base, TimestampMixin):
     __tablename__ = 'transactions'
