@@ -100,6 +100,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                         ticker = comp.get("ticker_symbol")
                         exchange = comp.get("stock_exchange")
                         ownership = comp.get("ownership_type")
+                        org_type = comp.get("organization_type") or "COMPANY"
                         
                         if not name:
                             continue
@@ -127,7 +128,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                 "description": desc,
                                 "ticker_symbol": ticker,
                                 "stock_exchange": exchange,
-                                "ownership_type": ownership
+                                "ownership_type": ownership,
+                                "organization_type": org_type
                             })
                 
                 st.rerun()
@@ -153,7 +155,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         description=comp["description"],
                                         ticker_symbol=comp.get("ticker_symbol"),
                                         stock_exchange=comp.get("stock_exchange"),
-                                        ownership_type=comp.get("ownership_type")
+                                        ownership_type=comp.get("ownership_type"),
+                                        organization_type=comp.get("organization_type", "COMPANY")
                                     )
                                     # Must commit here so the augmentation pipeline (which uses a new session) can see the org!
                                     db.commit()

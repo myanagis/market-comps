@@ -3,7 +3,7 @@ import re
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
 
-from market_comps.db.models import Organization, CompanyProfile, AuditTrail
+from market_comps.db.models import Organization, CompanyProfile, InvestorProfile, AuditTrail
 from market_comps.ingestion.company_augmentation import run_augmentation_pipeline
 from market_comps.utils import normalize_company_name
 
@@ -36,10 +36,11 @@ def create_company(
     ticker_symbol: Optional[str] = None,
     stock_exchange: Optional[str] = None,
     ownership_type: Optional[str] = None,
+    organization_type: str = "COMPANY",
     created_by: str = "UploaderAgent"
 ) -> Organization:
     """
-    Creates a new Organization, its CompanyProfile, and an AuditTrail.
+    Creates a new Organization, its Profile, and an AuditTrail.
     """
     clean_domain = None
     if domain:
@@ -56,13 +57,18 @@ def create_company(
         ticker_symbol=ticker_symbol,
         stock_exchange=stock_exchange,
         ownership_type=ownership_type,
+        organization_type=organization_type.upper(),
         status="active"
     )
     db.add(org)
     db.flush()
     
     # Create profile
-    profile = CompanyProfile(organization_id=org.id)
+    if organization_type.upper() == "INVESTOR":
+        profile = InvestorProfile(organization_id=org.id)
+    else:
+        profile = CompanyProfile(organization_id=org.id)
+        
     db.add(profile)
     
     # Audit trail

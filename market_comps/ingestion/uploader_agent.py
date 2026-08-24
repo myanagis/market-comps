@@ -22,8 +22,8 @@ Valid action types:
 4. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies, but one or more are missing a domain/website, you SHOULD use the `clarify` action to ask for the domain, because the AI augmentation pipeline works best with a website.
-However, if the user explicitly says they don't know the domain, or tells you to proceed anyway, use the `proceed` action.
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
+If the text describes an investment firm, VC, PE firm, or similar, set organization_type to "INVESTOR". Otherwise, set it to "COMPANY".
 
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
 """
@@ -51,7 +51,8 @@ ACTION_SCHEMA = {
                     "description": {"type": ["string", "null"]},
                     "ticker_symbol": {"type": ["string", "null"]},
                     "stock_exchange": {"type": ["string", "null"]},
-                    "ownership_type": {"type": ["string", "null"]}
+                    "ownership_type": {"type": ["string", "null"]},
+                    "organization_type": {"type": ["string", "null"], "enum": ["COMPANY", "INVESTOR", None]}
                 },
                 "required": ["name"]
             }

@@ -209,103 +209,87 @@ with get_db_context() as db:
                             st.rerun()
 
     # -------------------------------------------------------------
-    # ##### Comparison Sets
+    # ##### Comparison Groups
     # -------------------------------------------------------------
     st.divider()
-    st.markdown("##### Comparison Sets")
-    
+
     market_set_links = db.query(MarketComparisonSetLink).options(
         joinedload(MarketComparisonSetLink.comparison_set).joinedload(ComparisonSet.organization_links).joinedload(ComparisonSetOrganizationLink.organization)
     ).filter_by(market_id=market.id).all()
     
-    if market_set_links:
-        for link in market_set_links:
-            cset = link.comparison_set
-            if not cset: continue
-            
-            with st.expander(f"📚 {cset.name} ({cset.set_type})", expanded=True):
-                if cset.description:
-                    st.caption(cset.description)
-                
-                companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
-                if companies_in_set:
-                    comps_data = []
-                    for comp in companies_in_set:
-                        ticker_str = f" ({comp.exchange}: {comp.ticker})" if comp.ticker and comp.exchange else (f" ({comp.ticker})" if comp.ticker else "")
-                        type_str = f"Public{ticker_str}" if comp.ownership_type and comp.ownership_type.upper() == "PUBLIC" else "Private"
-                        comps_data.append({
-                            "Company": comp.name,
-                            "Ownership": type_str,
-                            "Domain": comp.primary_domain or "",
-                            "Link": f"/company?id={comp.id}"
-                        })
-                    df_cset = pd.DataFrame(comps_data)
-                    st.dataframe(
-                        df_cset, 
-                        hide_index=True, 
-                        use_container_width=True,
-                        column_config={
-                            "Link": st.column_config.LinkColumn("View Profile")
-                        }
-                    )
-                else:
-                    st.info("No companies linked to this Comparison Set.")
-                
-                col_c1, col_c2 = st.columns([1, 1])
-                with col_c1:
-                    with st.popover("➕ Add Company to Set"):
-                        all_orgs = db.query(Organization).order_by(Organization.name).all()
-                        org_opts = {o.name: o.id for o in all_orgs}
-                        with st.form(f"add_comp_cset_{cset.id}"):
-                            comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
-                            if st.form_submit_button("Add to Set"):
-                                if comp_sel:
-                                    clink = ComparisonSetOrganizationLink(comparison_set_id=cset.id, organization_id=org_opts[comp_sel])
-                                    db.add(clink)
-                                    db.commit()
-                                    st.success(f"{comp_sel} added to set!")
-                                    st.rerun()
-                with col_c2:
-                    if st.button("Unlink Set from Market", key=f"unlink_cset_{cset.id}"):
-                        db.delete(link)
-                        db.commit()
-                        st.rerun()
+    # Group by set_type
+    sets_by_type = {}
+    for link in market_set_links:
+        cset = link.comparison_set
+        if not cset: continue
+        # Handle rename of "Investor Comps" to "Investors" for display/logic
+        stype = "Investors" if cset.set_type == "Investor Comps" else cset.set_type
+        if stype not in sets_by_type:
+            sets_by_type[stype] = []
+        sets_by_type[stype].append(cset)
 
-    else:
-        st.info("No Comparison Sets linked to this market yet.")
+    STANDARD_SET_TYPES = ["Public Comps", "Financing Comps", "M&A Precedents", "Competitors", "Investors", "Other"]
+    all_types = list(dict.fromkeys(STANDARD_SET_TYPES + list(sets_by_type.keys())))
+
+    for stype in all_types:
+        csets = sets_by_type.get(stype, [])
+        st.markdown(f"##### {stype}")
         
-    st.markdown("###### Add or Create Comparison Set")
-    with st.popover("🔗 Link Existing Set"):
-        with st.form("link_existing_set"):
-            all_sets = db.query(ComparisonSet).order_by(ComparisonSet.name).all()
-            if all_sets:
-                set_opts = {f"{s.name} ({s.set_type})": s.id for s in all_sets}
-                set_sel = st.selectbox("Select Set", options=list(set_opts.keys()))
-                if st.form_submit_button("Link Set"):
-                    if set_sel:
-                        new_link = MarketComparisonSetLink(market_id=market.id, comparison_set_id=set_opts[set_sel])
-                        db.add(new_link)
-                        db.commit()
-                        st.success("Set linked!")
-                        st.rerun()
-            else:
-                st.write("No existing sets found.")
-                
-    with st.popover("➕ Create New Set"):
-        with st.form("create_new_set"):
-            c_name = st.text_input("Set Name", placeholder="e.g. Small-Cap Animal Health Publics")
-            c_type = st.selectbox("Type", ["Public Comps", "Financing Comps", "M&A Precedents", "Competitors", "Investor Comps", "Other"])
-            c_desc = st.text_area("Description")
-            if st.form_submit_button("Create and Link Set"):
-                if c_name:
-                    new_set = ComparisonSet(name=c_name, set_type=c_type, description=c_desc)
-                    db.add(new_set)
-                    db.flush() # get ID
+        # Flatten companies
+        companies_in_set = []
+        for cset in csets:
+            for cl in cset.organization_links:
+                if cl.included and cl.organization and cl.organization not in companies_in_set:
+                    companies_in_set.append(cl.organization)
                     
-                    new_link = MarketComparisonSetLink(market_id=market.id, comparison_set_id=new_set.id)
-                    db.add(new_link)
-                    db.commit()
-                    st.success(f"Comparison set '{c_name}' created and linked!")
-                    st.rerun()
-                else:
-                    st.error("Name is required.")
+        if companies_in_set:
+            comps_data = []
+            for comp in companies_in_set:
+                ticker_str = f" ({comp.exchange}: {comp.ticker})" if comp.ticker and comp.exchange else (f" ({comp.ticker})" if comp.ticker else "")
+                type_str = f"Public{ticker_str}" if comp.ownership_type and comp.ownership_type.upper() == "PUBLIC" else "Private"
+                comps_data.append({
+                    "Organization": comp.name,
+                    "Type": comp.organization_type or "COMPANY",
+                    "Ownership": type_str,
+                    "Domain": comp.primary_domain or "",
+                    "Link": f"/company?id={comp.id}"
+                })
+            df_cset = pd.DataFrame(comps_data)
+            st.dataframe(
+                df_cset, 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    "Link": st.column_config.LinkColumn("View Profile")
+                }
+            )
+        else:
+            st.info(f"No organizations added to {stype} yet.")
+            
+        with st.popover(f"➕ Add to {stype}"):
+            all_orgs = db.query(Organization).order_by(Organization.name).all()
+            org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
+            with st.form(f"add_comp_{stype.replace(' ', '_')}"):
+                comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
+                if st.form_submit_button("Add Organization"):
+                    if comp_sel:
+                        # Find or create a comparison set of this type
+                        target_cset = csets[0] if csets else None
+                        if not target_cset:
+                            # Create new
+                            db_stype = "Investor Comps" if stype == "Investors" else stype
+                            target_cset = ComparisonSet(name=f"{market.name} - {stype}", set_type=db_stype)
+                            db.add(target_cset)
+                            db.flush()
+                            new_link = MarketComparisonSetLink(market_id=market.id, comparison_set_id=target_cset.id)
+                            db.add(new_link)
+                            db.flush()
+                            
+                        # Add organization link
+                        clink = ComparisonSetOrganizationLink(comparison_set_id=target_cset.id, organization_id=org_opts[comp_sel])
+                        db.add(clink)
+                        db.commit()
+                        st.success(f"Added to {stype}!")
+                        st.rerun()
+                        
+        st.write("") # spacing
