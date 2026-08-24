@@ -54,8 +54,8 @@ def create_company(
         primary_domain=clean_domain,
         website_url=f"https://{clean_domain}" if clean_domain else None,
         description=description,
-        ticker_symbol=ticker_symbol,
-        stock_exchange=stock_exchange,
+        ticker=ticker_symbol,
+        exchange=stock_exchange,
         ownership_type=ownership_type,
         organization_type=organization_type.upper(),
         status="active"
