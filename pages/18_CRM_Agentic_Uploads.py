@@ -78,10 +78,24 @@ if prompt or st.session_state.get("manual_proceed", False):
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             agent = UploaderChatAgent()
+            validation_rules = {
+                "required_fields": ["domain"],
+                "extract_parameters": [
+                    "founders",
+                    "founded_year",
+                    "check_size_min",
+                    "check_size_max",
+                    "stages",
+                    "specialties",
+                    "themes"
+                ]
+            }
+            
             action_data, reply_msg = agent.process_message(
                 user_message=prompt,
                 pending_companies=st.session_state.pending_companies,
-                chat_history=st.session_state.uploader_messages[:-1]
+                chat_history=st.session_state.uploader_messages[:-1],
+                validation_rules=validation_rules
             )
             
             st.markdown(reply_msg)
@@ -101,6 +115,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                         exchange = comp.get("stock_exchange")
                         ownership = comp.get("ownership_type")
                         org_type = comp.get("organization_type") or "COMPANY"
+                        parameters = comp.get("parameters", {})
                         
                         if not name:
                             continue
@@ -129,7 +144,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                 "ticker_symbol": ticker,
                                 "stock_exchange": exchange,
                                 "ownership_type": ownership,
-                                "organization_type": org_type
+                                "organization_type": org_type,
+                                "parameters": parameters
                             })
                 
                 st.rerun()
@@ -156,7 +172,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         ticker_symbol=comp.get("ticker_symbol"),
                                         stock_exchange=comp.get("stock_exchange"),
                                         ownership_type=comp.get("ownership_type"),
-                                        organization_type=comp.get("organization_type", "COMPANY")
+                                        organization_type=comp.get("organization_type", "COMPANY"),
+                                        parameters=comp.get("parameters", {})
                                     )
                                     # Must commit here so the augmentation pipeline (which uses a new session) can see the org!
                                     db.commit()

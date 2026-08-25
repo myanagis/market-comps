@@ -25,6 +25,9 @@ If the user provides companies, but one or more are missing a domain/website, yo
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
 If the text describes an investment firm, VC, PE firm, or similar, set organization_type to "INVESTOR". Otherwise, set it to "COMPANY".
 
+When validation rules are provided, you MUST adhere to them. If a field listed in `required_fields` is missing or cannot be inferred from the text, you MUST output a `clarify` action to ask the user for it, and DO NOT output an `extract` action.
+If `extract_parameters` is provided, you should attempt to extract those specific fields into the `parameters` dictionary.
+
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
 """
 
@@ -52,7 +55,12 @@ ACTION_SCHEMA = {
                     "ticker_symbol": {"type": ["string", "null"]},
                     "stock_exchange": {"type": ["string", "null"]},
                     "ownership_type": {"type": ["string", "null"]},
-                    "organization_type": {"type": ["string", "null"], "enum": ["COMPANY", "INVESTOR", None]}
+                    "organization_type": {"type": ["string", "null"], "enum": ["COMPANY", "INVESTOR", None]},
+                    "parameters": {
+                        "type": "object",
+                        "description": "Any additional dynamic parameters requested to be extracted (e.g., founders, founded_year, check_size).",
+                        "additionalProperties": True
+                    }
                 },
                 "required": ["name"]
             }
@@ -78,7 +86,13 @@ class UploaderChatAgent:
     def __init__(self, model: str = "openai/gpt-4o"):
         self.client = LLMClient(model=model)
         
-    def process_message(self, user_message: str, pending_companies: List[Dict[str, Any]], chat_history: Optional[list] = None) -> Tuple[Dict[str, Any], str]:
+    def process_message(
+        self, 
+        user_message: str, 
+        pending_companies: List[Dict[str, Any]], 
+        chat_history: Optional[list] = None,
+        validation_rules: Optional[Dict[str, Any]] = None
+    ) -> Tuple[Dict[str, Any], str]:
         """
         Processes a user message along with the current pending companies.
         Returns a tuple: (action_dict, llm_reply_message)
@@ -95,6 +109,10 @@ class UploaderChatAgent:
             
         pending_str = json.dumps(pending_companies, indent=2) if pending_companies else "[]"
         
+        rules_str = ""
+        if validation_rules:
+            rules_str = f"VALIDATION RULES:\n{json.dumps(validation_rules, indent=2)}\n"
+        
         prompt = f"""\
 RECENT CHAT HISTORY:
 {history_str}
@@ -102,6 +120,7 @@ RECENT CHAT HISTORY:
 CURRENT PENDING COMPANIES STAGED FOR CREATION:
 {pending_str}
 
+{rules_str}
 USER REQUEST:
 "{user_message}"
 
@@ -129,7 +148,18 @@ Based on the rules, what is the appropriate JSON action?
                                 "target_entity_type": inner_data.get("target_entity_type"),
                                 "target_entity_name": inner_data.get("target_entity_name")
                             }
+                            # Ensure parameters is passed through if it exists in extracted_companies
+                            if possible_action == "extract":
+                                for comp in parsed_json["extracted_companies"]:
+                                    if "parameters" not in comp:
+                                        comp["parameters"] = {}
                         break
+                        
+            # Ensure parameters exists in root parsing
+            if parsed_json.get("action") == "extract":
+                for comp in parsed_json.get("extracted_companies", []):
+                    if "parameters" not in comp:
+                        comp["parameters"] = {}
                         
             message = parsed_json.get("message", "Processing request...")
             return parsed_json, message

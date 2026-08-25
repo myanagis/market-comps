@@ -2,8 +2,9 @@ import logging
 import re
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
+import uuid
 
-from market_comps.db.models import Organization, CompanyProfile, InvestorProfile, AuditTrail
+from market_comps.db.models import Organization, CompanyProfile, InvestorProfile, AuditTrail, Person, PersonOrganizationRole
 from market_comps.ingestion.company_augmentation import run_augmentation_pipeline
 from market_comps.utils import normalize_company_name
 
@@ -37,7 +38,8 @@ def create_company(
     stock_exchange: Optional[str] = None,
     ownership_type: Optional[str] = None,
     organization_type: str = "COMPANY",
-    created_by: str = "UploaderAgent"
+    created_by: str = "UploaderAgent",
+    parameters: Optional[Dict[str, Any]] = None
 ) -> Organization:
     """
     Creates a new Organization, its Profile, and an AuditTrail.
@@ -70,6 +72,43 @@ def create_company(
         profile = CompanyProfile(organization_id=org.id)
         
     db.add(profile)
+    
+    # Map additional parameters
+    if parameters:
+        # Founders logic
+        founders = parameters.get("founders")
+        if founders and isinstance(founders, list):
+            for founder_name in founders:
+                if isinstance(founder_name, str) and founder_name.strip():
+                    parts = founder_name.strip().split()
+                    fname = parts[0]
+                    lname = " ".join(parts[1:]) if len(parts) > 1 else ""
+                    
+                    person = Person(
+                        id=uuid.uuid4(),
+                        first_name=fname,
+                        last_name=lname,
+                        full_name=founder_name.strip()
+                    )
+                    db.add(person)
+                    
+                    role = PersonOrganizationRole(
+                        person_id=person.id,
+                        organization_id=org.id,
+                        title="Founder",
+                        role_type="Founder",
+                        is_current=True,
+                        is_primary_role=True,
+                        source=created_by
+                    )
+                    db.add(role)
+        
+        # Scalar field mapping
+        for key, val in parameters.items():
+            if key == "founders":
+                continue
+            if hasattr(profile, key):
+                setattr(profile, key, val)
     
     # Audit trail
     audit = AuditTrail(
