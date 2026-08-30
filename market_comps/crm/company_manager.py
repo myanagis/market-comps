@@ -123,12 +123,12 @@ def create_company(
     db.flush()
     return org
 
-def process_new_company(db: Session, org_id: int):
+def process_new_company(db: Session, org_id: int, fast_mode: bool = True):
     """
     Wrapper to run the augmentation pipeline for a newly created company.
     """
     try:
-        run_augmentation_pipeline(org_id)
+        run_augmentation_pipeline(org_id, fast_mode=fast_mode)
         logger.info(f"Successfully ran augmentation pipeline for org_id {org_id}")
     except Exception as e:
         logger.error(f"Failed to run augmentation pipeline for org_id {org_id}: {e}")

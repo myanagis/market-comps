@@ -22,11 +22,16 @@ tab_search, tab_add_co, tab_add_firm, tab_add_person, tab_add_prog = st.tabs([
 ])
 
 with tab_search:
-    search_query = st.text_input("Search CRM...", placeholder="Search across companies, firms, people, and programs...", label_visibility="collapsed")
+    col_search1, col_search2 = st.columns([3, 1])
+    with col_search1:
+        search_query = st.text_input("Search CRM...", placeholder="Search across companies, firms, people, and programs...", label_visibility="collapsed")
+    with col_search2:
+        date_added = st.date_input("Date Added (Created On)", value=None, help="Filter by when the record was created in the system")
+    
     st.divider()
     
-    if not search_query:
-        st.info("Start typing in the search bar above to find records.")
+    if not search_query and not date_added:
+        st.info("Start typing in the search bar or select a date above to find records.")
     else:
         col_co, col_firm, col_pe, col_pr = st.columns(4)
     
@@ -35,8 +40,12 @@ with tab_search:
             st.subheader("🏢 Companies")
             q_co = db.query(Organization).options(joinedload(Organization.company_profile)).filter(Organization.organization_type == "COMPANY")
             sf = f"%{search_query}%"
-            q_co = q_co.filter(or_(Organization.name.ilike(sf), Organization.primary_domain.ilike(sf)))
+            if search_query:
+                q_co = q_co.filter(or_(Organization.name.ilike(sf), Organization.primary_domain.ilike(sf)))
             
+            if date_added:
+                q_co = q_co.filter(func.date(Organization.created_at) == date_added)
+                
             orgs = q_co.order_by(Organization.name).limit(100).all()
             st.caption(f"{len(orgs)} found")
             for o in orgs:
@@ -68,7 +77,11 @@ with tab_search:
             st.subheader("🏦 Investment Firms")
             q_firm = db.query(Organization).options(joinedload(Organization.investor_profile)).filter(Organization.organization_type == "INVESTOR")
             sf = f"%{search_query}%"
-            q_firm = q_firm.filter(or_(Organization.name.ilike(sf), Organization.primary_domain.ilike(sf)))
+            if search_query:
+                q_firm = q_firm.filter(or_(Organization.name.ilike(sf), Organization.primary_domain.ilike(sf)))
+                
+            if date_added:
+                q_firm = q_firm.filter(func.date(Organization.created_at) == date_added)
                 
             firms = q_firm.order_by(Organization.name).limit(100).all()
             st.caption(f"{len(firms)} found")
@@ -95,7 +108,11 @@ with tab_search:
             st.subheader("👤 People")
             q_pe = db.query(Person)
             sf = f"%{search_query}%"
-            q_pe = q_pe.filter(or_(Person.full_name.ilike(sf), Person.first_name.ilike(sf), Person.last_name.ilike(sf)))
+            if search_query:
+                q_pe = q_pe.filter(or_(Person.full_name.ilike(sf), Person.first_name.ilike(sf), Person.last_name.ilike(sf)))
+                
+            if date_added:
+                q_pe = q_pe.filter(func.date(Person.created_at) == date_added)
                 
             people = q_pe.order_by(Person.first_name).limit(100).all()
             st.caption(f"{len(people)} found")

@@ -55,6 +55,8 @@ class Organization(Base, TimestampMixin):
     transactions_as_target = relationship("Transaction", foreign_keys="[Transaction.target_company_id]", back_populates="target_company", cascade="all, delete-orphan")
     transactions_as_acquirer = relationship("Transaction", foreign_keys="[Transaction.acquirer_company_id]", back_populates="acquirer_company", cascade="all, delete-orphan")
 
+    event_links = relationship("EventOrganizationLink", back_populates="organization", cascade="all, delete-orphan")
+
     @validates('primary_domain')
     def validate_primary_domain(self, key, value):
         if not value:
@@ -831,3 +833,57 @@ class Transaction(Base, TimestampMixin):
     
     target_company = relationship("Organization", foreign_keys=[target_company_id], back_populates="transactions_as_target")
     acquirer_company = relationship("Organization", foreign_keys=[acquirer_company_id], back_populates="transactions_as_acquirer")
+
+# ==============================================================================
+# SOURCING FRAMEWORK
+# ==============================================================================
+
+class Event(Base, TimestampMixin):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+
+    start_at = Column(DateTime)
+    end_at = Column(DateTime)
+    location = Column(String)
+    event_type = Column(String) # conference, demo_day, webinar, meetup, pitch_event
+
+    url = Column(String)
+    status = Column(String) # discovered, considering, attending, attended, skipped
+    
+    sources = relationship("Source", back_populates="event")
+    organization_links = relationship("EventOrganizationLink", back_populates="event", cascade="all, delete-orphan")
+
+class Source(Base, TimestampMixin):
+    __tablename__ = "sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    source_type = Column(String, nullable=False) # webpage, email, call, meeting, document, referral
+
+    url = Column(String)
+    title = Column(String)
+    occurred_at = Column(DateTime)
+
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
+
+    is_recurring = Column(Boolean, default=False)
+    schedule = Column(String)
+    
+    event = relationship("Event", back_populates="sources")
+
+class EventOrganizationLink(Base, TimestampMixin):
+    __tablename__ = 'event_organization_links'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String) # organizer, speaker, attendee, sponsor, presenter
+    
+    event = relationship("Event", back_populates="organization_links")
+    organization = relationship("Organization", back_populates="event_links")
+    
+    __table_args__ = (
+        UniqueConstraint('event_id', 'organization_id', 'role', name='uq_event_organization_role'),
+    )

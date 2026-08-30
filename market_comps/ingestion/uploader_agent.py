@@ -67,11 +67,11 @@ ACTION_SCHEMA = {
         },
         "url": {
             "type": ["string", "null"],
-            "description": "The web URL to process (used when action is 'process_link')."
+            "description": "The web URL to process (used when action is 'process_link' or 'process_event_link')."
         },
         "target_entity_type": {
             "type": ["string", "null"],
-            "enum": ["Company", "Investor", "Market Map", None],
+            "enum": ["COMPANY", "INVESTOR", "MARKET_MAP", None],
             "description": "The type of entity to file the web link data to."
         },
         "target_entity_name": {
@@ -136,7 +136,7 @@ Based on the rules, what is the appropriate JSON action?
             
             # Defensive unpacking
             if "action" not in parsed_json:
-                for possible_action in ["extract", "clarify", "proceed", "process_link"]:
+                for possible_action in ["extract", "clarify", "proceed", "process_link", "process_event_link"]:
                     if possible_action in parsed_json:
                         inner_data = parsed_json[possible_action]
                         if isinstance(inner_data, dict):

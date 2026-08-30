@@ -835,7 +835,7 @@ def run_extraction_on_documents(db, org, docs_data, run):
     
     db.flush()
 
-def run_augmentation_pipeline(org_id: int):
+def run_augmentation_pipeline(org_id: int, fast_mode: bool = True):
     """Main entrypoint for the augmentation pipeline."""
     db = SessionLocal()
     try:
@@ -875,13 +875,28 @@ def run_augmentation_pipeline(org_id: int):
                 run.llm_estimated_cost_usd += u.estimated_cost_usd
 
         # 1. Generate Queries
-        queries, u_queries = generate_search_queries(org.name, org.primary_domain or "", org.description or "")
-        add_usage(u_queries)
-        
-        # 2. Fetch Data
-        docs_data = fetch_exa_results(queries, company_name=org.name, company_domain=org.primary_domain or "")
-        run.exa_calls += len(queries)
-        run.exa_estimated_cost_usd += len(queries) * 0.005
+        if fast_mode:
+            queries = []
+            u_queries = None
+            if org.primary_domain:
+                docs_data = []
+                url = f"https://{org.primary_domain}"
+                text = fetch_jina_content(url)
+                if text:
+                    docs_data.append({"index": 0, "url": url, "text": text[:15000], "title": "Homepage", "date": ""})
+            else:
+                queries = [f"{org.name} company overview"]
+                docs_data = fetch_exa_results(queries, company_name=org.name, company_domain="")
+                run.exa_calls += len(queries)
+                run.exa_estimated_cost_usd += len(queries) * 0.005
+        else:
+            queries, u_queries = generate_search_queries(org.name, org.primary_domain or "", org.description or "")
+            add_usage(u_queries)
+            
+            # 2. Fetch Data
+            docs_data = fetch_exa_results(queries, company_name=org.name, company_domain=org.primary_domain or "")
+            run.exa_calls += len(queries)
+            run.exa_estimated_cost_usd += len(queries) * 0.005
         
         for d in docs_data:
             content_hash = hashlib.sha256((d["text"] or "").encode()).hexdigest()

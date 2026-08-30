@@ -5,10 +5,12 @@ import threading
 from typing import List, Dict, Any
 
 from market_comps.db.session import get_db_context, SessionLocal
-from market_comps.db.models import Organization
+from market_comps.db.models import Organization, Event, Source, EventOrganizationLink
 from market_comps.crm.company_manager import find_existing_company, create_company, process_new_company
 from market_comps.ingestion.uploader_agent import UploaderChatAgent
 from market_comps.ingestion.company_augmentation import run_manual_url_augmentation
+from market_comps.ingestion.event_ingestion import EventScraperAgent
+from datetime import datetime
 
 st.set_page_config(page_title="Agentic Uploads", page_icon="📤", layout="wide")
 
@@ -237,4 +239,107 @@ if prompt or st.session_state.get("manual_proceed", False):
                         except Exception as e:
                             status.update(label=f"Failed to process link: {str(e)}", state="error", expanded=True)
                             st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process link: {str(e)}"})
+                    st.rerun()
+
+            elif action_type == "process_event_link":
+                url = action_data.get("url")
+                if not url:
+                    st.error("Missing URL for event processing.")
+                else:
+                    with st.status(f"Processing event from {url}...", expanded=True) as status:
+                        try:
+                            st.write("Scraping event page with AI...")
+                            scraper = EventScraperAgent()
+                            event_data = scraper.process_event_url(url)
+                            
+                            with get_db_context() as db:
+                                st.write(f"Creating Event: {event_data.get('event_name')}...")
+                                # Create Event
+                                def parse_date(ds):
+                                    if not ds: return None
+                                    try: return datetime.fromisoformat(ds.replace("Z", "+00:00"))
+                                    except: return None
+                                
+                                event = Event(
+                                    name=event_data.get('event_name'),
+                                    start_at=parse_date(event_data.get('start_at')),
+                                    end_at=parse_date(event_data.get('end_at')),
+                                    location=event_data.get('location'),
+                                    event_type=event_data.get('event_type'),
+                                    url=url,
+                                    status="discovered"
+                                )
+                                db.add(event)
+                                db.flush()
+                                
+                                # Create Source
+                                source = Source(
+                                    source_type="webpage",
+                                    url=url,
+                                    title=f"Event Page: {event.name}",
+                                    occurred_at=datetime.utcnow(),
+                                    event_id=event.id
+                                )
+                                db.add(source)
+                                
+                                st.write("Processing Companies...")
+                                for comp in event_data.get("companies", []):
+                                    name = comp.get("name")
+                                    domain = comp.get("domain")
+                                    role = comp.get("role", "attendee")
+                                    if not name: continue
+                                    
+                                    org = find_existing_company(db, name, domain)
+                                    is_new = False
+                                    if not org:
+                                        org = create_company(
+                                            db=db,
+                                            name=name,
+                                            domain=domain,
+                                            description=comp.get("description"),
+                                            organization_type="COMPANY"
+                                        )
+                                        is_new = True
+                                        
+                                    db.flush()
+                                    # Add Link
+                                    link = EventOrganizationLink(event_id=event.id, organization_id=org.id, role=role)
+                                    db.merge(link)
+                                    db.commit()
+                                    
+                                    if is_new and do_augmentation:
+                                        threading.Thread(target=lambda o_id: process_new_company(SessionLocal(), o_id, fast_mode=True), args=(org.id,), daemon=True).start()
+
+                                st.write("Processing Investors...")
+                                for inv in event_data.get("investors", []):
+                                    name = inv.get("name")
+                                    domain = inv.get("domain")
+                                    role = inv.get("role", "attendee")
+                                    if not name: continue
+                                    
+                                    org = find_existing_company(db, name, domain)
+                                    is_new = False
+                                    if not org:
+                                        org = create_company(
+                                            db=db,
+                                            name=name,
+                                            domain=domain,
+                                            description=inv.get("description"),
+                                            organization_type="INVESTOR"
+                                        )
+                                        is_new = True
+                                        
+                                    db.flush()
+                                    link = EventOrganizationLink(event_id=event.id, organization_id=org.id, role=role)
+                                    db.merge(link)
+                                    db.commit()
+                                    
+                                    if is_new and do_augmentation:
+                                        threading.Thread(target=lambda o_id: process_new_company(SessionLocal(), o_id, fast_mode=True), args=(org.id,), daemon=True).start()
+                                        
+                            status.update(label=f"Successfully ingested event '{event.name}' and all participants!", state="complete", expanded=False)
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Extracted event **{event.name}** and linked all parsed participants."})
+                        except Exception as e:
+                            status.update(label=f"Failed to process event: {str(e)}", state="error", expanded=True)
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process event link: {str(e)}"})
                     st.rerun()
