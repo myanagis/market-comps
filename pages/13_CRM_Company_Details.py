@@ -237,7 +237,8 @@ def display_company_details(company_id):
         joinedload(Organization.financing_rounds).joinedload(FinancingRound.facts),
         joinedload(Organization.financing_rounds).joinedload(FinancingRound.investors).joinedload(RoundInvestor.investor),
         joinedload(Organization.transactions_as_target),
-        joinedload(Organization.transactions_as_acquirer)
+        joinedload(Organization.transactions_as_acquirer),
+        joinedload(Organization.source_links).joinedload("source")
     ).filter(Organization.id == int(company_id)).first()
 
     if not org:
@@ -1006,6 +1007,18 @@ def display_company_details(company_id):
                     st.json(ent.extracted_payload_json)
         else:
             st.info("No raw extracted data found.")
+
+        # Sourced From
+        if org.source_links:
+            st.divider()
+            st.subheader("🔗 Sourced From")
+            for link in org.source_links:
+                source = link.source
+                url = link.source_url or source.url
+                if url:
+                    st.markdown(f"- [{source.name}]({url}) — *{source.source_type}*")
+                else:
+                    st.markdown(f"- **{source.name}** — *{source.source_type}*")
 
         # Audit Trail
         st.divider()
