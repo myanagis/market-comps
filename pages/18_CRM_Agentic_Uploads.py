@@ -52,7 +52,12 @@ if st.session_state.pending_companies:
     df = pd.DataFrame(st.session_state.pending_companies)
     st.dataframe(df, use_container_width=True)
     
-    do_augmentation = st.toggle("Run AI Web Augmentation on new companies", value=True)
+    augmentation_mode = st.radio(
+        "AI Web Augmentation on new companies", 
+        options=["None", "Fast (Homepage Only)", "Full (Deep Research)"], 
+        horizontal=True, 
+        index=1
+    )
     
     col1, col2, _ = st.columns([1, 1, 4])
     with col1:
@@ -200,20 +205,21 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         db.add(link)
                                         db.commit()
                                     
-                                    if do_augmentation:
-                                        st.write("Queuing AI Web Augmentation Pipeline in background...")
+                                    if augmentation_mode != "None":
+                                        is_fast = "Fast" in augmentation_mode
+                                        st.write(f"Queuing AI Web Augmentation Pipeline ({'Fast' if is_fast else 'Full'}) in background...")
                                         
-                                        def run_augmentation(org_id):
+                                        def run_augmentation(org_id, fast):
                                             local_db = SessionLocal()
                                             try:
-                                                process_new_company(local_db, org_id)
+                                                process_new_company(local_db, org_id, fast_mode=fast)
                                             except Exception as e:
                                                 import logging
                                                 logging.error(f"Augmentation failed for org {org_id}: {e}")
                                             finally:
                                                 local_db.close()
                                                 
-                                        threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
+                                        threading.Thread(target=run_augmentation, args=(org.id, is_fast), daemon=True).start()
                                         status.update(label=f"Successfully queued {comp['name']}!", state="complete", expanded=False)
                                     else:
                                         status.update(label=f"Successfully created {comp['name']}!", state="complete", expanded=False)
@@ -337,8 +343,9 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         db.merge(link)
                                         db.commit()
                                         
-                                        if is_new and do_augmentation:
-                                            threading.Thread(target=lambda o_id: process_new_company(SessionLocal(), o_id, fast_mode=True), args=(org.id,), daemon=True).start()
+                                        if is_new and augmentation_mode != "None":
+                                            is_fast = "Fast" in augmentation_mode
+                                            threading.Thread(target=lambda o_id, fast: process_new_company(SessionLocal(), o_id, fast_mode=fast), args=(org.id, is_fast), daemon=True).start()
 
                                     st.write("Processing Investors...")
                                     for inv in event_data.get("investors", []):
@@ -364,8 +371,9 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         db.merge(link)
                                         db.commit()
                                         
-                                        if is_new and do_augmentation:
-                                            threading.Thread(target=lambda o_id: process_new_company(SessionLocal(), o_id, fast_mode=True), args=(org.id,), daemon=True).start()
+                                        if is_new and augmentation_mode != "None":
+                                            is_fast = "Fast" in augmentation_mode
+                                            threading.Thread(target=lambda o_id, fast: process_new_company(SessionLocal(), o_id, fast_mode=fast), args=(org.id, is_fast), daemon=True).start()
                                         
                             status.update(label=f"Successfully ingested event '{event.name}' and all participants!", state="complete", expanded=False)
                             st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Extracted event **{event.name}** and linked all parsed participants."})
