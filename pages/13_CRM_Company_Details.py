@@ -249,6 +249,8 @@ def display_company_details(company_id):
         col_h1, col_h2 = st.columns([5, 1])
         with col_h1:
             st.subheader(f"🏢 {org.name}")
+            date_added = org.created_at.strftime('%B %d, %Y') if org.created_at else "Unknown Date"
+            st.caption(f"Added on {date_added}")
         with col_h2:
             if st.button("✏️ Edit", key=f"edit_org_{org.id}", use_container_width=True):
                 edit_company_dialog(org)
