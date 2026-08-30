@@ -231,6 +231,13 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     
                     st.session_state.pending_companies = []
                     
+                    if created_orgs:
+                        st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully created {len(created_orgs)} organization(s): {', '.join(created_orgs)}"})
+                    if failed_orgs:
+                        st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to create {len(failed_orgs)} organization(s):\n" + "\n".join(failed_orgs)})
+                        
+                    st.rerun()
+                    
             elif action_type == "process_link":
                 url = action_data.get("url")
                 target_name = action_data.get("target_entity_name")
