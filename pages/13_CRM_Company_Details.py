@@ -7,7 +7,7 @@ from market_comps.db.models import (
     Organization, Person, CompanyProfile, FundProfile,
     ProgramMembership, PersonOrganizationRole, AuditTrail,
     ProgramProfile, ProgramCohort, EntityMatch, ExtractedEntity, ExtractionJob, PipelineRun, DocumentText, SourceDocument, FinancingRound, FinancingRoundFact, RoundInvestor, MetricType, MetricObservation,
-    Market, MarketSegment, MarketSegmentCompanyLink, CompetitiveAnalysis, CompetitiveAnalysisSegment, CompetitiveAnalysisCompany
+    Market, MarketSegment, MarketSegmentCompanyLink, CompetitiveAnalysis, CompetitiveAnalysisSegment, CompetitiveAnalysisCompany, OrganizationSourceLink
 )
 from market_comps.ingestion.reconciler import log_mutation
 from market_comps.crm.competitor_manager import (
@@ -238,7 +238,7 @@ def display_company_details(company_id):
         joinedload(Organization.financing_rounds).joinedload(FinancingRound.investors).joinedload(RoundInvestor.investor),
         joinedload(Organization.transactions_as_target),
         joinedload(Organization.transactions_as_acquirer),
-        joinedload(Organization.source_links).joinedload("source")
+        joinedload(Organization.source_links).joinedload(OrganizationSourceLink.source)
     ).filter(Organization.id == int(company_id)).first()
 
     if not org:
