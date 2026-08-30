@@ -56,6 +56,7 @@ class Organization(Base, TimestampMixin):
     transactions_as_acquirer = relationship("Transaction", foreign_keys="[Transaction.acquirer_company_id]", back_populates="acquirer_company", cascade="all, delete-orphan")
 
     event_links = relationship("EventOrganizationLink", back_populates="organization", cascade="all, delete-orphan")
+    source_links = relationship("OrganizationSourceLink", back_populates="organization", cascade="all, delete-orphan")
 
     @validates('primary_domain')
     def validate_primary_domain(self, key, value):
@@ -860,10 +861,10 @@ class Source(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    source_type = Column(String, nullable=False) # webpage, email, call, meeting, document, referral
+    name = Column(String, nullable=False) # e.g. "CT Business Registry"
+    source_type = Column(String, nullable=False) # registry, webpage, email, call, meeting, document, referral
 
     url = Column(String)
-    title = Column(String)
     occurred_at = Column(DateTime)
 
     event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=True)
@@ -887,3 +888,14 @@ class EventOrganizationLink(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint('event_id', 'organization_id', 'role', name='uq_event_organization_role'),
     )
+
+class OrganizationSourceLink(Base, TimestampMixin):
+    __tablename__ = 'organization_source_links'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    source_id = Column(Integer, ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    source_url = Column(String, nullable=True)
+    
+    organization = relationship("Organization", back_populates="source_links")
+    source = relationship("Source")

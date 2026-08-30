@@ -60,6 +60,10 @@ ACTION_SCHEMA = {
                         "type": "object",
                         "description": "Any additional dynamic parameters requested to be extracted (e.g., founders, founded_year, check_size).",
                         "additionalProperties": True
+                    },
+                    "canonical_source_name": {
+                        "type": ["string", "null"],
+                        "description": "If the user mentions a specific source they found this from (e.g. 'CT Business Registry', 'Luma Demo Day'), extract it here. Use the closest matching valid canonical source if you recognize it."
                     }
                 },
                 "required": ["name"]
@@ -91,7 +95,8 @@ class UploaderChatAgent:
         user_message: str, 
         pending_companies: List[Dict[str, Any]], 
         chat_history: Optional[list] = None,
-        validation_rules: Optional[Dict[str, Any]] = None
+        validation_rules: Optional[Dict[str, Any]] = None,
+        existing_sources: Optional[List[str]] = None
     ) -> Tuple[Dict[str, Any], str]:
         """
         Processes a user message along with the current pending companies.
@@ -112,6 +117,10 @@ class UploaderChatAgent:
         rules_str = ""
         if validation_rules:
             rules_str = f"VALIDATION RULES:\n{json.dumps(validation_rules, indent=2)}\n"
+            
+        sources_str = ""
+        if existing_sources:
+            sources_str = f"EXISTING CANONICAL SOURCES (Use these for fuzzy matching):\n{json.dumps(existing_sources, indent=2)}\n"
         
         prompt = f"""\
 RECENT CHAT HISTORY:
@@ -121,6 +130,7 @@ CURRENT PENDING COMPANIES STAGED FOR CREATION:
 {pending_str}
 
 {rules_str}
+{sources_str}
 USER REQUEST:
 "{user_message}"
 
