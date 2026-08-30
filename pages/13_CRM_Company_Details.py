@@ -1017,10 +1017,11 @@ def display_company_details(company_id):
             for link in org.source_links:
                 source = link.source
                 url = link.source_url or source.url
+                date_linked = link.created_at.strftime('%Y-%m-%d') if link.created_at else "Unknown Date"
                 if url:
-                    st.markdown(f"- [{source.name}]({url}) — *{source.source_type}*")
+                    st.markdown(f"- [{source.name}]({url}) — *{source.source_type}* (Linked: {date_linked})")
                 else:
-                    st.markdown(f"- **{source.name}** — *{source.source_type}*")
+                    st.markdown(f"- **{source.name}** — *{source.source_type}* (Linked: {date_linked})")
 
         # Audit Trail
         st.divider()
