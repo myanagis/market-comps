@@ -332,9 +332,9 @@ with get_db_context() as db:
                                     row[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
                             
                             # Track newest update time
-                            if obs.updated_at:
-                                if not last_updated or obs.updated_at > last_updated:
-                                    last_updated = obs.updated_at
+                            if hasattr(obs, 'recorded_at') and obs.recorded_at:
+                                if not last_updated or obs.recorded_at > last_updated:
+                                    last_updated = obs.recorded_at
                                     
                         if last_updated:
                             row["Last Updated"] = last_updated.strftime("%Y-%m-%d")
