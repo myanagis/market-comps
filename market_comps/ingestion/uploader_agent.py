@@ -23,7 +23,7 @@ Valid action types:
 5. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
 6. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
-If the user provides companies, but one or more are missing a domain/website, you SHOULD use the `clarify` action to ask for the domain, because the AI augmentation pipeline works best with a website.
+If the user provides companies and a domain is missing, you can attempt to guess it if it is a well-known public company, otherwise just return null for the domain. Do NOT output a clarify action just because the domain is missing. The backend will attempt to find the domain automatically via search.
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
 If the text describes an investment firm, VC, PE firm, or similar, set organization_type to "INVESTOR". Otherwise, set it to "COMPANY".
 
@@ -92,8 +92,15 @@ ACTION_SCHEMA = {
                 "segment_name": {"type": "string", "description": "The name of the segment within the market map, if specified."},
                 "companies": {
                     "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of company names or tickers to add to the market map."
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "domain": {"type": ["string", "null"]}
+                        },
+                        "required": ["name"]
+                    },
+                    "description": "List of companies to add to the market map."
                 },
                 "notes": {"type": ["string", "null"], "description": "Any additional comments or differentiation notes provided by the user."}
             },

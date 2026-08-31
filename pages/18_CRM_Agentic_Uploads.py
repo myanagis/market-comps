@@ -56,8 +56,11 @@ if st.session_state.pending_companies:
         "AI Web Augmentation on new companies", 
         options=["None", "Fast (Homepage Only)", "Full (Deep Research)"], 
         horizontal=True, 
-        index=1
+        index=1,
+        key="augmentation_mode_radio"
     )
+else:
+    augmentation_mode = st.session_state.get("augmentation_mode_radio", "Fast (Homepage Only)")
     
     col1, col2, _ = st.columns([1, 1, 4])
     with col1:
@@ -86,7 +89,7 @@ if prompt or st.session_state.get("manual_proceed", False):
         with st.spinner("Thinking..."):
             agent = UploaderChatAgent()
             validation_rules = {
-                "required_fields": ["domain"],
+                "required_fields": [],
                 "extract_parameters": [
                     "founders",
                     "founded_year",
@@ -109,10 +112,49 @@ if prompt or st.session_state.get("manual_proceed", False):
                 existing_sources=existing_sources
             )
             
+            action_type = action_data.get("action")
+            
+            # --- Domain Resolution Interceptor ---
+            needs_clarification = []
+            if action_type in ["extract", "update_market_map"]:
+                if action_type == "extract":
+                    comps = action_data.get("extracted_companies", [])
+                else:
+                    comps = action_data.get("market_map_update", {}).get("companies", [])
+                
+                from market_comps.ingestion.company_augmentation import fetch_exa_results
+                from urllib.parse import urlparse
+                
+                for comp in comps:
+                    # check if string (due to older schema versions) or dict
+                    if isinstance(comp, str):
+                        # Should not happen with updated schema, but just in case
+                        continue
+                        
+                    name = comp.get("name")
+                    if name and not comp.get("domain"):
+                        st.write(f"🔍 Automatically searching for {name}'s website...")
+                        try:
+                            docs = fetch_exa_results([f"{name} official website"], company_name=name)
+                            if docs and docs[0].get("url"):
+                                url = docs[0]["url"]
+                                domain = urlparse(url).netloc.replace("www.", "")
+                                if domain:
+                                    comp["domain"] = domain
+                                    st.write(f"✅ Found {domain}")
+                                    continue
+                        except Exception:
+                            pass
+                        needs_clarification.append(name)
+            
+            if needs_clarification:
+                action_type = "clarify"
+                action_data["action"] = "clarify"
+                reply_msg = f"I couldn't automatically find the websites for the following companies: {', '.join(needs_clarification)}. Could you please provide their domains? (e.g. 'Lennar is lennar.com')"
+            # --- End Interceptor ---
+            
             st.markdown(reply_msg)
             st.session_state.uploader_messages.append({"role": "assistant", "content": reply_msg})
-            
-            action_type = action_data.get("action")
             
             if action_type == "extract":
                 extracted = action_data.get("extracted_companies", [])
@@ -275,8 +317,20 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         db.add(MarketComparisonSetLink(market_id=market.id, comparison_set_id=cset.id))
                                         db.commit()
                                         
-                                    st.write(f"Adding companies: {', '.join(companies)}")
-                                    for comp_name in companies:
+                                    comp_names_str = ", ".join([c.get("name", "") for c in companies if isinstance(c, dict) and c.get("name")] + [c for c in companies if isinstance(c, str)])
+                                    st.write(f"Adding companies: {comp_names_str}")
+                                    
+                                    for comp_obj in companies:
+                                        if isinstance(comp_obj, str):
+                                            comp_name = comp_obj
+                                            comp_domain = None
+                                        else:
+                                            comp_name = comp_obj.get("name")
+                                            comp_domain = comp_obj.get("domain")
+                                            
+                                        if not comp_name:
+                                            continue
+                                            
                                         org = db.query(Organization).filter(
                                             (Organization.name.ilike(f"%{comp_name}%")) | 
                                             (Organization.ticker.ilike(f"{comp_name}"))
@@ -284,7 +338,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         
                                         if not org:
                                             st.write(f"Company '{comp_name}' not found. Creating it...")
-                                            org = create_company(db=db, name=comp_name, created_by="AgenticUploads")
+                                            org = create_company(db=db, name=comp_name, domain=comp_domain, created_by="AgenticUploads")
                                             db.commit()
                                             
                                             # Queue fast augmentation
