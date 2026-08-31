@@ -4,11 +4,13 @@ from sqlalchemy.orm import joinedload
 from market_comps.db.session import get_db_context
 from market_comps.db.models import (
     Market, MarketSegment, MarketSegmentCompanyLink, Organization,
-    ComparisonSet, MarketComparisonSetLink, ComparisonSetOrganizationLink
+    ComparisonSet, MarketComparisonSetLink, ComparisonSetOrganizationLink,
+    MetricObservation, MetricType
 )
 from market_comps.crm.competitor_manager import (
     create_market_segment, get_market_segments
 )
+from market_comps.integrations.yahoo_finance import YahooFinanceClient
 
 st.set_page_config(page_title="Market Details", page_icon="🗺️", layout="wide")
 
@@ -243,26 +245,111 @@ with get_db_context() as db:
                 
                 companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
                 if companies_in_set:
-                    comps_data = []
-                    for comp in companies_in_set:
-                        ticker_str = f" ({comp.exchange}: {comp.ticker})" if comp.ticker and comp.exchange else (f" ({comp.ticker})" if comp.ticker else "")
-                        type_str = f"Public{ticker_str}" if comp.ownership_type and comp.ownership_type.upper() == "PUBLIC" else "Private"
-                        comps_data.append({
-                            "Organization": comp.name,
-                            "Type": comp.organization_type or "COMPANY",
-                            "Ownership": type_str,
-                            "Domain": comp.primary_domain or "",
-                            "Link": f"/company?id={comp.id}"
-                        })
-                    df_cset = pd.DataFrame(comps_data)
-                    st.dataframe(
-                        df_cset, 
-                        hide_index=True, 
-                        use_container_width=True,
-                        column_config={
-                            "Link": st.column_config.LinkColumn("View Profile")
-                        }
-                    )
+                    tab_orgs, tab_financials = st.tabs(["Organizations", "Financial Data (Public)"])
+                    
+                    with tab_orgs:
+                        comps_data = []
+                        for comp in companies_in_set:
+                            ticker_str = f" ({comp.exchange}: {comp.ticker})" if comp.ticker and comp.exchange else (f" ({comp.ticker})" if comp.ticker else "")
+                            type_str = f"Public{ticker_str}" if comp.ownership_type and comp.ownership_type.upper() == "PUBLIC" else "Private"
+                            comps_data.append({
+                                "Organization": comp.name,
+                                "Type": comp.organization_type or "COMPANY",
+                                "Ownership": type_str,
+                                "Domain": comp.primary_domain or "",
+                                "Link": f"/company?id={comp.id}"
+                            })
+                        df_cset = pd.DataFrame(comps_data)
+                        st.dataframe(
+                            df_cset, 
+                            hide_index=True, 
+                            use_container_width=True,
+                            column_config={
+                                "Link": st.column_config.LinkColumn("View Profile")
+                            }
+                        )
+                    
+                    with tab_financials:
+                        if st.session_state.get("yfinance_enabled", True):
+                            if st.button("📈 Pull Market Data (Yahoo Finance)", key=f"pull_yf_{cset.id}"):
+                                with st.spinner("Fetching data from Yahoo Finance... (1 request/sec)"):
+                                    yf_client = YahooFinanceClient()
+                                    
+                                    # Ensure metric types exist
+                                    metric_codes = {
+                                        "market_cap": "Market Cap",
+                                        "enterprise_value": "Enterprise Value", 
+                                        "revenue": "Revenue",
+                                        "ebitda": "EBITDA",
+                                        "revenue_multiple": "EV / Revenue",
+                                        "ebitda_multiple": "EV / EBITDA"
+                                    }
+                                    
+                                    metric_type_map = {}
+                                    for code, name in metric_codes.items():
+                                        mt = db.query(MetricType).filter_by(code=code).first()
+                                        if not mt:
+                                            mt = MetricType(code=code, display_name=name, value_type="currency" if "multiple" not in code else "multiple")
+                                            db.add(mt)
+                                            db.commit()
+                                        metric_type_map[code] = mt.id
+                                    
+                                    for comp in companies_in_set:
+                                        if comp.ticker:
+                                            data = yf_client.fetch_financial_metrics(comp.ticker)
+                                            if data:
+                                                for k, v in data.items():
+                                                    if v is not None and k in metric_type_map:
+                                                        # Check if observation exists for TTM
+                                                        obs = db.query(MetricObservation).filter_by(
+                                                            company_id=comp.id, 
+                                                            metric_type_id=metric_type_map[k],
+                                                            reporting_basis="trailing_twelve_months"
+                                                        ).first()
+                                                        
+                                                        if not obs:
+                                                            obs = MetricObservation(
+                                                                company_id=comp.id,
+                                                                metric_type_id=metric_type_map[k],
+                                                                reporting_basis="trailing_twelve_months",
+                                                                observation_status="external_estimate",
+                                                                currency_code=data.get("currency", "USD")
+                                                            )
+                                                            db.add(obs)
+                                                        obs.value_numeric = float(v)
+                                    db.commit()
+                                    st.success("Financial data updated from Yahoo Finance!")
+                                    st.rerun()
+                        
+                        # Display Financial Data
+                        fin_data = []
+                        for comp in companies_in_set:
+                            row = {"Organization": comp.name, "Ticker": comp.ticker or ""}
+                            # Get latest metrics
+                            obs_list = db.query(MetricObservation).filter_by(
+                                company_id=comp.id, reporting_basis="trailing_twelve_months"
+                            ).all()
+                            
+                            for obs in obs_list:
+                                mt = db.query(MetricType).get(obs.metric_type_id)
+                                if mt:
+                                    if mt.value_type == "currency":
+                                        # Format as Millions/Billions
+                                        val = obs.value_numeric
+                                        if val:
+                                            if val >= 1e9:
+                                                row[mt.display_name] = f"${val/1e9:.2f}B"
+                                            elif val >= 1e6:
+                                                row[mt.display_name] = f"${val/1e6:.2f}M"
+                                            else:
+                                                row[mt.display_name] = f"${val:,.0f}"
+                                    elif mt.value_type == "multiple":
+                                        row[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
+                            fin_data.append(row)
+                            
+                        if fin_data:
+                            st.dataframe(pd.DataFrame(fin_data), hide_index=True, use_container_width=True)
+                        
                 else:
                     st.info("No organizations linked to this Comparison Set.")
                 

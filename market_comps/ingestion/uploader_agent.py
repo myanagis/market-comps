@@ -18,8 +18,10 @@ The user might provide more details about the pending companies, or they might a
 Valid action types:
 1. `extract`: Use this when the user provides new text that contains companies. Extract the company names, domains (if any), and a brief description.
 2. `process_link`: Use this when the user provides a web URL (e.g. news article, press release) AND specifies where it should be filed (e.g., Company, Investor, Market Map).
-3. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
-4. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
+3. `update_market_map`: Use this when the user asks to add companies to a specific market map segment or public comps group.
+4. `add_transaction`: Use this when the user asks to record an M&A transaction or acquisition.
+5. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
+6. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies, but one or more are missing a domain/website, you SHOULD use the `clarify` action to ask for the domain, because the AI augmentation pipeline works best with a website.
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
@@ -36,7 +38,7 @@ ACTION_SCHEMA = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["extract", "clarify", "proceed", "process_link"],
+            "enum": ["extract", "clarify", "proceed", "process_link", "update_market_map", "add_transaction"],
             "description": "The type of action to perform based on user input."
         },
         "message": {
@@ -81,6 +83,33 @@ ACTION_SCHEMA = {
         "target_entity_name": {
             "type": ["string", "null"],
             "description": "The specific name of the entity to file the web link data to."
+        },
+        "market_map_update": {
+            "type": ["object", "null"],
+            "description": "Used when action is 'update_market_map'.",
+            "properties": {
+                "market_name": {"type": "string", "description": "The name of the market map or comparison set."},
+                "segment_name": {"type": "string", "description": "The name of the segment within the market map, if specified."},
+                "companies": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of company names or tickers to add to the market map."
+                },
+                "notes": {"type": ["string", "null"], "description": "Any additional comments or differentiation notes provided by the user."}
+            },
+            "required": ["market_name", "companies"]
+        },
+        "transaction_details": {
+            "type": ["object", "null"],
+            "description": "Used when action is 'add_transaction'.",
+            "properties": {
+                "acquirer": {"type": "string"},
+                "target": {"type": "string"},
+                "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
+                "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
+                "notes": {"type": ["string", "null"]}
+            },
+            "required": ["acquirer", "target"]
         }
     },
     "required": ["action", "message"]

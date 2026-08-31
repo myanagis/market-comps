@@ -238,6 +238,135 @@ if prompt or st.session_state.get("manual_proceed", False):
                         
                     st.rerun()
                     
+            elif action_type == "update_market_map":
+                map_update = action_data.get("market_map_update", {})
+                market_name = map_update.get("market_name")
+                segment_name = map_update.get("segment_name") or market_name
+                companies = map_update.get("companies", [])
+                notes = map_update.get("notes")
+                
+                if not market_name or not companies:
+                    st.error("Missing market name or companies to add.")
+                else:
+                    with st.status(f"Updating market map '{market_name}'...", expanded=True) as status:
+                        try:
+                            with get_db_context() as db:
+                                from market_comps.db.models import Market, ComparisonSet, ComparisonSetOrganizationLink, MarketComparisonSetLink
+                                
+                                # Look for market
+                                market = db.query(Market).filter(Market.name.ilike(f"%{market_name}%")).first()
+                                if not market:
+                                    st.write(f"Could not find Market named '{market_name}'. Please ensure it exists.")
+                                    status.update(label="Market not found.", state="error")
+                                else:
+                                    st.write(f"Found Market: {market.name}")
+                                    
+                                    # Look for ComparisonSet by segment_name (since the prompt is 'big tech public comps')
+                                    cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
+                                        MarketComparisonSetLink.market_id == market.id,
+                                        ComparisonSet.name.ilike(f"%{segment_name}%")
+                                    ).first()
+                                    
+                                    if not cset:
+                                        st.write(f"Creating new ComparisonSet '{segment_name}' in Market '{market.name}'...")
+                                        cset = ComparisonSet(name=segment_name, set_type="Public Comps", description=notes)
+                                        db.add(cset)
+                                        db.flush()
+                                        db.add(MarketComparisonSetLink(market_id=market.id, comparison_set_id=cset.id))
+                                        db.commit()
+                                        
+                                    st.write(f"Adding companies: {', '.join(companies)}")
+                                    for comp_name in companies:
+                                        org = db.query(Organization).filter(
+                                            (Organization.name.ilike(f"%{comp_name}%")) | 
+                                            (Organization.ticker.ilike(f"{comp_name}"))
+                                        ).first()
+                                        
+                                        if not org:
+                                            st.write(f"Company '{comp_name}' not found. Creating it...")
+                                            org = create_company(db=db, name=comp_name, created_by="AgenticUploads")
+                                            db.commit()
+                                            
+                                            # Queue fast augmentation
+                                            if augmentation_mode != "None":
+                                                def run_augmentation(org_id):
+                                                    local_db = SessionLocal()
+                                                    try:
+                                                        process_new_company(local_db, org_id, fast_mode=True)
+                                                    except Exception as e:
+                                                        logging.error(f"Augmentation failed for org {org_id}: {e}")
+                                                    finally:
+                                                        local_db.close()
+                                                threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
+                                                
+                                        # Link to Comparison Set
+                                        existing_link = db.query(ComparisonSetOrganizationLink).filter_by(
+                                            comparison_set_id=cset.id, organization_id=org.id
+                                        ).first()
+                                        if not existing_link:
+                                            db.add(ComparisonSetOrganizationLink(
+                                                comparison_set_id=cset.id, 
+                                                organization_id=org.id,
+                                                notes=notes
+                                            ))
+                                    
+                                    db.commit()
+                                    msg = f"✅ Added {len(companies)} companies to '{segment_name}' in Market '{market.name}'."
+                                    st.session_state.uploader_messages.append({"role": "assistant", "content": msg})
+                                    status.update(label=msg, state="complete")
+                        except Exception as e:
+                            status.update(label=f"Failed to update market map: {str(e)}", state="error", expanded=True)
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Error: {str(e)}"})
+                    st.rerun()
+
+            elif action_type == "add_transaction":
+                tx_details = action_data.get("transaction_details", {})
+                acq_name = tx_details.get("acquirer")
+                tgt_name = tx_details.get("target")
+                price = tx_details.get("price")
+                notes = tx_details.get("notes")
+                
+                if not acq_name or not tgt_name:
+                    st.error("Missing acquirer or target for transaction.")
+                else:
+                    with st.status(f"Recording M&A Transaction: {acq_name} acquiring {tgt_name}...", expanded=True) as status:
+                        try:
+                            with get_db_context() as db:
+                                from market_comps.db.models import Transaction
+                                
+                                def get_or_create(db, name):
+                                    org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
+                                    if not org:
+                                        st.write(f"Creating missing company '{name}'...")
+                                        org = create_company(db=db, name=name, created_by="AgenticUploads")
+                                        db.flush()
+                                    return org
+                                    
+                                acquirer = get_or_create(db, acq_name)
+                                target = get_or_create(db, tgt_name)
+                                
+                                tx = Transaction(
+                                    transaction_name=f"{acquirer.name} acquires {target.name}",
+                                    transaction_type="ACQUISITION",
+                                    status="ANNOUNCED",
+                                    acquirer_company_id=acquirer.id,
+                                    target_company_id=target.id,
+                                    transaction_value_numeric=price,
+                                    notes=notes
+                                )
+                                db.add(tx)
+                                db.commit()
+                                
+                                msg = f"✅ Recorded M&A Transaction: {tx.transaction_name}"
+                                if price:
+                                    msg += f" (Value: ${price:,.0f})"
+                                st.session_state.uploader_messages.append({"role": "assistant", "content": msg})
+                                status.update(label=msg, state="complete")
+                        except Exception as e:
+                            status.update(label=f"Failed to record transaction: {str(e)}", state="error", expanded=True)
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Error: {str(e)}"})
+                    st.rerun()
+                    
             elif action_type == "process_link":
                 url = action_data.get("url")
                 target_name = action_data.get("target_entity_name")

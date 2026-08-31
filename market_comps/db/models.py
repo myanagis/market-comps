@@ -272,6 +272,7 @@ class MetricObservation(Base):
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     metric_type_id = Column(Integer, ForeignKey('metric_types.id'), nullable=False)
+    security_id = Column(Integer, ForeignKey('securities.id'), nullable=True)
 
     value_numeric = Column(Float)
     value_text = Column(String)
@@ -296,6 +297,7 @@ class MetricObservation(Base):
     created_by = Column(String) # UUID or email string
 
     company = relationship("Organization", back_populates="metric_observations")
+    security = relationship("Security", back_populates="observations")
     metric_type = relationship("MetricType", back_populates="observations")
     observation_sources = relationship("ObservationSource", back_populates="observation", cascade="all, delete-orphan")
     supersedes = relationship("MetricObservation", remote_side=[id])
@@ -314,6 +316,37 @@ class ObservationSource(Base):
 
     observation = relationship("MetricObservation", back_populates="observation_sources")
     source_document = relationship("SourceDocument")
+
+
+class Security(Base, TimestampMixin):
+    __tablename__ = 'securities'
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
+    ticker = Column(String, index=True)
+    exchange = Column(String)
+    isin = Column(String)
+    security_type = Column(String)
+    currency = Column(String)
+    is_primary = Column(Boolean, default=True)
+    
+    organization = relationship("Organization")
+    observations = relationship("MetricObservation", back_populates="security", cascade="all, delete-orphan")
+
+
+class DataPullRun(Base, TimestampMixin):
+    __tablename__ = 'data_pull_runs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    pull_type = Column(String, nullable=False) # e.g. public_market_financials
+    provider = Column(String, nullable=False) # e.g. yahoo_finance
+    
+    requested_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    status = Column(String) # RUNNING, SUCCESS, FAILED
+    
+    parameters = Column(JSON)
+    error_summary = Column(String)
 
 
 class FinancingRound(Base, TimestampMixin):
