@@ -31,11 +31,26 @@ with get_db_context() as db:
         st.error(f"Market with ID {market_id_str} not found.")
         st.stop()
         
-    st.title(f"🗺️ {market.name}")
-    if market.sectors:
-        st.write(f"**Sectors:** {', '.join(market.sectors)}")
-    if market.description:
-        st.caption(market.description)
+    col_t1, col_t2 = st.columns([0.8, 0.2])
+    with col_t1:
+        st.title(f"🗺️ {market.name}")
+        if market.sectors:
+            st.write(f"**Sectors:** {', '.join(market.sectors)}")
+        if market.description:
+            st.caption(market.description)
+            
+    with col_t2:
+        with st.popover("✏️ Edit Details", use_container_width=True):
+            with st.form("edit_market_form"):
+                new_name = st.text_input("Name", value=market.name)
+                new_sectors = st.text_input("Sectors (comma separated)", value=", ".join(market.sectors) if market.sectors else "")
+                new_desc = st.text_area("Description", value=market.description or "")
+                if st.form_submit_button("Save Changes"):
+                    market.name = new_name
+                    market.sectors = [s.strip() for s in new_sectors.split(",")] if new_sectors else []
+                    market.description = new_desc
+                    db.commit()
+                    st.rerun()
         
     segments = get_market_segments(db, market.id)
     

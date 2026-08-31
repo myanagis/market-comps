@@ -311,83 +311,164 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         
                                     log_detail(f"Found Market: {market.name}")
                                     
-                                    # Look for ComparisonSet by segment_name (since the prompt is 'big tech public comps')
-                                    cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
-                                        MarketComparisonSetLink.market_id == market.id,
-                                        ComparisonSet.name.ilike(f"%{segment_name}%")
-                                    ).first()
+                                    segment_type = market_map_update.get("segment_type", "competitors")
                                     
-                                    if not cset:
-                                        log_detail(f"Creating new ComparisonSet '{segment_name}' in Market '{market.name}'...")
-                                        cset = ComparisonSet(name=segment_name, set_type="Public Comps", description=notes)
-                                        db.add(cset)
-                                        db.flush()
-                                        db.add(MarketComparisonSetLink(market_id=market.id, comparison_set_id=cset.id))
-                                        db.commit()
-                                        
-                                    comp_names_str = ", ".join([c.get("name", "") for c in companies if isinstance(c, dict) and c.get("name")] + [c for c in companies if isinstance(c, str)])
-                                    log_detail(f"Adding companies: {comp_names_str}")
-                                    
-                                    for comp_obj in companies:
-                                        if isinstance(comp_obj, str):
-                                            comp_name = comp_obj
-                                            comp_domain = None
-                                            comp_ticker = None
-                                            comp_exchange = None
-                                            comp_ownership = None
-                                        else:
-                                            comp_name = comp_obj.get("name")
-                                            comp_domain = comp_obj.get("domain")
-                                            comp_ticker = comp_obj.get("ticker_symbol")
-                                            comp_exchange = comp_obj.get("stock_exchange")
-                                            comp_ownership = comp_obj.get("ownership_type")
-                                            
-                                        if not comp_name:
-                                            continue
-                                            
-                                        org = db.query(Organization).filter(
-                                            (Organization.name.ilike(f"%{comp_name}%")) | 
-                                            (Organization.ticker.ilike(f"{comp_name}"))
+                                    if segment_type == "competitors":
+                                        # Handle Competitors via MarketSegment
+                                        seg = db.query(MarketSegment).filter(
+                                            MarketSegment.market_id == market.id,
+                                            MarketSegment.name.ilike(f"%{segment_name}%")
                                         ).first()
                                         
-                                        if not org:
-                                            log_detail(f"Company '{comp_name}' not found. Creating it...")
-                                            org = create_company(
-                                                db=db, 
-                                                name=comp_name, 
-                                                domain=comp_domain, 
-                                                ticker_symbol=comp_ticker,
-                                                stock_exchange=comp_exchange,
-                                                ownership_type=comp_ownership,
-                                                created_by="AgenticUploads"
-                                            )
+                                        if not seg:
+                                            log_detail(f"Creating new Market Segment '{segment_name}' in Market '{market.name}'...")
+                                            from market_comps.crm.competitor_manager import create_market_segment
+                                            seg = create_market_segment(db, market.id, segment_name, notes)
                                             db.commit()
                                             
-                                            # Queue fast augmentation
-                                            if augmentation_mode != "None":
-                                                def run_augmentation(org_id):
-                                                    local_db = SessionLocal()
-                                                    try:
-                                                        process_new_company(local_db, org_id, fast_mode=True)
-                                                    except Exception as e:
-                                                        logging.error(f"Augmentation failed for org {org_id}: {e}")
-                                                    finally:
-                                                        local_db.close()
-                                                threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
+                                        comp_names_str = ", ".join([c.get("name", "") for c in companies if isinstance(c, dict) and c.get("name")] + [c for c in companies if isinstance(c, str)])
+                                        log_detail(f"Adding competitors to segment: {comp_names_str}")
+                                        
+                                        added_count = 0
+                                        for comp_obj in companies:
+                                            if isinstance(comp_obj, str):
+                                                comp_name = comp_obj
+                                                comp_domain = None
+                                                comp_ticker = None
+                                                comp_exchange = None
+                                                comp_ownership = None
+                                            else:
+                                                comp_name = comp_obj.get("name")
+                                                comp_domain = comp_obj.get("domain")
+                                                comp_ticker = comp_obj.get("ticker_symbol")
+                                                comp_exchange = comp_obj.get("stock_exchange")
+                                                comp_ownership = comp_obj.get("ownership_type")
                                                 
-                                        # Link to Comparison Set
-                                        existing_link = db.query(ComparisonSetOrganizationLink).filter_by(
-                                            comparison_set_id=cset.id, organization_id=org.id
+                                            if not comp_name:
+                                                continue
+                                                
+                                            org = db.query(Organization).filter(
+                                                (Organization.name.ilike(f"%{comp_name}%")) | 
+                                                (Organization.ticker.ilike(f"{comp_name}"))
+                                            ).first()
+                                            
+                                            if not org:
+                                                log_detail(f"Company '{comp_name}' not found. Creating it...")
+                                                org = create_company(
+                                                    db=db, 
+                                                    name=comp_name, 
+                                                    domain=comp_domain, 
+                                                    ticker_symbol=comp_ticker,
+                                                    stock_exchange=comp_exchange,
+                                                    ownership_type=comp_ownership,
+                                                    created_by="AgenticUploads"
+                                                )
+                                                db.commit()
+                                                
+                                                # Queue fast augmentation
+                                                if augmentation_mode != "None":
+                                                    def run_augmentation(org_id):
+                                                        local_db = SessionLocal()
+                                                        try:
+                                                            process_new_company(local_db, org_id, fast_mode=True)
+                                                        except Exception as e:
+                                                            logging.error(f"Augmentation failed for org {org_id}: {e}")
+                                                        finally:
+                                                            local_db.close()
+                                                    threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
+                                                    
+                                            from market_comps.crm.competitor_manager import add_company_to_segment
+                                            add_company_to_segment(db, org.id, seg.id, notes, False)
+                                            added_count += 1
+                                            
+                                        db.commit()
+                                        msg = f"✅ Added {added_count} competitors to segment '{segment_name}' in Market '{market.name}'."
+                                    else:
+                                        # Handle other types via ComparisonSet
+                                        display_set_type = "Public Comps" if segment_type == "public_comps" else ("Investors" if segment_type == "investors" else "Other")
+                                        cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
+                                            MarketComparisonSetLink.market_id == market.id,
+                                            ComparisonSet.name.ilike(f"%{segment_name}%")
                                         ).first()
-                                        if not existing_link:
-                                            db.add(ComparisonSetOrganizationLink(
-                                                comparison_set_id=cset.id, 
-                                                organization_id=org.id,
-                                                notes=notes
-                                            ))
-                                    
-                                    db.commit()
-                                    msg = f"✅ Added {len(companies)} companies to '{segment_name}' in Market '{market.name}'."
+                                        
+                                        if not cset:
+                                            log_detail(f"Creating new ComparisonSet '{segment_name}' ({display_set_type}) in Market '{market.name}'...")
+                                            cset = ComparisonSet(name=segment_name, set_type=display_set_type, description=notes)
+                                            db.add(cset)
+                                            db.flush()
+                                            db.add(MarketComparisonSetLink(market_id=market.id, comparison_set_id=cset.id))
+                                            db.commit()
+                                            
+                                        comp_names_str = ", ".join([c.get("name", "") for c in companies if isinstance(c, dict) and c.get("name")] + [c for c in companies if isinstance(c, str)])
+                                        log_detail(f"Adding companies to comparison set: {comp_names_str}")
+                                        
+                                        added_count = 0
+                                        for comp_obj in companies:
+                                            if isinstance(comp_obj, str):
+                                                comp_name = comp_obj
+                                                comp_domain = None
+                                                comp_ticker = None
+                                                comp_exchange = None
+                                                comp_ownership = None
+                                            else:
+                                                comp_name = comp_obj.get("name")
+                                                comp_domain = comp_obj.get("domain")
+                                                comp_ticker = comp_obj.get("ticker_symbol")
+                                                comp_exchange = comp_obj.get("stock_exchange")
+                                                comp_ownership = comp_obj.get("ownership_type")
+                                                
+                                            if not comp_name:
+                                                continue
+                                                
+                                            org = db.query(Organization).filter(
+                                                (Organization.name.ilike(f"%{comp_name}%")) | 
+                                                (Organization.ticker.ilike(f"{comp_name}"))
+                                            ).first()
+                                            
+                                            if not org:
+                                                log_detail(f"Company '{comp_name}' not found. Creating it...")
+                                                org = create_company(
+                                                    db=db, 
+                                                    name=comp_name, 
+                                                    domain=comp_domain, 
+                                                    ticker_symbol=comp_ticker,
+                                                    stock_exchange=comp_exchange,
+                                                    ownership_type=comp_ownership,
+                                                    created_by="AgenticUploads"
+                                                )
+                                                db.commit()
+                                                
+                                                # Queue fast augmentation
+                                                if augmentation_mode != "None":
+                                                    def run_augmentation(org_id):
+                                                        local_db = SessionLocal()
+                                                        try:
+                                                            process_new_company(local_db, org_id, fast_mode=True)
+                                                        except Exception as e:
+                                                            logging.error(f"Augmentation failed for org {org_id}: {e}")
+                                                        finally:
+                                                            local_db.close()
+                                                    threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
+                                            
+                                            # Guardrail check
+                                            if segment_type == "public_comps" and (org.ownership_type and org.ownership_type.upper() == "PRIVATE"):
+                                                log_detail(f"⚠️ Guardrail: Skipping {org.name} because it is a PRIVATE company and cannot be added to a Public Comps bucket.")
+                                                continue
+                                                
+                                            # Link to Comparison Set
+                                            existing_link = db.query(ComparisonSetOrganizationLink).filter_by(
+                                                comparison_set_id=cset.id, organization_id=org.id
+                                            ).first()
+                                            if not existing_link:
+                                                db.add(ComparisonSetOrganizationLink(
+                                                    comparison_set_id=cset.id, 
+                                                    organization_id=org.id,
+                                                    notes=notes
+                                                ))
+                                            added_count += 1
+                                            
+                                        db.commit()
+                                        msg = f"✅ Added {added_count} companies to '{segment_name}' in Market '{market.name}'."
                                     
                                     # Append the new message but also attach the details list
                                     new_msg = {"role": "assistant", "content": msg, "details": details}

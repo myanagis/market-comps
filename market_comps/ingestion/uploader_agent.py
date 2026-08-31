@@ -21,6 +21,9 @@ Valid action types:
 3. `update_market_map`: Use this when the user asks to add companies to a specific market map segment or public comps group.
 4. `add_transaction`: Use this when the user asks to record an M&A transaction or acquisition.
 5. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
+        - When adding a company, look up its website domain and normalize its name if possible.
+        - When updating a market map, you must classify the segment_type. For competitors or operating companies in a market, use 'competitors'. For public comps, use 'public_comps'. For investors, use 'investors'.
+        - Guardrail: Never classify private companies as public comps. If a company is explicitly described as private, it should not be placed into a public comps segment.
 6. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies and a domain is missing, you can attempt to guess it if it is a well-known public company, otherwise just return null for the domain. Do NOT output a clarify action just because the domain is missing. The backend will attempt to find the domain automatically via search.
@@ -90,6 +93,11 @@ ACTION_SCHEMA = {
             "properties": {
                 "market_name": {"type": "string", "description": "The name of the market map or comparison set."},
                 "segment_name": {"type": "string", "description": "The name of the segment within the market map, if specified."},
+                "segment_type": {
+                    "type": "string",
+                    "enum": ["competitors", "public_comps", "investors", "other"],
+                    "description": "The type of the segment (e.g. competitors, public_comps)."
+                },
                 "companies": {
                     "type": "array",
                     "items": {
@@ -107,7 +115,7 @@ ACTION_SCHEMA = {
                 },
                 "notes": {"type": ["string", "null"], "description": "Any additional comments or differentiation notes provided by the user."}
             },
-            "required": ["market_name", "companies"]
+            "required": ["market_name", "segment_type", "companies"]
         },
         "transaction_details": {
             "type": ["object", "null"],
