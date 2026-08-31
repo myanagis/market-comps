@@ -44,6 +44,10 @@ if "pending_companies" not in st.session_state:
 for msg in st.session_state.uploader_messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        if msg.get("details"):
+            with st.expander("Show Execution Details", expanded=False):
+                for detail in msg["details"]:
+                    st.write(detail)
 
 # Display Pending Companies (Staging Area)
 if st.session_state.pending_companies:
@@ -59,9 +63,6 @@ if st.session_state.pending_companies:
         index=1,
         key="augmentation_mode_radio"
     )
-else:
-    augmentation_mode = st.session_state.get("augmentation_mode_radio", "Fast (Homepage Only)")
-    
     col1, col2, _ = st.columns([1, 1, 4])
     with col1:
         if st.button("✅ Create & Run Pipeline", type="primary", use_container_width=True):
@@ -71,6 +72,8 @@ else:
         if st.button("🗑️ Clear List", use_container_width=True):
             st.session_state.pending_companies = []
             st.rerun()
+else:
+    augmentation_mode = st.session_state.get("augmentation_mode_radio", "Fast (Homepage Only)")
 
 # Handle Chat Input
 prompt = st.chat_input("E.g., 'Add Acme Corp...' or 'Process https://...'")
@@ -301,7 +304,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     st.write(f"Could not find Market named '{market_name}'. Please ensure it exists.")
                                     status.update(label="Market not found.", state="error")
                                 else:
-                                    st.write(f"Found Market: {market.name}")
+                                    details = []
+                                    def log_detail(msg):
+                                        st.write(msg)
+                                        details.append(msg)
+                                        
+                                    log_detail(f"Found Market: {market.name}")
                                     
                                     # Look for ComparisonSet by segment_name (since the prompt is 'big tech public comps')
                                     cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
@@ -310,7 +318,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     ).first()
                                     
                                     if not cset:
-                                        st.write(f"Creating new ComparisonSet '{segment_name}' in Market '{market.name}'...")
+                                        log_detail(f"Creating new ComparisonSet '{segment_name}' in Market '{market.name}'...")
                                         cset = ComparisonSet(name=segment_name, set_type="Public Comps", description=notes)
                                         db.add(cset)
                                         db.flush()
@@ -318,15 +326,21 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         db.commit()
                                         
                                     comp_names_str = ", ".join([c.get("name", "") for c in companies if isinstance(c, dict) and c.get("name")] + [c for c in companies if isinstance(c, str)])
-                                    st.write(f"Adding companies: {comp_names_str}")
+                                    log_detail(f"Adding companies: {comp_names_str}")
                                     
                                     for comp_obj in companies:
                                         if isinstance(comp_obj, str):
                                             comp_name = comp_obj
                                             comp_domain = None
+                                            comp_ticker = None
+                                            comp_exchange = None
+                                            comp_ownership = None
                                         else:
                                             comp_name = comp_obj.get("name")
                                             comp_domain = comp_obj.get("domain")
+                                            comp_ticker = comp_obj.get("ticker_symbol")
+                                            comp_exchange = comp_obj.get("stock_exchange")
+                                            comp_ownership = comp_obj.get("ownership_type")
                                             
                                         if not comp_name:
                                             continue
@@ -337,8 +351,16 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         ).first()
                                         
                                         if not org:
-                                            st.write(f"Company '{comp_name}' not found. Creating it...")
-                                            org = create_company(db=db, name=comp_name, domain=comp_domain, created_by="AgenticUploads")
+                                            log_detail(f"Company '{comp_name}' not found. Creating it...")
+                                            org = create_company(
+                                                db=db, 
+                                                name=comp_name, 
+                                                domain=comp_domain, 
+                                                ticker_symbol=comp_ticker,
+                                                stock_exchange=comp_exchange,
+                                                ownership_type=comp_ownership,
+                                                created_by="AgenticUploads"
+                                            )
                                             db.commit()
                                             
                                             # Queue fast augmentation
@@ -366,7 +388,10 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     
                                     db.commit()
                                     msg = f"✅ Added {len(companies)} companies to '{segment_name}' in Market '{market.name}'."
-                                    st.session_state.uploader_messages.append({"role": "assistant", "content": msg})
+                                    
+                                    # Append the new message but also attach the details list
+                                    new_msg = {"role": "assistant", "content": msg, "details": details}
+                                    st.session_state.uploader_messages.append(new_msg)
                                     status.update(label=msg, state="complete")
                         except Exception as e:
                             status.update(label=f"Failed to update market map: {str(e)}", state="error", expanded=True)
@@ -388,10 +413,15 @@ if prompt or st.session_state.get("manual_proceed", False):
                             with get_db_context() as db:
                                 from market_comps.db.models import Transaction
                                 
+                                details = []
+                                def log_detail(msg):
+                                    st.write(msg)
+                                    details.append(msg)
+                                
                                 def get_or_create(db, name):
                                     org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
                                     if not org:
-                                        st.write(f"Creating missing company '{name}'...")
+                                        log_detail(f"Creating missing company '{name}'...")
                                         org = create_company(db=db, name=name, created_by="AgenticUploads")
                                         db.flush()
                                     return org
@@ -414,7 +444,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                 msg = f"✅ Recorded M&A Transaction: {tx.transaction_name}"
                                 if price:
                                     msg += f" (Value: ${price:,.0f})"
-                                st.session_state.uploader_messages.append({"role": "assistant", "content": msg})
+                                new_msg = {"role": "assistant", "content": msg, "details": details}
+                                st.session_state.uploader_messages.append(new_msg)
                                 status.update(label=msg, state="complete")
                         except Exception as e:
                             status.update(label=f"Failed to record transaction: {str(e)}", state="error", expanded=True)
@@ -432,12 +463,17 @@ if prompt or st.session_state.get("manual_proceed", False):
                     with st.status(f"Processing link for {target_name}...", expanded=True) as status:
                         try:
                             with get_db_context() as db:
+                                details = []
+                                def log_detail(msg):
+                                    st.write(msg)
+                                    details.append(msg)
+                                
                                 # For now, we only support mapping to Organizations (Company/Investor)
-                                st.write(f"Looking up {target_type}: {target_name}...")
+                                log_detail(f"Looking up {target_type}: {target_name}...")
                                 org = db.query(Organization).filter(Organization.name.ilike(f"%{target_name}%")).first()
                                 
                                 if not org:
-                                    st.write(f"Could not find {target_type} named '{target_name}'. Creating it now...")
+                                    log_detail(f"Could not find {target_type} named '{target_name}'. Creating it now...")
                                     org = create_company(
                                         db=db,
                                         name=target_name,
@@ -447,10 +483,11 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         org.organization_type = "INVESTOR"
                                     db.commit()
                                     
-                                st.write(f"Found/Created {org.name}. Scraping and running extraction pipeline...")
+                                log_detail(f"Found/Created {org.name}. Scraping and running extraction pipeline...")
                                 run_manual_url_augmentation(org.id, url)
                                 status.update(label=f"Successfully extracted data from link and updated {org.name}!", state="complete", expanded=False)
-                                st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully extracted data from the link and filed it under **{org.name}**."})
+                                new_msg = {"role": "assistant", "content": f"✅ Successfully extracted data from the link and filed it under **{org.name}**.", "details": details}
+                                st.session_state.uploader_messages.append(new_msg)
                         except Exception as e:
                             status.update(label=f"Failed to process link: {str(e)}", state="error", expanded=True)
                             st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process link: {str(e)}"})

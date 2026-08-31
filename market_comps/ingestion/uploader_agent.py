@@ -96,7 +96,10 @@ ACTION_SCHEMA = {
                         "type": "object",
                         "properties": {
                             "name": {"type": "string"},
-                            "domain": {"type": ["string", "null"]}
+                            "domain": {"type": ["string", "null"]},
+                            "ticker_symbol": {"type": ["string", "null"]},
+                            "stock_exchange": {"type": ["string", "null"]},
+                            "ownership_type": {"type": ["string", "null"]}
                         },
                         "required": ["name"]
                     },
