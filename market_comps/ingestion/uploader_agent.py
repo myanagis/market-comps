@@ -128,7 +128,8 @@ ACTION_SCHEMA = {
                 "target": {"type": "string"},
                 "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
                 "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
-                "notes": {"type": ["string", "null"]}
+                "notes": {"type": ["string", "null"]},
+                "year": {"type": ["integer", "null"], "description": "Year of the transaction, e.g. 2024."}
             },
             "required": ["acquirer", "target"]
         },

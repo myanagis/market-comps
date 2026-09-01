@@ -485,6 +485,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                 tgt_name = tx_details.get("target")
                 price = tx_details.get("price")
                 notes = tx_details.get("notes")
+                year = tx_details.get("year")
                 
                 if not acq_name or not tgt_name:
                     st.error("Missing acquirer or target for transaction.")
@@ -519,6 +520,10 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     transaction_value_numeric=price,
                                     notes=notes
                                 )
+                                
+                                if year:
+                                    from datetime import date
+                                    tx.announced_date = date(year, 1, 1)
                                 db.add(tx)
                                 db.flush()
                                 
@@ -543,7 +548,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         ).first()
                                         if not existing_link:
                                             db.add(ComparisonSetOrganizationLink(
-                                                comparison_set_id=cset.id, organization_id=target.id, notes=f"Acquired by {acquirer.name}"
+                                                comparison_set_id=cset.id, organization_id=target.id, notes=""
                                             ))
                                         log_detail(f"Added {target.name} to {segment_name} in {market.name}.")
                                 
