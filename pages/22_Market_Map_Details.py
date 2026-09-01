@@ -57,50 +57,42 @@ with get_db_context() as db:
     # -------------------------------------------------------------
     # ##### Segments
     # -------------------------------------------------------------
-    st.markdown("##### Segments")
+    st.header("Market Players")
+    st.markdown("##### Segmentation")
 
     if segments:
-        seg_map_data = []
+        h1, h2, h3, h4 = st.columns([2, 3, 2, 0.5])
+        h1.markdown("**Segment Name**")
+        h2.markdown("**Description**")
+        h3.markdown("**Segment Type**")
+        
+        st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+        
         for seg in segments:
-            seg_map_data.append({
-                "_seg_id": seg.id,
-                "Segment Name": seg.name,
-                "Description": seg.description or "",
-                "Segment Type": seg.segment_type or "",
-                "Sort Order": seg.sort_order or 0
-            })
-        df_seg_map = pd.DataFrame(seg_map_data)
-        
-        edited_seg_map_df = st.data_editor(
-            df_seg_map,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "_seg_id": None,
-                "Segment Name": st.column_config.TextColumn(disabled=False),
-                "Description": st.column_config.TextColumn(disabled=False),
-                "Segment Type": st.column_config.TextColumn(disabled=False),
-                "Sort Order": st.column_config.NumberColumn(disabled=False, step=10)
-            },
-            key=f"data_editor_map_seg_{market.id}"
-        )
-        
-        col_sb1, col_sb2 = st.columns([1, 1])
-        with col_sb1:
-            if st.button("💾 Save Segment Edits", key=f"save_map_seg_btn_{market.id}"):
-                for _, row in edited_seg_map_df.iterrows():
-                    s_obj = db.query(MarketSegment).get(int(row["_seg_id"]))
-                    if s_obj:
-                        s_obj.name = row["Segment Name"]
-                        s_obj.description = row["Description"]
-                        s_obj.segment_type = row["Segment Type"]
-                        s_obj.sort_order = int(row["Sort Order"])
-                db.commit()
-                st.success("Segment edits saved!")
-                st.rerun()
-        with col_sb2:
-            with st.popover("➕ Add Segment"):
-                with st.form("new_segment_form_map"):
+            c1, c2, c3, c4 = st.columns([2, 3, 2, 0.5])
+            c1.write(seg.name)
+            c2.write(seg.description or "")
+            c3.write(seg.segment_type or "")
+            with c4:
+                with st.popover("✏️"):
+                    with st.form(f"edit_seg_{seg.id}"):
+                        s_name = st.text_input("Segment Name", value=seg.name)
+                        s_desc = st.text_area("Description", value=seg.description or "")
+                        s_type = st.text_input("Segment Type", value=seg.segment_type or "")
+                        s_sort = st.number_input("Sort Order", value=seg.sort_order or 0, step=10)
+                        if st.form_submit_button("Save"):
+                            s_obj = db.query(MarketSegment).get(seg.id)
+                            if s_obj:
+                                s_obj.name = s_name
+                                s_obj.description = s_desc
+                                s_obj.segment_type = s_type
+                                s_obj.sort_order = s_sort
+                                db.commit()
+                                st.rerun()
+                                
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.popover("➕ Add Segment"):
+            with st.form("new_segment_form_map"):
                     s_name = st.text_input("Segment Name")
                     s_desc = st.text_area("Description")
                     s_type = st.text_input("Segment Type (Optional)")
@@ -133,7 +125,7 @@ with get_db_context() as db:
     # -------------------------------------------------------------
     # ##### Organizations mapped to segments
     # -------------------------------------------------------------
-    st.markdown("##### Organizations in Segments")
+    st.markdown("##### Companies")
 
     segment_links = (
         db.query(MarketSegmentCompanyLink)
@@ -143,53 +135,91 @@ with get_db_context() as db:
     )
     
     if segment_links:
-        comp_map_data = []
+        h1, h2, h3, h4, h5, h6 = st.columns([2, 1.5, 3, 1.5, 1.5, 0.5])
+        h1.markdown("**Organization**")
+        h2.markdown("**Segment**")
+        h3.markdown("**Differentiation**")
+        h4.markdown("**Total / Last Raised**")
+        h5.markdown("**Valuation**")
+        
+        st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+        
+        from market_comps.db.models import FinancingRound, FinancingRoundFact, MetricObservation, MetricType
+        
         for link in segment_links:
             comp_org = link.company
             seg_obj = link.market_segment
             if not comp_org or not seg_obj: continue
-            comp_map_data.append({
-                "_company_id": link.company_id,
-                "_segment_id": link.market_segment_id,
-                "Organization (Read Only)": comp_org.name,
-                "Type (Read Only)": comp_org.organization_type or "N/A",
-                "Segment (Read Only)": seg_obj.name,
-                "Differentiation": link.differentiation or ""
-            })
-        
-        df_comp_map = pd.DataFrame(comp_map_data)
-        
-        edited_comp_map_df = st.data_editor(
-            df_comp_map,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "_company_id": None,
-                "_segment_id": None,
-                "Organization (Read Only)": st.column_config.TextColumn(disabled=True),
-                "Type (Read Only)": st.column_config.TextColumn(disabled=True),
-                "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
-                "Differentiation": st.column_config.TextColumn(disabled=False)
-            },
-            key=f"data_editor_map_comp_{market.id}"
-        )
-        
-        col_cb1, col_cb2 = st.columns([1, 1])
-        with col_cb1:
-            if st.button("💾 Save Company Differentiation Edits", key=f"save_map_comp_btn_{market.id}"):
-                for _, row in edited_comp_map_df.iterrows():
-                    link_obj = db.query(MarketSegmentCompanyLink).filter_by(
-                        company_id=int(row["_company_id"]),
-                        market_segment_id=int(row["_segment_id"])
-                    ).first()
-                    if link_obj:
-                        link_obj.differentiation = row["Differentiation"]
-                db.commit()
-                st.success("Organization differentiation edits saved!")
-                st.rerun()
-        with col_cb2:
-            with st.popover("➕ Link Org to Segment"):
-                with st.form("link_company_map_form"):
+            
+            raised_str = "-"
+            val_str = "-"
+            
+            fin = db.query(FinancingRound).filter_by(company_id=comp_org.id).order_by(FinancingRound.id.desc()).first()
+            if fin:
+                raised_fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="amount_raised").first()
+                if raised_fact and raised_fact.value_numeric:
+                    val = raised_fact.value_numeric
+                    if val >= 1e9: raised_str = f"${val/1e9:.2f}B"
+                    elif val >= 1e6: raised_str = f"${val/1e6:.2f}M"
+                    else: raised_str = f"${val:,.0f}"
+                
+                val_fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="post_money_valuation").first()
+                if val_fact and val_fact.value_numeric:
+                    val = val_fact.value_numeric
+                    date_str = f" ({fin.announced_date.strftime('%Y-%m')})" if fin.announced_date else ""
+                    if val >= 1e9: val_str = f"${val/1e9:.2f}B{date_str}"
+                    elif val >= 1e6: val_str = f"${val/1e6:.2f}M{date_str}"
+                    else: val_str = f"${val:,.0f}{date_str}"
+                    
+            if val_str == "-":
+                mc_type = db.query(MetricType).filter_by(code="market_cap").first()
+                if mc_type:
+                    obs = db.query(MetricObservation).filter_by(company_id=comp_org.id, metric_type_id=mc_type.id).order_by(MetricObservation.recorded_at.desc()).first()
+                    if obs and obs.value_numeric:
+                        val = obs.value_numeric
+                        date_str = f" ({obs.recorded_at.strftime('%Y-%m')})" if obs.recorded_at else ""
+                        if val >= 1e9: val_str = f"${val/1e9:.2f}B{date_str}"
+                        elif val >= 1e6: val_str = f"${val/1e6:.2f}M{date_str}"
+                        else: val_str = f"${val:,.0f}{date_str}"
+            
+            c1, c2, c3, c4, c5, c6 = st.columns([2, 1.5, 3, 1.5, 1.5, 0.5])
+            c1.markdown(f"[{comp_org.name}](/company?id={comp_org.id})")
+            c2.write(seg_obj.name)
+            c3.write(link.differentiation or "")
+            c4.write(raised_str)
+            c5.write(val_str)
+            
+            with c6:
+                with st.popover("✏️"):
+                    with st.form(f"edit_comp_{link.company_id}_{link.market_segment_id}"):
+                        seg_opts = {s.name: s.id for s in segments}
+                        seg_idx = list(seg_opts.values()).index(seg_obj.id) if seg_obj.id in seg_opts.values() else 0
+                        new_seg_name = st.selectbox("Segment", options=list(seg_opts.keys()), index=seg_idx)
+                        new_diff = st.text_area("Differentiation", value=link.differentiation or "")
+                        if st.form_submit_button("Save"):
+                            link_obj = db.query(MarketSegmentCompanyLink).filter_by(
+                                company_id=link.company_id,
+                                market_segment_id=link.market_segment_id
+                            ).first()
+                            if link_obj:
+                                new_seg_id = seg_opts[new_seg_name]
+                                if new_seg_id != link.market_segment_id:
+                                    db.delete(link_obj)
+                                    db.flush()
+                                    new_link = MarketSegmentCompanyLink(
+                                        company_id=link.company_id,
+                                        market_segment_id=new_seg_id,
+                                        differentiation=new_diff
+                                    )
+                                    db.add(new_link)
+                                else:
+                                    link_obj.differentiation = new_diff
+                                db.commit()
+                                st.rerun()
+                                
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.popover("➕ Link Org to Segment"):
+            with st.form("link_company_map_form"):
                     all_orgs = db.query(Organization).order_by(Organization.name).all()
                     org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
                     seg_opts = {s.name: s.id for s in segments}
@@ -254,234 +284,216 @@ with get_db_context() as db:
         st.markdown(f"##### {stype}")
         
         for cset in csets:
-            with st.expander(f"📚 {cset.name}", expanded=True):
-                col_c1, col_c2 = st.columns([0.8, 0.2])
-                with col_c1:
-                    if cset.description:
-                        st.caption(cset.description)
-                with col_c2:
-                    with st.popover("✏️ Edit Section", use_container_width=True):
-                        with st.form(f"edit_cset_form_{cset.id}"):
-                            new_name = st.text_input("Name", value=cset.name)
-                            new_desc = st.text_area("Description", value=cset.description or "")
-                            if st.form_submit_button("Save"):
-                                cset.name = new_name
-                                cset.description = new_desc
-                                db.commit()
-                                st.rerun()
-                
-                companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
-                if companies_in_set:
-                    if st.session_state.get("yfinance_enabled", True):
-                        if st.button("📈 Pull Market Data (Yahoo Finance)", key=f"pull_yf_{cset.id}"):
-                            with st.spinner("Fetching data from Yahoo Finance... (1 request/sec)"):
-                                yf_client = YahooFinanceClient()
-                                
-                                # Ensure metric types exist
-                                metric_codes = {
-                                    "market_cap": "Market Cap",
-                                    "enterprise_value": "Enterprise Value", 
-                                    "revenue": "Revenue",
-                                    "ebitda": "EBITDA",
-                                    "revenue_multiple": "EV / Revenue",
-                                    "ebitda_multiple": "EV / EBITDA"
-                                }
-                                
-                                metric_type_map = {}
-                                for code, name in metric_codes.items():
-                                    mt = db.query(MetricType).filter_by(code=code).first()
-                                    if not mt:
-                                        mt = MetricType(code=code, display_name=name, value_type="currency" if "multiple" not in code else "multiple")
-                                        db.add(mt)
-                                        db.commit()
-                                    metric_type_map[code] = mt.id
-                                
-                                for comp in companies_in_set:
-                                    if comp.ticker:
-                                        data = yf_client.fetch_financial_metrics(comp.ticker)
-                                        if data:
-                                            for k, v in data.items():
-                                                if v is not None and k in metric_type_map:
-                                                    # Check if observation exists for TTM
-                                                    obs = db.query(MetricObservation).filter_by(
-                                                        company_id=comp.id, 
-                                                        metric_type_id=metric_type_map[k],
-                                                        reporting_basis="trailing_twelve_months"
-                                                    ).first()
-                                                    
-                                                    if not obs:
-                                                        obs = MetricObservation(
-                                                            company_id=comp.id,
-                                                            metric_type_id=metric_type_map[k],
-                                                            reporting_basis="trailing_twelve_months",
-                                                            observation_status="external_estimate",
-                                                            currency_code=data.get("currency", "USD")
-                                                        )
-                                                        db.add(obs)
-                                                    obs.value_numeric = float(v)
-                                db.commit()
-                                st.success("Financial data updated from Yahoo Finance!")
-                                st.rerun()
-                    
-                    comps_data = []
-                    clink_map = {cl.organization_id: cl for cl in cset.organization_links if cl.included and cl.organization}
-                    
-                    for comp in companies_in_set:
-                        row = {
-                            "_comp_id": comp.id,
-                            "Organization": comp.name,
-                            "Notes": clink_map[comp.id].notes or "",
-                            "Link": f"/company?id={comp.id}"
-                        }
-                        
-                        if cset.set_type == "M&A Precedents":
-                            from market_comps.db.models import Transaction
-                            tx = db.query(Transaction).filter_by(target_company_id=comp.id, transaction_type="ACQUISITION").order_by(Transaction.id.desc()).first()
-                            if tx:
-                                row["Acquirer"] = tx.acquirer_company.name if tx.acquirer_company else "Unknown"
-                                if tx.transaction_value_numeric:
-                                    row["Transaction Value"] = f"${tx.transaction_value_numeric:,.0f}"
-                                else:
-                                    row["Transaction Value"] = "Undisclosed"
-                                row["Date"] = tx.announced_date.strftime("%Y-%m-%d") if tx.announced_date else ""
-                            else:
-                                row["Acquirer"] = ""
-                                row["Transaction Value"] = ""
-                                row["Date"] = ""
-                                
-                        elif cset.set_type == "Financing Comps":
-                            from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
-                            fin = db.query(FinancingRound).filter_by(company_id=comp.id).order_by(FinancingRound.id.desc()).first()
-                            if fin:
-                                row["Round Name"] = fin.round_name or ""
-                                fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="amount_raised").first()
-                                if fact and fact.value_numeric:
-                                    val = fact.value_numeric
-                                    if val >= 1e9:
-                                        row["Amount Raised"] = f"${val/1e9:.2f}B"
-                                    elif val >= 1e6:
-                                        row["Amount Raised"] = f"${val/1e6:.2f}M"
-                                    else:
-                                        row["Amount Raised"] = f"${val:,.0f}"
-                                else:
-                                    row["Amount Raised"] = "Undisclosed"
-                                    
-                                invs = db.query(RoundInvestor).filter_by(financing_round_id=fin.id, role="lead").all()
-                                if invs:
-                                    row["Lead Investors"] = ", ".join([inv.investor.name for inv in invs if inv.investor])
-                                else:
-                                    row["Lead Investors"] = ""
-                            else:
-                                row["Round Name"] = ""
-                                row["Amount Raised"] = ""
-                                row["Lead Investors"] = ""
-                                
-                        else:
-                            # Standard public comps display
-                            row["Ticker"] = comp.ticker or ""
-                            row["Domain"] = comp.primary_domain or ""
-                            
-                            # Get latest metrics
-                            obs_list = db.query(MetricObservation).filter_by(
-                                company_id=comp.id, reporting_basis="trailing_twelve_months"
-                            ).all()
-                            
-                            last_updated = None
-                            for obs in obs_list:
-                                mt = db.query(MetricType).get(obs.metric_type_id)
-                                if mt:
-                                    if mt.value_type == "currency":
-                                        # Format as Millions/Billions
-                                        val = obs.value_numeric
-                                        if val:
-                                            if val >= 1e9:
-                                                row[mt.display_name] = f"${val/1e9:.2f}B"
-                                            elif val >= 1e6:
-                                                row[mt.display_name] = f"${val/1e6:.2f}M"
-                                            else:
-                                                row[mt.display_name] = f"${val:,.0f}"
-                                    elif mt.value_type == "multiple":
-                                        row[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
-                                
-                                # Track newest update time
-                                if hasattr(obs, 'recorded_at') and obs.recorded_at:
-                                    if not last_updated or obs.recorded_at > last_updated:
-                                        last_updated = obs.recorded_at
-                                        
-                            if last_updated:
-                                row["Last Updated"] = last_updated.strftime("%Y-%m-%d")
-                            
-                        comps_data.append(row)
-                        
-                    df_cset = pd.DataFrame(comps_data)
-                    
-                    col_config = {
-                        "_comp_id": None,
-                        "Organization": st.column_config.TextColumn(disabled=True),
-                        "Notes": st.column_config.TextColumn(disabled=False, width="large"),
-                        "Link": st.column_config.LinkColumn("View Profile", disabled=True)
-                    }
-                    
-                    if cset.set_type == "M&A Precedents":
-                        col_config.update({
-                            "Acquirer": st.column_config.TextColumn(disabled=True),
-                            "Transaction Value": st.column_config.TextColumn(disabled=True),
-                            "Date": st.column_config.TextColumn(disabled=True)
-                        })
-                    elif cset.set_type == "Financing Comps":
-                        col_config.update({
-                            "Round Name": st.column_config.TextColumn(disabled=True),
-                            "Amount Raised": st.column_config.TextColumn(disabled=True),
-                            "Lead Investors": st.column_config.TextColumn(disabled=True)
-                        })
-                    else:
-                        col_config.update({
-                            "Ticker": st.column_config.TextColumn(disabled=True),
-                            "Domain": st.column_config.TextColumn(disabled=True)
-                        })
-                        
-                    edited_df_cset = st.data_editor(
-                        df_cset, 
-                        hide_index=True, 
-                        use_container_width=True,
-                        column_config=col_config,
-                        key=f"data_editor_cset_{cset.id}"
-                    )
-                    
-                    if st.button("💾 Save Notes", key=f"save_notes_cset_{cset.id}"):
-                        for _, row in edited_df_cset.iterrows():
-                            c_id = int(row["_comp_id"])
-                            clink = clink_map.get(c_id)
-                            if clink:
-                                clink.notes = row["Notes"]
-                        db.commit()
-                        st.success("Notes saved!")
-                        st.rerun()
-                        
-                else:
-                    st.info("No organizations linked to this Comparison Set.")
-                
-                col_c1, col_c2 = st.columns([1, 1])
-                with col_c1:
-                    with st.popover("➕ Add Organization to Set"):
-                        all_orgs = db.query(Organization).order_by(Organization.name).all()
-                        org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
-                        with st.form(f"add_comp_cset_{cset.id}"):
-                            comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
-                            if st.form_submit_button("Add to Set"):
-                                if comp_sel:
-                                    clink = ComparisonSetOrganizationLink(comparison_set_id=cset.id, organization_id=org_opts[comp_sel])
-                                    db.add(clink)
-                                    db.commit()
-                                    st.success(f"{comp_sel} added to set!")
-                                    st.rerun()
-                with col_c2:
-                    if st.button("Unlink Set from Market", key=f"unlink_cset_{cset.id}"):
-                        link_to_delete = db.query(MarketComparisonSetLink).filter_by(market_id=market.id, comparison_set_id=cset.id).first()
-                        if link_to_delete:
-                            db.delete(link_to_delete)
+        for cset in csets:
+            st.markdown(f"###### 📚 {cset.name}")
+            col_c1, col_c2 = st.columns([0.8, 0.2])
+            with col_c1:
+                if cset.description:
+                    st.caption(cset.description)
+            with col_c2:
+                with st.popover("✏️ Edit Section", use_container_width=True):
+                    with st.form(f"edit_cset_form_{cset.id}"):
+                        new_name = st.text_input("Name", value=cset.name)
+                        new_desc = st.text_area("Description", value=cset.description or "")
+                        if st.form_submit_button("Save"):
+                            cset.name = new_name
+                            cset.description = new_desc
                             db.commit()
                             st.rerun()
+            
+            companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
+            if companies_in_set:
+                st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+                clink_map = {cl.organization_id: cl for cl in cset.organization_links if cl.included and cl.organization}
+                
+                if cset.set_type == "M&A Precedents":
+                    h1, h2, h3, h4, h5, h6 = st.columns([2, 2, 1.5, 1.5, 3, 0.5])
+                    h1.markdown("**Target**")
+                    h2.markdown("**Acquirer**")
+                    h3.markdown("**Transaction Value**")
+                    h4.markdown("**Date**")
+                    h5.markdown("**Notes**")
+                    
+                    st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+                    
+                    for comp in companies_in_set:
+                        from market_comps.db.models import Transaction
+                        import datetime
+                        tx = db.query(Transaction).filter_by(target_company_id=comp.id, transaction_type="ACQUISITION").order_by(Transaction.id.desc()).first()
+                        
+                        acq_name = tx.acquirer_company.name if tx and tx.acquirer_company else ""
+                        acq_link = f"/company?id={tx.acquirer_company.id}" if tx and tx.acquirer_company else None
+                        
+                        val_str = "Undisclosed"
+                        if tx and tx.transaction_value_numeric:
+                            val = tx.transaction_value_numeric
+                            if val >= 1e9: val_str = f"${val/1e9:.2f}B"
+                            elif val >= 1e6: val_str = f"${val/1e6:.2f}M"
+                            else: val_str = f"${val:,.0f}"
+                            
+                        date_str = tx.announced_date.strftime("%Y-%m-%d") if tx and tx.announced_date else ""
+                        
+                        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1.5, 1.5, 3, 0.5])
+                        c1.markdown(f"[{comp.name}](/company?id={comp.id})")
+                        if acq_link: c2.markdown(f"[{acq_name}]({acq_link})")
+                        else: c2.write(acq_name)
+                        c3.write(val_str)
+                        c4.write(date_str)
+                        c5.write(clink_map[comp.id].notes or "")
+                        
+                        with c6:
+                            with st.popover("✏️"):
+                                with st.form(f"edit_ma_{cset.id}_{comp.id}"):
+                                    new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
+                                    cur_date = tx.announced_date if tx and tx.announced_date else datetime.date.today()
+                                    new_date = st.date_input("Transaction Date", value=cur_date)
+                                    new_val = st.number_input("Transaction Value ($)", value=float(tx.transaction_value_numeric) if tx and tx.transaction_value_numeric else 0.0, step=1000000.0)
+                                    if st.form_submit_button("Save"):
+                                        clink_map[comp.id].notes = new_notes
+                                        if tx:
+                                            tx.announced_date = new_date
+                                            if new_val > 0: tx.transaction_value_numeric = new_val
+                                        else:
+                                            new_tx = Transaction(target_company_id=comp.id, transaction_type="ACQUISITION", announced_date=new_date, transaction_value_numeric=new_val if new_val > 0 else None)
+                                            db.add(new_tx)
+                                        db.commit()
+                                        st.rerun()
+
+                elif cset.set_type == "Financing Comps":
+                    h1, h2, h3, h4, h5, h6 = st.columns([2, 1.5, 1.5, 2, 3, 0.5])
+                    h1.markdown("**Organization**")
+                    h2.markdown("**Round Name**")
+                    h3.markdown("**Amount Raised**")
+                    h4.markdown("**Lead Investors**")
+                    h5.markdown("**Notes**")
+                    
+                    st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+                    
+                    for comp in companies_in_set:
+                        from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
+                        fin = db.query(FinancingRound).filter_by(company_id=comp.id).order_by(FinancingRound.id.desc()).first()
+                        round_name = fin.round_name if fin else ""
+                        
+                        val_str = "Undisclosed"
+                        if fin:
+                            fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="amount_raised").first()
+                            if fact and fact.value_numeric:
+                                val = fact.value_numeric
+                                if val >= 1e9: val_str = f"${val/1e9:.2f}B"
+                                elif val >= 1e6: val_str = f"${val/1e6:.2f}M"
+                                else: val_str = f"${val:,.0f}"
+                                
+                        lead_invs = ""
+                        if fin:
+                            invs = db.query(RoundInvestor).filter_by(financing_round_id=fin.id, role="lead").all()
+                            if invs: lead_invs = ", ".join([inv.investor.name for inv in invs if inv.investor])
+                            
+                        c1, c2, c3, c4, c5, c6 = st.columns([2, 1.5, 1.5, 2, 3, 0.5])
+                        c1.markdown(f"[{comp.name}](/company?id={comp.id})")
+                        c2.write(round_name)
+                        c3.write(val_str)
+                        c4.write(lead_invs)
+                        c5.write(clink_map[comp.id].notes or "")
+                        
+                        with c6:
+                            with pop_edit := st.popover("✏️"):
+                                with st.form(f"edit_notes_{cset.id}_{comp.id}"):
+                                    new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
+                                    if st.form_submit_button("Save"):
+                                        clink_map[comp.id].notes = new_notes
+                                        db.commit()
+                                        st.rerun()
+
+                else:
+                    # Public Comps
+                    # Columns: Organization, Ticker, Last Updated, [Metrics], Notes, Edit
+                    obs_list_all = db.query(MetricObservation).filter(
+                        MetricObservation.company_id.in_([c.id for c in companies_in_set]),
+                        MetricObservation.reporting_basis == "trailing_twelve_months"
+                    ).all()
+                    
+                    metric_types = {}
+                    for obs in obs_list_all:
+                        mt = db.query(MetricType).get(obs.metric_type_id)
+                        if mt and mt.display_name not in metric_types:
+                            metric_types[mt.display_name] = mt
+                            
+                    metric_names = list(metric_types.keys())
+                    cols = [2, 1] + [1.5] * len(metric_names) + [1, 2, 0.5]
+                    header_cols = st.columns(cols)
+                    header_cols[0].markdown("**Organization**")
+                    header_cols[1].markdown("**Ticker**")
+                    for i, m_name in enumerate(metric_names): header_cols[2+i].markdown(f"**{m_name}**")
+                    header_cols[2+len(metric_names)].markdown("**Last Updated**")
+                    header_cols[3+len(metric_names)].markdown("**Notes**")
+                    
+                    st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+                    
+                    for comp in companies_in_set:
+                        c_cols = st.columns(cols)
+                        c_cols[0].markdown(f"[{comp.name}](/company?id={comp.id})")
+                        c_cols[1].write(comp.ticker or "")
+                        
+                        obs_list = db.query(MetricObservation).filter_by(
+                            company_id=comp.id, reporting_basis="trailing_twelve_months"
+                        ).all()
+                        
+                        m_values = {m: "" for m in metric_names}
+                        last_updated = None
+                        
+                        for obs in obs_list:
+                            mt = db.query(MetricType).get(obs.metric_type_id)
+                            if mt:
+                                if mt.value_type == "currency":
+                                    val = obs.value_numeric
+                                    if val:
+                                        if val >= 1e9: m_values[mt.display_name] = f"${val/1e9:.2f}B"
+                                        elif val >= 1e6: m_values[mt.display_name] = f"${val/1e6:.2f}M"
+                                        else: m_values[mt.display_name] = f"${val:,.0f}"
+                                elif mt.value_type == "multiple":
+                                    m_values[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
+                                
+                                if hasattr(obs, 'recorded_at') and obs.recorded_at:
+                                    if not last_updated or obs.recorded_at > last_updated: last_updated = obs.recorded_at
+                                        
+                        for i, m_name in enumerate(metric_names): c_cols[2+i].write(m_values[m_name])
+                        c_cols[2+len(metric_names)].write(last_updated.strftime("%Y-%m-%d") if last_updated else "")
+                        c_cols[3+len(metric_names)].write(clink_map[comp.id].notes or "")
+                        
+                        with c_cols[4+len(metric_names)]:
+                            with st.popover("✏️"):
+                                with st.form(f"edit_notes_{cset.id}_{comp.id}"):
+                                    new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
+                                    if st.form_submit_button("Save"):
+                                        clink_map[comp.id].notes = new_notes
+                                        db.commit()
+                                        st.rerun()
+
+            else:
+                st.info("No organizations linked to this Comparison Set.")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_c1, col_c2 = st.columns([1, 1])
+            with col_c1:
+                with st.popover("➕ Add organization"):
+                    all_orgs = db.query(Organization).filter(Organization.organization_type != "Investor").order_by(Organization.name).all()
+                    org_opts = {o.name: o.id for o in all_orgs}
+                    with st.form(f"add_comp_cset_{cset.id}"):
+                        comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
+                        if st.form_submit_button("Add to Set"):
+                            if comp_sel:
+                                clink = ComparisonSetOrganizationLink(comparison_set_id=cset.id, organization_id=org_opts[comp_sel])
+                                db.add(clink)
+                                db.commit()
+                                st.success(f"{comp_sel} added to set!")
+                                st.rerun()
+            with col_c2:
+                if st.button("Unlink Set from Market", key=f"unlink_cset_{cset.id}"):
+                    link_to_delete = db.query(MarketComparisonSetLink).filter_by(market_id=market.id, comparison_set_id=cset.id).first()
+                    if link_to_delete:
+                        db.delete(link_to_delete)
+                        db.commit()
+                        st.rerun()
 
     st.divider()
     st.markdown("###### Set Management")
