@@ -492,7 +492,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                     with st.status(f"Recording M&A Transaction: {acq_name} acquiring {tgt_name}...", expanded=True) as status:
                         try:
                             with get_db_context() as db:
-                                from market_comps.db.models import Transaction
+                                from market_comps.db.models import Transaction, Market, ComparisonSet, MarketComparisonSetLink, ComparisonSetOrganizationLink
                                 
                                 details = []
                                 def log_detail(msg):
@@ -574,7 +574,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                     with st.status(f"Recording Financing: {company_name} {round_name}...", expanded=True) as status:
                         try:
                             with get_db_context() as db:
-                                from market_comps.db.models import FinancingRound, RoundInvestor, FinancingRoundFact
+                                from market_comps.db.models import FinancingRound, RoundInvestor, FinancingRoundFact, Market, ComparisonSet, MarketComparisonSetLink, ComparisonSetOrganizationLink
                                 
                                 details = []
                                 def log_detail(msg):
