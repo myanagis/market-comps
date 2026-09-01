@@ -284,7 +284,6 @@ with get_db_context() as db:
         st.markdown(f"##### {stype}")
         
         for cset in csets:
-        for cset in csets:
             st.markdown(f"###### 📚 {cset.name}")
             col_c1, col_c2 = st.columns([0.8, 0.2])
             with col_c1:
@@ -396,7 +395,7 @@ with get_db_context() as db:
                         c5.write(clink_map[comp.id].notes or "")
                         
                         with c6:
-                            with pop_edit := st.popover("✏️"):
+                            with st.popover("✏️"):
                                 with st.form(f"edit_notes_{cset.id}_{comp.id}"):
                                     new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
                                     if st.form_submit_button("Save"):
