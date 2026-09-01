@@ -149,9 +149,6 @@ pg = st.navigation({
         st.Page("pages/10_Data_Sort_cerer.py", title="Data Sort-cerer", icon="📋"),
     ],
     "CRM": [
-        st.Page("pages/17_CRM_Record_Lookup.py", title="Record Lookup", icon="🔍"),
-        st.Page("pages/15_CRM_Document_Upload.py", title="Document Upload", icon="📄"),
-        st.Page("pages/18_CRM_Agentic_Uploads.py", title="Agentic Uploads", icon="📤"),
         st.Page("pages/14_CRM_Directory.py", title="Directory", icon="📁", url_path="directory"),
         st.Page("pages/13_CRM_Company_Details.py", title="— Company Details", icon="🏢", url_path="company"),
         st.Page("pages/15_CRM_Investment_Firm_Details.py", title="— Firm Details", icon="🏦", url_path="investment_firm"),
@@ -161,6 +158,8 @@ pg = st.navigation({
         st.Page("pages/22_Market_Map_Details.py", title="— Market Map Details", icon="🗺️", url_path="market"),
     ],
     "Data Pipelines": [
+        st.Page("pages/15_CRM_Document_Upload.py", title="Document Upload", icon="📄"),
+        st.Page("pages/18_CRM_Agentic_Uploads.py", title="Agentic Uploads", icon="📤"),
         st.Page("pages/18_Data_Provenance_Inspector.py", title="Pipeline/Upload Troubleshooting", icon="🔬"),
         st.Page("pages/13_Data_Ingestion.py", title="Data Ingestion", icon="📡"),
         st.Page("pages/2_Data_Extraction.py", title="Data Extraction", icon="📄"),
