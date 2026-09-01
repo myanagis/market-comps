@@ -118,35 +118,41 @@ ACTION_SCHEMA = {
             },
             "required": ["market_name", "segment_type", "companies"]
         },
-        "transaction_details": {
-            "type": ["object", "null"],
-            "description": "Used when action is 'add_transaction'.",
-            "properties": {
-                "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
-                "segment_name": {"type": ["string", "null"], "description": "Market segment name for M&A precedent, if specified."},
-                "acquirer": {"type": "string"},
-                "target": {"type": "string"},
-                "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
-                "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
-                "notes": {"type": ["string", "null"]},
-                "year": {"type": ["integer", "null"], "description": "Year of the transaction, e.g. 2024."}
-            },
-            "required": ["acquirer", "target"]
+        "transactions": {
+            "type": ["array", "null"],
+            "description": "Used when action is 'add_transaction'. A list of transactions.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
+                    "segment_name": {"type": ["string", "null"], "description": "Market segment name for M&A precedent, if specified."},
+                    "acquirer": {"type": "string"},
+                    "target": {"type": "string"},
+                    "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
+                    "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
+                    "notes": {"type": ["string", "null"]},
+                    "year": {"type": ["integer", "null"], "description": "Year of the transaction, e.g. 2024."}
+                },
+                "required": ["acquirer", "target"]
+            }
         },
-        "financing_details": {
-            "type": ["object", "null"],
-            "description": "Used when action is 'add_financing'.",
-            "properties": {
-                "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
-                "segment_name": {"type": ["string", "null"], "description": "Market segment name for financing precedent, if specified."},
-                "company_name": {"type": "string", "description": "Company that raised the money."},
-                "round_name": {"type": "string", "description": "e.g. Seed, Series A"},
-                "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
-                "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
-                "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
-                "year": {"type": ["integer", "null"], "description": "Year of the round, e.g. 2026."}
-            },
-            "required": ["company_name", "round_name"]
+        "financings": {
+            "type": ["array", "null"],
+            "description": "Used when action is 'add_financing'. A list of financing rounds.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
+                    "segment_name": {"type": ["string", "null"], "description": "Market segment name for financing precedent, if specified."},
+                    "company_name": {"type": "string", "description": "Company that raised the money."},
+                    "round_name": {"type": "string", "description": "e.g. Seed, Series A"},
+                    "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
+                    "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
+                    "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
+                    "year": {"type": ["integer", "null"], "description": "Year of the round, e.g. 2026."}
+                },
+                "required": ["company_name", "round_name"]
+            }
         }
     },
     "required": ["action", "message"]
