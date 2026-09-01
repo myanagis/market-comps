@@ -19,12 +19,13 @@ Valid action types:
 1. `extract`: Use this when the user provides new text that contains companies. Extract the company names, domains (if any), and a brief description.
 2. `process_link`: Use this when the user provides a web URL (e.g. news article, press release) AND specifies where it should be filed (e.g., Company, Investor, Market Map).
 3. `update_market_map`: Use this when the user asks to add companies to a specific market map segment or public comps group.
-4. `add_transaction`: Use this when the user asks to record an M&A transaction or acquisition.
-5. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
+4. `add_transaction`: Use this when the user asks to record an M&A transaction or acquisition. It can optionally be added to a market map as an M&A Precedent.
+5. `add_financing`: Use this when the user asks to record a funding round. It can optionally be added to a market map as a Financing Comp.
+6. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
         - When adding a company, look up its website domain and normalize its name if possible.
         - When updating a market map, you must classify the segment_type. For competitors or operating companies in a market, use 'competitors'. For public comps, use 'public_comps'. For investors, use 'investors'.
         - Guardrail: Never classify private companies as public comps. If a company is explicitly described as private, it should not be placed into a public comps segment.
-6. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
+7. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies and a domain is missing, you can attempt to guess it if it is a well-known public company, otherwise just return null for the domain. Do NOT output a clarify action just because the domain is missing. The backend will attempt to find the domain automatically via search.
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
@@ -41,8 +42,8 @@ ACTION_SCHEMA = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["extract", "clarify", "proceed", "process_link", "update_market_map", "add_transaction"],
-            "description": "The type of action to perform based on user input."
+            "enum": ["extract", "clarify", "proceed", "process_link", "update_market_map", "add_transaction", "add_financing"],
+            "description": "The determined action to perform based on user input."
         },
         "message": {
             "type": "string",
@@ -121,6 +122,8 @@ ACTION_SCHEMA = {
             "type": ["object", "null"],
             "description": "Used when action is 'add_transaction'.",
             "properties": {
+                "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
+                "segment_name": {"type": ["string", "null"], "description": "Market segment name for M&A precedent, if specified."},
                 "acquirer": {"type": "string"},
                 "target": {"type": "string"},
                 "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
@@ -128,6 +131,21 @@ ACTION_SCHEMA = {
                 "notes": {"type": ["string", "null"]}
             },
             "required": ["acquirer", "target"]
+        },
+        "financing_details": {
+            "type": ["object", "null"],
+            "description": "Used when action is 'add_financing'.",
+            "properties": {
+                "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
+                "segment_name": {"type": ["string", "null"], "description": "Market segment name for financing precedent, if specified."},
+                "company_name": {"type": "string", "description": "Company that raised the money."},
+                "round_name": {"type": "string", "description": "e.g. Seed, Series A"},
+                "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
+                "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
+                "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
+                "year": {"type": ["integer", "null"], "description": "Year of the round, e.g. 2026."}
+            },
+            "required": ["company_name", "round_name"]
         }
     },
     "required": ["action", "message"]

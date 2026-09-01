@@ -255,8 +255,20 @@ with get_db_context() as db:
         
         for cset in csets:
             with st.expander(f"📚 {cset.name}", expanded=True):
-                if cset.description:
-                    st.caption(cset.description)
+                col_c1, col_c2 = st.columns([0.8, 0.2])
+                with col_c1:
+                    if cset.description:
+                        st.caption(cset.description)
+                with col_c2:
+                    with st.popover("✏️ Edit Section", use_container_width=True):
+                        with st.form(f"edit_cset_form_{cset.id}"):
+                            new_name = st.text_input("Name", value=cset.name)
+                            new_desc = st.text_area("Description", value=cset.description or "")
+                            if st.form_submit_button("Save"):
+                                cset.name = new_name
+                                cset.description = new_desc
+                                db.commit()
+                                st.rerun()
                 
                 companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
                 if companies_in_set:
@@ -312,59 +324,139 @@ with get_db_context() as db:
                                 st.rerun()
                     
                     comps_data = []
+                    clink_map = {cl.organization_id: cl for cl in cset.organization_links if cl.included and cl.organization}
+                    
                     for comp in companies_in_set:
-                        ticker_str = f" ({comp.exchange}: {comp.ticker})" if comp.ticker and comp.exchange else (f" ({comp.ticker})" if comp.ticker else "")
-                        type_str = f"Public{ticker_str}" if comp.ownership_type and comp.ownership_type.upper() == "PUBLIC" else "Private"
-                        
                         row = {
+                            "_comp_id": comp.id,
                             "Organization": comp.name,
-                            "Type": comp.organization_type or "COMPANY",
-                            "Ownership": type_str,
-                            "Domain": comp.primary_domain or "",
+                            "Notes": clink_map[comp.id].notes or "",
                             "Link": f"/company?id={comp.id}"
                         }
                         
-                        # Get latest metrics
-                        obs_list = db.query(MetricObservation).filter_by(
-                            company_id=comp.id, reporting_basis="trailing_twelve_months"
-                        ).all()
-                        
-                        last_updated = None
-                        for obs in obs_list:
-                            mt = db.query(MetricType).get(obs.metric_type_id)
-                            if mt:
-                                if mt.value_type == "currency":
-                                    # Format as Millions/Billions
-                                    val = obs.value_numeric
-                                    if val:
-                                        if val >= 1e9:
-                                            row[mt.display_name] = f"${val/1e9:.2f}B"
-                                        elif val >= 1e6:
-                                            row[mt.display_name] = f"${val/1e6:.2f}M"
-                                        else:
-                                            row[mt.display_name] = f"${val:,.0f}"
-                                elif mt.value_type == "multiple":
-                                    row[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
-                            
-                            # Track newest update time
-                            if hasattr(obs, 'recorded_at') and obs.recorded_at:
-                                if not last_updated or obs.recorded_at > last_updated:
-                                    last_updated = obs.recorded_at
+                        if cset.set_type == "M&A Precedents":
+                            from market_comps.db.models import Transaction
+                            tx = db.query(Transaction).filter_by(target_company_id=comp.id, transaction_type="ACQUISITION").order_by(Transaction.id.desc()).first()
+                            if tx:
+                                row["Acquirer"] = tx.acquirer_company.name if tx.acquirer_company else "Unknown"
+                                if tx.transaction_value_numeric:
+                                    row["Transaction Value"] = f"${tx.transaction_value_numeric:,.0f}"
+                                else:
+                                    row["Transaction Value"] = "Undisclosed"
+                                row["Date"] = tx.announced_date.strftime("%Y-%m-%d") if tx.announced_date else ""
+                            else:
+                                row["Acquirer"] = ""
+                                row["Transaction Value"] = ""
+                                row["Date"] = ""
+                                
+                        elif cset.set_type == "Financing Comps":
+                            from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
+                            fin = db.query(FinancingRound).filter_by(company_id=comp.id).order_by(FinancingRound.id.desc()).first()
+                            if fin:
+                                row["Round Name"] = fin.round_name or ""
+                                fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="amount_raised").first()
+                                if fact and fact.value_numeric:
+                                    val = fact.value_numeric
+                                    if val >= 1e9:
+                                        row["Amount Raised"] = f"${val/1e9:.2f}B"
+                                    elif val >= 1e6:
+                                        row["Amount Raised"] = f"${val/1e6:.2f}M"
+                                    else:
+                                        row["Amount Raised"] = f"${val:,.0f}"
+                                else:
+                                    row["Amount Raised"] = "Undisclosed"
                                     
-                        if last_updated:
-                            row["Last Updated"] = last_updated.strftime("%Y-%m-%d")
+                                invs = db.query(RoundInvestor).filter_by(financing_round_id=fin.id, role="lead").all()
+                                if invs:
+                                    row["Lead Investors"] = ", ".join([inv.investor.name for inv in invs if inv.investor])
+                                else:
+                                    row["Lead Investors"] = ""
+                            else:
+                                row["Round Name"] = ""
+                                row["Amount Raised"] = ""
+                                row["Lead Investors"] = ""
+                                
+                        else:
+                            # Standard public comps display
+                            row["Ticker"] = comp.ticker or ""
+                            row["Domain"] = comp.primary_domain or ""
+                            
+                            # Get latest metrics
+                            obs_list = db.query(MetricObservation).filter_by(
+                                company_id=comp.id, reporting_basis="trailing_twelve_months"
+                            ).all()
+                            
+                            last_updated = None
+                            for obs in obs_list:
+                                mt = db.query(MetricType).get(obs.metric_type_id)
+                                if mt:
+                                    if mt.value_type == "currency":
+                                        # Format as Millions/Billions
+                                        val = obs.value_numeric
+                                        if val:
+                                            if val >= 1e9:
+                                                row[mt.display_name] = f"${val/1e9:.2f}B"
+                                            elif val >= 1e6:
+                                                row[mt.display_name] = f"${val/1e6:.2f}M"
+                                            else:
+                                                row[mt.display_name] = f"${val:,.0f}"
+                                    elif mt.value_type == "multiple":
+                                        row[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
+                                
+                                # Track newest update time
+                                if hasattr(obs, 'recorded_at') and obs.recorded_at:
+                                    if not last_updated or obs.recorded_at > last_updated:
+                                        last_updated = obs.recorded_at
+                                        
+                            if last_updated:
+                                row["Last Updated"] = last_updated.strftime("%Y-%m-%d")
                             
                         comps_data.append(row)
                         
                     df_cset = pd.DataFrame(comps_data)
-                    st.dataframe(
+                    
+                    col_config = {
+                        "_comp_id": None,
+                        "Organization": st.column_config.TextColumn(disabled=True),
+                        "Notes": st.column_config.TextColumn(disabled=False, width="large"),
+                        "Link": st.column_config.LinkColumn("View Profile", disabled=True)
+                    }
+                    
+                    if cset.set_type == "M&A Precedents":
+                        col_config.update({
+                            "Acquirer": st.column_config.TextColumn(disabled=True),
+                            "Transaction Value": st.column_config.TextColumn(disabled=True),
+                            "Date": st.column_config.TextColumn(disabled=True)
+                        })
+                    elif cset.set_type == "Financing Comps":
+                        col_config.update({
+                            "Round Name": st.column_config.TextColumn(disabled=True),
+                            "Amount Raised": st.column_config.TextColumn(disabled=True),
+                            "Lead Investors": st.column_config.TextColumn(disabled=True)
+                        })
+                    else:
+                        col_config.update({
+                            "Ticker": st.column_config.TextColumn(disabled=True),
+                            "Domain": st.column_config.TextColumn(disabled=True)
+                        })
+                        
+                    edited_df_cset = st.data_editor(
                         df_cset, 
                         hide_index=True, 
                         use_container_width=True,
-                        column_config={
-                            "Link": st.column_config.LinkColumn("View Profile")
-                        }
+                        column_config=col_config,
+                        key=f"data_editor_cset_{cset.id}"
                     )
+                    
+                    if st.button("💾 Save Notes", key=f"save_notes_cset_{cset.id}"):
+                        for _, row in edited_df_cset.iterrows():
+                            c_id = int(row["_comp_id"])
+                            clink = clink_map.get(c_id)
+                            if clink:
+                                clink.notes = row["Notes"]
+                        db.commit()
+                        st.success("Notes saved!")
+                        st.rerun()
                         
                 else:
                     st.info("No organizations linked to this Comparison Set.")

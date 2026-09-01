@@ -311,7 +311,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         
                                     log_detail(f"Found Market: {market.name}")
                                     
-                                    segment_type = market_map_update.get("segment_type", "competitors")
+                                    segment_type = map_update.get("segment_type", "competitors")
                                     
                                     if segment_type == "competitors":
                                         # Handle Competitors via MarketSegment
@@ -520,6 +520,33 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     notes=notes
                                 )
                                 db.add(tx)
+                                db.flush()
+                                
+                                if tx_details.get("market_name"):
+                                    market_name = tx_details.get("market_name")
+                                    segment_name = tx_details.get("segment_name") or "M&A Precedents"
+                                    market = db.query(Market).filter(Market.name.ilike(f"%{market_name}%")).first()
+                                    if market:
+                                        cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
+                                            MarketComparisonSetLink.market_id == market.id,
+                                            ComparisonSet.name.ilike(f"%{segment_name}%")
+                                        ).first()
+                                        if not cset:
+                                            log_detail(f"Creating M&A Precedents set '{segment_name}' in Market '{market.name}'...")
+                                            cset = ComparisonSet(name=segment_name, set_type="M&A Precedents")
+                                            db.add(cset)
+                                            db.flush()
+                                            db.add(MarketComparisonSetLink(market_id=market.id, comparison_set_id=cset.id))
+                                            
+                                        existing_link = db.query(ComparisonSetOrganizationLink).filter_by(
+                                            comparison_set_id=cset.id, organization_id=target.id
+                                        ).first()
+                                        if not existing_link:
+                                            db.add(ComparisonSetOrganizationLink(
+                                                comparison_set_id=cset.id, organization_id=target.id, notes=f"Acquired by {acquirer.name}"
+                                            ))
+                                        log_detail(f"Added {target.name} to {segment_name} in {market.name}.")
+                                
                                 db.commit()
                                 
                                 msg = f"✅ Recorded M&A Transaction: {tx.transaction_name}"
@@ -533,7 +560,100 @@ if prompt or st.session_state.get("manual_proceed", False):
                             st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Error: {str(e)}"})
                     st.rerun()
                     
-            elif action_type == "process_link":
+            elif action_type == "add_financing":
+                fin_details = action_data.get("financing_details", {})
+                company_name = fin_details.get("company_name")
+                round_name = fin_details.get("round_name")
+                amount = fin_details.get("amount")
+                market_name = fin_details.get("market_name")
+                segment_name = fin_details.get("segment_name") or "Financing Comps"
+                
+                if not company_name or not round_name:
+                    st.error("Missing company or round name for financing.")
+                else:
+                    with st.status(f"Recording Financing: {company_name} {round_name}...", expanded=True) as status:
+                        try:
+                            with get_db_context() as db:
+                                from market_comps.db.models import FinancingRound, RoundInvestor, FinancingRoundFact
+                                
+                                details = []
+                                def log_detail(msg):
+                                    st.write(msg)
+                                    details.append(msg)
+                                
+                                def get_or_create(db, name):
+                                    org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
+                                    if not org:
+                                        log_detail(f"Creating missing company '{name}'...")
+                                        org = create_company(db=db, name=name, created_by="AgenticUploads")
+                                        db.flush()
+                                    return org
+                                    
+                                comp = get_or_create(db, company_name)
+                                
+                                fin = FinancingRound(
+                                    company_id=comp.id,
+                                    round_name=round_name,
+                                    status="announced"
+                                )
+                                db.add(fin)
+                                db.flush()
+                                
+                                if amount:
+                                    fact = FinancingRoundFact(
+                                        financing_round_id=fin.id,
+                                        fact_type="amount_raised",
+                                        value_numeric=amount,
+                                        certainty="announced"
+                                    )
+                                    db.add(fact)
+                                
+                                lead_investors = fin_details.get("lead_investors", [])
+                                for inv_name in lead_investors:
+                                    inv_org = get_or_create(db, inv_name)
+                                    if not inv_org.organization_type:
+                                        inv_org.organization_type = "INVESTOR"
+                                    inv_link = RoundInvestor(
+                                        financing_round_id=fin.id,
+                                        investor_id=inv_org.id,
+                                        role="lead"
+                                    )
+                                    db.add(inv_link)
+                                
+                                if market_name:
+                                    market = db.query(Market).filter(Market.name.ilike(f"%{market_name}%")).first()
+                                    if market:
+                                        cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
+                                            MarketComparisonSetLink.market_id == market.id,
+                                            ComparisonSet.name.ilike(f"%{segment_name}%")
+                                        ).first()
+                                        if not cset:
+                                            log_detail(f"Creating Financing Comps set '{segment_name}' in Market '{market.name}'...")
+                                            cset = ComparisonSet(name=segment_name, set_type="Financing Comps")
+                                            db.add(cset)
+                                            db.flush()
+                                            db.add(MarketComparisonSetLink(market_id=market.id, comparison_set_id=cset.id))
+                                            
+                                        existing_link = db.query(ComparisonSetOrganizationLink).filter_by(
+                                            comparison_set_id=cset.id, organization_id=comp.id
+                                        ).first()
+                                        if not existing_link:
+                                            db.add(ComparisonSetOrganizationLink(
+                                                comparison_set_id=cset.id, organization_id=comp.id, notes=f"Raised {round_name}"
+                                            ))
+                                        log_detail(f"Added {comp.name} to {segment_name} in {market.name}.")
+                                        
+                                db.commit()
+                                msg = f"✅ Recorded Financing: {comp.name} {round_name}"
+                                if amount:
+                                    msg += f" (${amount:,.0f})"
+                                new_msg = {"role": "assistant", "content": msg, "details": details}
+                                st.session_state.uploader_messages.append(new_msg)
+                                status.update(label=msg, state="complete")
+                        except Exception as e:
+                            status.update(label=f"Failed to record financing: {str(e)}", state="error", expanded=True)
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Error: {str(e)}"})
+                    st.rerun()
                 url = action_data.get("url")
                 target_name = action_data.get("target_entity_name")
                 target_type = action_data.get("target_entity_type")
