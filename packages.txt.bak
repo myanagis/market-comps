@@ -8,3 +8,4 @@ libxcomposite1
 libxrandr2
 libxdamage1
 libxcb-dri3-0
+ca-certificates
