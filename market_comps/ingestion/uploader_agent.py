@@ -23,9 +23,11 @@ Valid action types:
 5. `add_financing`: Use this when the user asks to record a funding round. It can optionally be added to a market map as a Financing Comp.
 6. `clarify`: Use this to ask the user a question. For example, if a company is missing a domain, ask for it. OR if the user provides a web link but doesn't specify what entity to file it to, ask them (e.g., "Where should I file this? A Company, Investor, or Market Map?").
         - When adding a company, look up its website domain and normalize its name if possible.
-        - When updating a market map, you must classify the segment_type. For competitors or operating companies in a market, use 'competitors'. For public comps, use 'public_comps'. For investors, use 'investors'.
-        - Guardrail: Never classify private companies as public comps. If a company is explicitly described as private, it should not be placed into a public comps segment.
-7. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
+26.         - When updating a market map, you must classify the segment_type. For competitors or operating companies in a market, use 'competitors'. For public comps, use 'public_comps'. For investors, use 'investors'.
+27.         - Guardrail: Never classify private companies as public comps. If a company is explicitly described as private, it should not be placed into a public comps segment.
+28.         - For `update_market_map`, make sure to correctly extract the `market_name` and `segment_name`. If the user says "add X to the Y segment", Y is the `segment_name` (e.g., "Pharmacy Dispensing"). Do not extract generic terms like "competitor" as the segment name unless explicitly named so.
+29.         - Make sure to map company descriptions to the `description` field of the company in the `companies` array, rather than dumping it into the generic `notes` field of the `market_map_update` unless the note is specifically about why they are in this market map.
+30. 7. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies and a domain is missing, you can attempt to guess it if it is a well-known public company, otherwise just return null for the domain. Do NOT output a clarify action just because the domain is missing. The backend will attempt to find the domain automatically via search.
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
@@ -106,6 +108,7 @@ ACTION_SCHEMA = {
                         "properties": {
                             "name": {"type": "string"},
                             "domain": {"type": ["string", "null"]},
+                            "description": {"type": ["string", "null"]},
                             "ticker_symbol": {"type": ["string", "null"]},
                             "stock_exchange": {"type": ["string", "null"]},
                             "ownership_type": {"type": ["string", "null"]}

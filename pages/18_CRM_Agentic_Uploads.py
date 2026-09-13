@@ -334,12 +334,14 @@ if prompt or st.session_state.get("manual_proceed", False):
                                             if isinstance(comp_obj, str):
                                                 comp_name = comp_obj
                                                 comp_domain = None
+                                                comp_description = None
                                                 comp_ticker = None
                                                 comp_exchange = None
                                                 comp_ownership = None
                                             else:
                                                 comp_name = comp_obj.get("name")
                                                 comp_domain = comp_obj.get("domain")
+                                                comp_description = comp_obj.get("description")
                                                 comp_ticker = comp_obj.get("ticker_symbol")
                                                 comp_exchange = comp_obj.get("stock_exchange")
                                                 comp_ownership = comp_obj.get("ownership_type")
@@ -357,7 +359,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                 org = create_company(
                                                     db=db, 
                                                     name=comp_name, 
-                                                    domain=comp_domain, 
+                                                    domain=comp_domain,
+                                                    description=comp_description,
                                                     ticker_symbol=comp_ticker,
                                                     stock_exchange=comp_exchange,
                                                     ownership_type=comp_ownership,
@@ -407,12 +410,14 @@ if prompt or st.session_state.get("manual_proceed", False):
                                             if isinstance(comp_obj, str):
                                                 comp_name = comp_obj
                                                 comp_domain = None
+                                                comp_description = None
                                                 comp_ticker = None
                                                 comp_exchange = None
                                                 comp_ownership = None
                                             else:
                                                 comp_name = comp_obj.get("name")
                                                 comp_domain = comp_obj.get("domain")
+                                                comp_description = comp_obj.get("description")
                                                 comp_ticker = comp_obj.get("ticker_symbol")
                                                 comp_exchange = comp_obj.get("stock_exchange")
                                                 comp_ownership = comp_obj.get("ownership_type")
@@ -430,7 +435,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                 org = create_company(
                                                     db=db, 
                                                     name=comp_name, 
-                                                    domain=comp_domain, 
+                                                    domain=comp_domain,
+                                                    description=comp_description,
                                                     ticker_symbol=comp_ticker,
                                                     stock_exchange=comp_exchange,
                                                     ownership_type=comp_ownership,
