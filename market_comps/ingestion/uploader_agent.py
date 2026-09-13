@@ -27,7 +27,7 @@ Valid action types:
 27.         - Guardrail: Never classify private companies as public comps. If a company is explicitly described as private, it should not be placed into a public comps segment.
 28.         - For `update_market_map`, make sure to correctly extract the `market_name` and `segment_name`. If the user says "add X to the Y segment", Y is the `segment_name` (e.g., "Pharmacy Dispensing"). Do not extract generic terms like "competitor" as the segment name unless explicitly named so.
 29.         - Make sure to map company descriptions to the `description` field of the company in the `companies` array, rather than dumping it into the generic `notes` field of the `market_map_update` unless the note is specifically about why they are in this market map.
-30. 7. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
+7. `proceed`: Use this when the user says "yes" or "proceed" to create the pending companies.
 
 If the user provides companies and a domain is missing, you can attempt to guess it if it is a well-known public company, otherwise just return null for the domain. Do NOT output a clarify action just because the domain is missing. The backend will attempt to find the domain automatically via search.
 If the user indicates a company is public, you should extract its ticker_symbol, stock_exchange, and set ownership_type to "PUBLIC".
@@ -37,129 +37,140 @@ When validation rules are provided, you MUST adhere to them. If a field listed i
 If `extract_parameters` is provided, you should attempt to extract those specific fields into the `parameters` dictionary.
 
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
+You can return MULTIPLE operations in a single response to satisfy complex user intents (e.g., extracting a company and adding it to a market map and adding a transaction).
 """
 
 ACTION_SCHEMA = {
     "type": "object",
     "properties": {
-        "action": {
-            "type": "string",
-            "enum": ["extract", "clarify", "proceed", "process_link", "update_market_map", "add_transaction", "add_financing"],
-            "description": "The determined action to perform based on user input."
-        },
         "message": {
             "type": "string",
             "description": "Conversational reply or question to the user. Explain what you are doing or what you need."
         },
-        "extracted_companies": {
+        "operations": {
             "type": "array",
-            "description": "List of companies extracted from the text (used when action is 'extract').",
+            "description": "The determined sequence of operations to perform based on user input.",
             "items": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "domain": {"type": ["string", "null"]},
-                    "description": {"type": ["string", "null"]},
-                    "ticker_symbol": {"type": ["string", "null"]},
-                    "stock_exchange": {"type": ["string", "null"]},
-                    "ownership_type": {"type": ["string", "null"]},
-                    "organization_type": {"type": ["string", "null"], "enum": ["COMPANY", "INVESTOR", None]},
-                    "parameters": {
-                        "type": "object",
-                        "description": "Any additional dynamic parameters requested to be extracted (e.g., founders, founded_year, check_size).",
-                        "additionalProperties": True
+                    "action": {
+                        "type": "string",
+                        "enum": ["extract", "clarify", "proceed", "process_link", "update_market_map", "add_transaction", "add_financing"],
+                        "description": "The specific action for this operation."
                     },
-                    "canonical_source_name": {
+                    "extracted_companies": {
+                        "type": "array",
+                        "description": "List of companies extracted from the text (used when action is 'extract').",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "domain": {"type": ["string", "null"]},
+                                "description": {"type": ["string", "null"]},
+                                "ticker_symbol": {"type": ["string", "null"]},
+                                "stock_exchange": {"type": ["string", "null"]},
+                                "ownership_type": {"type": ["string", "null"]},
+                                "organization_type": {"type": ["string", "null"], "enum": ["COMPANY", "INVESTOR", None]},
+                                "parameters": {
+                                    "type": "object",
+                                    "description": "Any additional dynamic parameters requested to be extracted (e.g., founders, founded_year, check_size).",
+                                    "additionalProperties": True
+                                },
+                                "canonical_source_name": {
+                                    "type": ["string", "null"],
+                                    "description": "If the user mentions a specific source they found this from (e.g. 'CT Business Registry', 'Luma Demo Day'), extract it here. Use the closest matching valid canonical source if you recognize it."
+                                }
+                            },
+                            "required": ["name"]
+                        }
+                    },
+                    "url": {
                         "type": ["string", "null"],
-                        "description": "If the user mentions a specific source they found this from (e.g. 'CT Business Registry', 'Luma Demo Day'), extract it here. Use the closest matching valid canonical source if you recognize it."
+                        "description": "The web URL to process (used when action is 'process_link' or 'process_event_link')."
+                    },
+                    "target_entity_type": {
+                        "type": ["string", "null"],
+                        "enum": ["COMPANY", "INVESTOR", "MARKET_MAP", None],
+                        "description": "The type of entity to file the web link data to."
+                    },
+                    "target_entity_name": {
+                        "type": ["string", "null"],
+                        "description": "The specific name of the entity to file the web link data to."
+                    },
+                    "market_map_update": {
+                        "type": ["object", "null"],
+                        "description": "Used when action is 'update_market_map'.",
+                        "properties": {
+                            "market_name": {"type": "string", "description": "The name of the market map or comparison set."},
+                            "segment_name": {"type": "string", "description": "The name of the segment within the market map, if specified."},
+                            "segment_type": {
+                                "type": "string",
+                                "enum": ["competitors", "public_comps", "investors", "other"],
+                                "description": "The type of the segment (e.g. competitors, public_comps)."
+                            },
+                            "companies": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "domain": {"type": ["string", "null"]},
+                                        "description": {"type": ["string", "null"]},
+                                        "ticker_symbol": {"type": ["string", "null"]},
+                                        "stock_exchange": {"type": ["string", "null"]},
+                                        "ownership_type": {"type": ["string", "null"]}
+                                    },
+                                    "required": ["name"]
+                                },
+                                "description": "List of companies to add to the market map."
+                            },
+                            "notes": {"type": ["string", "null"], "description": "Any additional comments or differentiation notes provided by the user."}
+                        },
+                        "required": ["market_name", "segment_type", "companies"]
+                    },
+                    "transactions": {
+                        "type": ["array", "null"],
+                        "description": "Used when action is 'add_transaction'. A list of transactions.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
+                                "segment_name": {"type": ["string", "null"], "description": "Market segment name for M&A precedent, if specified."},
+                                "acquirer": {"type": "string"},
+                                "target": {"type": "string"},
+                                "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
+                                "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
+                                "notes": {"type": ["string", "null"]},
+                                "date": {"type": ["string", "null"], "description": "Date of the transaction (YYYY-MM-DD format), if provided."}
+                            },
+                            "required": ["acquirer", "target"]
+                        }
+                    },
+                    "financings": {
+                        "type": ["array", "null"],
+                        "description": "Used when action is 'add_financing'. A list of financing rounds.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
+                                "segment_name": {"type": ["string", "null"], "description": "Market segment name for financing precedent, if specified."},
+                                "company_name": {"type": "string", "description": "Company that raised the money."},
+                                "round_name": {"type": "string", "description": "e.g. Seed, Series A"},
+                                "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
+                                "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
+                                "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
+                                "participating_investors": {"type": "array", "items": {"type": "string"}, "description": "List of participating/other investor names."},
+                                "date": {"type": ["string", "null"], "description": "Date of the round (YYYY-MM-DD format), if provided."}
+                            },
+                            "required": ["company_name", "round_name"]
+                        }
                     }
                 },
-                "required": ["name"]
-            }
-        },
-        "url": {
-            "type": ["string", "null"],
-            "description": "The web URL to process (used when action is 'process_link' or 'process_event_link')."
-        },
-        "target_entity_type": {
-            "type": ["string", "null"],
-            "enum": ["COMPANY", "INVESTOR", "MARKET_MAP", None],
-            "description": "The type of entity to file the web link data to."
-        },
-        "target_entity_name": {
-            "type": ["string", "null"],
-            "description": "The specific name of the entity to file the web link data to."
-        },
-        "market_map_update": {
-            "type": ["object", "null"],
-            "description": "Used when action is 'update_market_map'.",
-            "properties": {
-                "market_name": {"type": "string", "description": "The name of the market map or comparison set."},
-                "segment_name": {"type": "string", "description": "The name of the segment within the market map, if specified."},
-                "segment_type": {
-                    "type": "string",
-                    "enum": ["competitors", "public_comps", "investors", "other"],
-                    "description": "The type of the segment (e.g. competitors, public_comps)."
-                },
-                "companies": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "domain": {"type": ["string", "null"]},
-                            "description": {"type": ["string", "null"]},
-                            "ticker_symbol": {"type": ["string", "null"]},
-                            "stock_exchange": {"type": ["string", "null"]},
-                            "ownership_type": {"type": ["string", "null"]}
-                        },
-                        "required": ["name"]
-                    },
-                    "description": "List of companies to add to the market map."
-                },
-                "notes": {"type": ["string", "null"], "description": "Any additional comments or differentiation notes provided by the user."}
-            },
-            "required": ["market_name", "segment_type", "companies"]
-        },
-        "transactions": {
-            "type": ["array", "null"],
-            "description": "Used when action is 'add_transaction'. A list of transactions.",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
-                    "segment_name": {"type": ["string", "null"], "description": "Market segment name for M&A precedent, if specified."},
-                    "acquirer": {"type": "string"},
-                    "target": {"type": "string"},
-                    "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
-                    "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
-                    "notes": {"type": ["string", "null"]},
-                    "date": {"type": ["string", "null"], "description": "Date of the transaction (YYYY-MM-DD format), if provided."}
-                },
-                "required": ["acquirer", "target"]
-            }
-        },
-        "financings": {
-            "type": ["array", "null"],
-            "description": "Used when action is 'add_financing'. A list of financing rounds.",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "market_name": {"type": ["string", "null"], "description": "Market map name, if specified."},
-                    "segment_name": {"type": ["string", "null"], "description": "Market segment name for financing precedent, if specified."},
-                    "company_name": {"type": "string", "description": "Company that raised the money."},
-                    "round_name": {"type": "string", "description": "e.g. Seed, Series A"},
-                    "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
-                    "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
-                    "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
-                    "participating_investors": {"type": "array", "items": {"type": "string"}, "description": "List of participating/other investor names."},
-                    "date": {"type": ["string", "null"], "description": "Date of the round (YYYY-MM-DD format), if provided."}
-                },
-                "required": ["company_name", "round_name"]
+                "required": ["action"]
             }
         }
     },
-    "required": ["action", "message"]
+    "required": ["message", "operations"]
 }
 
 class UploaderChatAgent:
@@ -220,36 +231,19 @@ Based on the rules, what is the appropriate JSON action?
                 temperature=0.1
             )
             
-            # Defensive unpacking
-            if "action" not in parsed_json:
-                for possible_action in ["extract", "clarify", "proceed", "process_link", "process_event_link"]:
-                    if possible_action in parsed_json:
-                        inner_data = parsed_json[possible_action]
-                        if isinstance(inner_data, dict):
-                            parsed_json = {
-                                "action": possible_action,
-                                "message": inner_data.get("message", "Processing..."),
-                                "extracted_companies": inner_data.get("extracted_companies", []),
-                                "url": inner_data.get("url"),
-                                "target_entity_type": inner_data.get("target_entity_type"),
-                                "target_entity_name": inner_data.get("target_entity_name")
-                            }
-                            # Ensure parameters is passed through if it exists in extracted_companies
-                            if possible_action == "extract":
-                                for comp in parsed_json["extracted_companies"]:
-                                    if "parameters" not in comp:
-                                        comp["parameters"] = {}
-                        break
-                        
-            # Ensure parameters exists in root parsing
-            if parsed_json.get("action") == "extract":
-                for comp in parsed_json.get("extracted_companies", []):
-                    if "parameters" not in comp:
-                        comp["parameters"] = {}
-                        
+            # Ensure operations array exists
+            operations = parsed_json.get("operations", [])
+            
+            # Ensure parameters exists in extract operations
+            for op in operations:
+                if op.get("action") == "extract":
+                    for comp in op.get("extracted_companies", []):
+                        if "parameters" not in comp:
+                            comp["parameters"] = {}
+                            
             message = parsed_json.get("message", "Processing request...")
             return parsed_json, message
             
         except Exception as e:
             logger.error(f"Error parsing uploader agent output: {e}")
-            return {"action": "clarify", "message": f"I had trouble parsing that. Can you rephrase? (Error: {e})"}, "I had trouble parsing that."
+            return {"operations": [{"action": "clarify"}], "message": f"I had trouble parsing that. Can you rephrase? (Error: {e})"}, "I had trouble parsing that."

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON, Float, Text, UniqueConstraint
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, ForeignKey, JSON, Float, Text, UniqueConstraint, Date
 from sqlalchemy.orm import declarative_base, relationship, validates
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -356,6 +356,7 @@ class FinancingRound(Base, TimestampMixin):
     company_id = Column(Integer, ForeignKey('organizations.id'), nullable=False)
     round_name = Column(String)
     status = Column(String, nullable=False, default='rumored') # rumored, raising, announced, closed, cancelled
+    announced_date = Column(Date, nullable=True)
 
     company = relationship("Organization", back_populates="financing_rounds")
     facts = relationship("FinancingRoundFact", back_populates="round", cascade="all, delete-orphan")
