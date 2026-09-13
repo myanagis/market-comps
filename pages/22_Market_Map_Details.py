@@ -330,7 +330,7 @@ with get_db_context() as db:
                             elif val >= 1e6: val_str = f"${val/1e6:.2f}M"
                             else: val_str = f"${val:,.0f}"
                             
-                        date_str = tx.announced_date.strftime("%Y-%m-%d") if tx and tx.announced_date else ""
+                        date_str = tx.announced_date.strftime("%Y-%m-%d") if tx and tx.announced_date else "-"
                         
                         c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1.5, 1.5, 3, 0.5])
                         c1.markdown(f"[{comp.name}](/company?id={comp.id})")
@@ -343,10 +343,10 @@ with get_db_context() as db:
                         with c6:
                             with st.popover("✏️"):
                                 with st.form(f"edit_ma_{cset.id}_{comp.id}"):
-                                    new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
+                                    new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "", key=f"notes_{cset.id}_{comp.id}")
                                     cur_date = tx.announced_date if tx and tx.announced_date else datetime.date.today()
-                                    new_date = st.date_input("Transaction Date", value=cur_date)
-                                    new_val = st.number_input("Transaction Value ($)", value=float(tx.transaction_value_numeric) if tx and tx.transaction_value_numeric else 0.0, step=1000000.0)
+                                    new_date = st.date_input("Transaction Date", value=cur_date, key=f"date_{cset.id}_{comp.id}")
+                                    new_val = st.number_input("Transaction Value ($)", value=float(tx.transaction_value_numeric) if tx and tx.transaction_value_numeric else 0.0, step=1000000.0, key=f"val_{cset.id}_{comp.id}")
                                     if st.form_submit_button("Save"):
                                         clink_map[comp.id].notes = new_notes
                                         if tx:
