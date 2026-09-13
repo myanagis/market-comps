@@ -142,7 +142,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                             if docs and docs[0].get("url"):
                                 url = docs[0]["url"]
                                 domain = urlparse(url).netloc.replace("www.", "")
-                                if domain:
+                                blocklist = {"linkedin.com", "twitter.com", "facebook.com", "instagram.com", "wikipedia.org", "en.wikipedia.org", "bloomberg.com", "crunchbase.com", "pitchbook.com", "youtube.com", "x.com"}
+                                if domain and domain not in blocklist:
                                     comp["domain"] = domain
                                     st.write(f"✅ Found {domain}")
                                     continue

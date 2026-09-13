@@ -47,6 +47,11 @@ def create_company(
     clean_domain = None
     if domain:
         clean_domain = domain.strip().lower().replace("http://", "").replace("https://", "").replace("www.", "").split('/')[0]
+        
+        # Guard against assigning social media or platform domains as primary company domains
+        blocklist = {"linkedin.com", "twitter.com", "facebook.com", "instagram.com", "wikipedia.org", "en.wikipedia.org", "bloomberg.com", "crunchbase.com", "pitchbook.com", "youtube.com", "x.com"}
+        if clean_domain in blocklist:
+            clean_domain = None
 
     norm_name = normalize_company_name(name)
     
