@@ -296,7 +296,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                     with st.status(f"Updating market map '{market_name}'...", expanded=True) as status:
                         try:
                             with get_db_context() as db:
-                                from market_comps.db.models import Market, ComparisonSet, ComparisonSetOrganizationLink, MarketComparisonSetLink
+                                from market_comps.db.models import Market, ComparisonSet, ComparisonSetOrganizationLink, MarketComparisonSetLink, MarketSegment
                                 
                                 # Look for market
                                 market = db.query(Market).filter(Market.name.ilike(f"%{market_name}%")).first()
