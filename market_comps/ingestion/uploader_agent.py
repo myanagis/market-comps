@@ -134,7 +134,7 @@ ACTION_SCHEMA = {
                     "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
                     "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
                     "notes": {"type": ["string", "null"]},
-                    "year": {"type": ["integer", "null"], "description": "Year of the transaction, e.g. 2024."}
+                    "date": {"type": ["string", "null"], "description": "Date of the transaction (YYYY-MM-DD format), if provided."}
                 },
                 "required": ["acquirer", "target"]
             }
@@ -152,7 +152,7 @@ ACTION_SCHEMA = {
                     "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
                     "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
                     "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
-                    "year": {"type": ["integer", "null"], "description": "Year of the round, e.g. 2026."}
+                    "date": {"type": ["string", "null"], "description": "Date of the round (YYYY-MM-DD format), if provided."}
                 },
                 "required": ["company_name", "round_name"]
             }

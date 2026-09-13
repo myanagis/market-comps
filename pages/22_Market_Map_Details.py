@@ -37,7 +37,7 @@ with get_db_context() as db:
         if market.sectors:
             st.write(f"**Sectors:** {', '.join(market.sectors)}")
         if market.description:
-            st.caption(market.description)
+            st.write(market.description)
             
     with col_t2:
         with st.popover("✏️ Edit Details", use_container_width=True):
@@ -57,7 +57,7 @@ with get_db_context() as db:
     # -------------------------------------------------------------
     # ##### Segments
     # -------------------------------------------------------------
-    st.header("Market Players")
+    st.header("Market Segments and Competition")
     st.markdown("##### Segmentation")
 
     if segments:
@@ -80,13 +80,22 @@ with get_db_context() as db:
                         s_desc = st.text_area("Description", value=seg.description or "")
                         s_type = st.text_input("Segment Type", value=seg.segment_type or "")
                         s_sort = st.number_input("Sort Order", value=seg.sort_order or 0, step=10)
-                        if st.form_submit_button("Save"):
+                        save_btn = st.form_submit_button("Save")
+                        del_btn = st.form_submit_button("🗑️ Delete Segment")
+                        
+                        if save_btn:
                             s_obj = db.query(MarketSegment).get(seg.id)
                             if s_obj:
                                 s_obj.name = s_name
                                 s_obj.description = s_desc
                                 s_obj.segment_type = s_type
                                 s_obj.sort_order = s_sort
+                                db.commit()
+                                st.rerun()
+                        elif del_btn:
+                            s_obj = db.query(MarketSegment).get(seg.id)
+                            if s_obj:
+                                db.delete(s_obj)
                                 db.commit()
                                 st.rerun()
                                 
@@ -131,93 +140,114 @@ with get_db_context() as db:
         db.query(MarketSegmentCompanyLink)
         .join(MarketSegment, MarketSegmentCompanyLink.market_segment_id == MarketSegment.id)
         .filter(MarketSegment.market_id == market.id)
+        .order_by(MarketSegment.sort_order.asc(), MarketSegment.name.asc())
         .all()
     )
     
     if segment_links:
-        h1, h2, h3, h4, h5, h6 = st.columns([2, 1.5, 3, 1.5, 1.5, 0.5])
-        h1.markdown("**Organization**")
-        h2.markdown("**Segment**")
-        h3.markdown("**Differentiation**")
-        h4.markdown("**Total / Last Raised**")
-        h5.markdown("**Valuation**")
-        
-        st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
-        
         from market_comps.db.models import FinancingRound, FinancingRoundFact, MetricObservation, MetricType
         
+        grouped_links = {}
         for link in segment_links:
-            comp_org = link.company
-            seg_obj = link.market_segment
-            if not comp_org or not seg_obj: continue
+            s_name = link.market_segment.name
+            if s_name not in grouped_links:
+                grouped_links[s_name] = []
+            grouped_links[s_name].append(link)
             
-            raised_str = "-"
-            val_str = "-"
+        for s_name, links in grouped_links.items():
+            st.markdown(f"###### {s_name}")
             
-            fin = db.query(FinancingRound).filter_by(company_id=comp_org.id).order_by(FinancingRound.id.desc()).first()
-            if fin:
-                raised_fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="amount_raised").first()
-                if raised_fact and raised_fact.value_numeric:
-                    val = raised_fact.value_numeric
-                    if val >= 1e9: raised_str = f"${val/1e9:.2f}B"
-                    elif val >= 1e6: raised_str = f"${val/1e6:.2f}M"
-                    else: raised_str = f"${val:,.0f}"
+            h1, h2, h3, h4, h5 = st.columns([2, 3, 1.5, 1.5, 0.5])
+            h1.markdown("**Organization**")
+            h2.markdown("**Differentiation**")
+            h3.markdown("**Total / Last Raised**")
+            h4.markdown("**Valuation**")
+            
+            st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+            
+            for link in links:
+                comp_org = link.company
+                seg_obj = link.market_segment
+                if not comp_org or not seg_obj: continue
                 
-                val_fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="post_money_valuation").first()
-                if val_fact and val_fact.value_numeric:
-                    val = val_fact.value_numeric
-                    date_str = f" ({fin.announced_date.strftime('%Y-%m')})" if fin.announced_date else ""
-                    if val >= 1e9: val_str = f"${val/1e9:.2f}B{date_str}"
-                    elif val >= 1e6: val_str = f"${val/1e6:.2f}M{date_str}"
-                    else: val_str = f"${val:,.0f}{date_str}"
+                raised_str = "Unknown"
+                val_str = "Unknown"
+                
+                fin = db.query(FinancingRound).filter_by(company_id=comp_org.id).order_by(FinancingRound.id.desc()).first()
+                if fin:
+                    raised_fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="amount_raised").first()
+                    if raised_fact and raised_fact.value_numeric:
+                        val = raised_fact.value_numeric
+                        if val >= 1e9: raised_str = f"${val/1e9:.2f}B"
+                        elif val >= 1e6: raised_str = f"${val/1e6:.2f}M"
+                        else: raised_str = f"${val:,.0f}"
                     
-            if val_str == "-":
-                mc_type = db.query(MetricType).filter_by(code="market_cap").first()
-                if mc_type:
-                    obs = db.query(MetricObservation).filter_by(company_id=comp_org.id, metric_type_id=mc_type.id).order_by(MetricObservation.recorded_at.desc()).first()
-                    if obs and obs.value_numeric:
-                        val = obs.value_numeric
-                        date_str = f" ({obs.recorded_at.strftime('%Y-%m')})" if obs.recorded_at else ""
+                    val_fact = db.query(FinancingRoundFact).filter_by(financing_round_id=fin.id, fact_type="post_money_valuation").first()
+                    if val_fact and val_fact.value_numeric:
+                        val = val_fact.value_numeric
+                        date_str = f" ({fin.announced_date.strftime('%Y-%m')})" if fin.announced_date else ""
                         if val >= 1e9: val_str = f"${val/1e9:.2f}B{date_str}"
                         elif val >= 1e6: val_str = f"${val/1e6:.2f}M{date_str}"
                         else: val_str = f"${val:,.0f}{date_str}"
-            
-            c1, c2, c3, c4, c5, c6 = st.columns([2, 1.5, 3, 1.5, 1.5, 0.5])
-            c1.markdown(f"[{comp_org.name}](/company?id={comp_org.id})")
-            c2.write(seg_obj.name)
-            c3.write(link.differentiation or "")
-            c4.write(raised_str)
-            c5.write(val_str)
-            
-            with c6:
-                with st.popover("✏️"):
-                    with st.form(f"edit_comp_{link.company_id}_{link.market_segment_id}"):
-                        seg_opts = {s.name: s.id for s in segments}
-                        seg_idx = list(seg_opts.values()).index(seg_obj.id) if seg_obj.id in seg_opts.values() else 0
-                        new_seg_name = st.selectbox("Segment", options=list(seg_opts.keys()), index=seg_idx)
-                        new_diff = st.text_area("Differentiation", value=link.differentiation or "")
-                        if st.form_submit_button("Save"):
-                            link_obj = db.query(MarketSegmentCompanyLink).filter_by(
-                                company_id=link.company_id,
-                                market_segment_id=link.market_segment_id
-                            ).first()
-                            if link_obj:
-                                new_seg_id = seg_opts[new_seg_name]
-                                if new_seg_id != link.market_segment_id:
+                        
+                if val_str == "Unknown":
+                    mc_type = db.query(MetricType).filter_by(code="market_cap").first()
+                    if mc_type:
+                        obs = db.query(MetricObservation).filter_by(company_id=comp_org.id, metric_type_id=mc_type.id).order_by(MetricObservation.recorded_at.desc()).first()
+                        if obs and obs.value_numeric:
+                            val = obs.value_numeric
+                            date_str = f" ({obs.recorded_at.strftime('%Y-%m')})" if obs.recorded_at else ""
+                            if val >= 1e9: val_str = f"${val/1e9:.2f}B{date_str}"
+                            elif val >= 1e6: val_str = f"${val/1e6:.2f}M{date_str}"
+                            else: val_str = f"${val:,.0f}{date_str}"
+                
+                c1, c2, c3, c4, c5 = st.columns([2, 3, 1.5, 1.5, 0.5])
+                c1.markdown(f"[{comp_org.name}](/company?id={comp_org.id})")
+                c2.write(link.differentiation or "")
+                c3.write(raised_str)
+                c4.write(val_str)
+                
+                with c5:
+                    with st.popover("✏️"):
+                        with st.form(f"edit_comp_{link.company_id}_{link.market_segment_id}"):
+                            seg_opts = {s.name: s.id for s in segments}
+                            seg_idx = list(seg_opts.values()).index(seg_obj.id) if seg_obj.id in seg_opts.values() else 0
+                            new_seg_name = st.selectbox("Segment", options=list(seg_opts.keys()), index=seg_idx)
+                            new_diff = st.text_area("Differentiation", value=link.differentiation or "")
+                            save_btn = st.form_submit_button("Save")
+                            del_btn = st.form_submit_button("🗑️ Unlink from Segment")
+                            if save_btn:
+                                link_obj = db.query(MarketSegmentCompanyLink).filter_by(
+                                    company_id=link.company_id,
+                                    market_segment_id=link.market_segment_id
+                                ).first()
+                                if link_obj:
+                                    new_seg_id = seg_opts[new_seg_name]
+                                    if new_seg_id != link.market_segment_id:
+                                        db.delete(link_obj)
+                                        db.flush()
+                                        new_link = MarketSegmentCompanyLink(
+                                            company_id=link.company_id,
+                                            market_segment_id=new_seg_id,
+                                            differentiation=new_diff
+                                        )
+                                        db.add(new_link)
+                                    else:
+                                        link_obj.differentiation = new_diff
+                                    db.commit()
+                                    st.rerun()
+                            elif del_btn:
+                                link_obj = db.query(MarketSegmentCompanyLink).filter_by(
+                                    company_id=link.company_id,
+                                    market_segment_id=link.market_segment_id
+                                ).first()
+                                if link_obj:
                                     db.delete(link_obj)
-                                    db.flush()
-                                    new_link = MarketSegmentCompanyLink(
-                                        company_id=link.company_id,
-                                        market_segment_id=new_seg_id,
-                                        differentiation=new_diff
-                                    )
-                                    db.add(new_link)
-                                else:
-                                    link_obj.differentiation = new_diff
-                                db.commit()
-                                st.rerun()
-                                
-        st.markdown("<br>", unsafe_allow_html=True)
+                                    db.commit()
+                                    st.rerun()
+                                    
+            st.markdown("<br>", unsafe_allow_html=True)
+            
         with st.popover("➕ Link Org to Segment"):
             with st.form("link_company_map_form"):
                     all_orgs = db.query(Organization).order_by(Organization.name).all()
@@ -258,7 +288,6 @@ with get_db_context() as db:
     # -------------------------------------------------------------
     # ##### Comparison Sets
     # -------------------------------------------------------------
-    st.divider()
 
     market_set_links = db.query(MarketComparisonSetLink).options(
         joinedload(MarketComparisonSetLink.comparison_set).joinedload(ComparisonSet.organization_links).joinedload(ComparisonSetOrganizationLink.organization)
@@ -275,13 +304,18 @@ with get_db_context() as db:
             sets_by_type[stype] = []
         sets_by_type[stype].append(cset)
 
-    all_types = list(sets_by_type.keys())
-    if not all_types:
+    desired_order = ["M&A Precedents", "Public Comps", "Financing Comps", "Investors"]
+    all_types = desired_order + [t for t in sets_by_type.keys() if t not in desired_order]
+
+    if not sets_by_type:
         st.info("No comparison sets exist for this market yet.")
 
     for stype in all_types:
         csets = sets_by_type.get(stype, [])
-        st.markdown(f"##### {stype}")
+        if not csets: continue
+        
+        st.header(stype)
+        st.divider()
         
         for cset in csets:
             st.markdown(f"###### 📚 {cset.name}")
@@ -330,7 +364,7 @@ with get_db_context() as db:
                             elif val >= 1e6: val_str = f"${val/1e6:.2f}M"
                             else: val_str = f"${val:,.0f}"
                             
-                        date_str = tx.announced_date.strftime("%Y-%m-%d") if tx and tx.announced_date else "-"
+                        date_str = tx.announced_date.strftime("%Y-%m-%d") if tx and tx.announced_date else "Unknown"
                         
                         c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1.5, 1.5, 3, 0.5])
                         c1.markdown(f"[{comp.name}](/company?id={comp.id})")
@@ -347,7 +381,9 @@ with get_db_context() as db:
                                     cur_date = tx.announced_date if tx and tx.announced_date else datetime.date.today()
                                     new_date = st.date_input("Transaction Date", value=cur_date, key=f"date_{cset.id}_{comp.id}")
                                     new_val = st.number_input("Transaction Value ($)", value=float(tx.transaction_value_numeric) if tx and tx.transaction_value_numeric else 0.0, step=1000000.0, key=f"val_{cset.id}_{comp.id}")
-                                    if st.form_submit_button("Save"):
+                                    save_btn = st.form_submit_button("Save")
+                                    del_btn = st.form_submit_button("🗑️ Remove from Set")
+                                    if save_btn:
                                         clink_map[comp.id].notes = new_notes
                                         if tx:
                                             tx.announced_date = new_date
@@ -355,6 +391,10 @@ with get_db_context() as db:
                                         else:
                                             new_tx = Transaction(target_company_id=comp.id, transaction_type="ACQUISITION", announced_date=new_date, transaction_value_numeric=new_val if new_val > 0 else None)
                                             db.add(new_tx)
+                                        db.commit()
+                                        st.rerun()
+                                    elif del_btn:
+                                        db.delete(clink_map[comp.id])
                                         db.commit()
                                         st.rerun()
 
@@ -398,8 +438,14 @@ with get_db_context() as db:
                             with st.popover("✏️"):
                                 with st.form(f"edit_notes_{cset.id}_{comp.id}"):
                                     new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
-                                    if st.form_submit_button("Save"):
+                                    save_btn = st.form_submit_button("Save")
+                                    del_btn = st.form_submit_button("🗑️ Remove from Set")
+                                    if save_btn:
                                         clink_map[comp.id].notes = new_notes
+                                        db.commit()
+                                        st.rerun()
+                                    elif del_btn:
+                                        db.delete(clink_map[comp.id])
                                         db.commit()
                                         st.rerun()
 
@@ -463,8 +509,14 @@ with get_db_context() as db:
                             with st.popover("✏️"):
                                 with st.form(f"edit_notes_{cset.id}_{comp.id}"):
                                     new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")
-                                    if st.form_submit_button("Save"):
+                                    save_btn = st.form_submit_button("Save")
+                                    del_btn = st.form_submit_button("🗑️ Remove from Set")
+                                    if save_btn:
                                         clink_map[comp.id].notes = new_notes
+                                        db.commit()
+                                        st.rerun()
+                                    elif del_btn:
+                                        db.delete(clink_map[comp.id])
                                         db.commit()
                                         st.rerun()
 

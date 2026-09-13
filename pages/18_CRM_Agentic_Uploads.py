@@ -516,6 +516,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     tgt_name = tx_details.get("target")
                                     price = tx_details.get("price")
                                     notes = tx_details.get("notes")
+                                    date_str = tx_details.get("date")
                                     year = tx_details.get("year")
                                     
                                     if not acq_name or not tgt_name:
@@ -534,7 +535,13 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         notes=notes
                                     )
                                     
-                                    if year:
+                                    if date_str:
+                                        from datetime import datetime
+                                        try:
+                                            tx.announced_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                                        except ValueError:
+                                            pass
+                                    elif year:
                                         from datetime import date
                                         tx.announced_date = date(year, 1, 1)
                                     db.add(tx)
@@ -544,6 +551,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         market_name = tx_details.get("market_name")
                                         segment_name = tx_details.get("segment_name") or "M&A Precedents"
                                         market = db.query(Market).filter(Market.name.ilike(f"%{market_name}%")).first()
+                                        if not market:
+                                            log_detail(f"Creating missing Market '{market_name}'...")
+                                            market = Market(name=market_name)
+                                            db.add(market)
+                                            db.flush()
+                                            
                                         if market:
                                             cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
                                                 MarketComparisonSetLink.market_id == market.id,
@@ -645,6 +658,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     
                                     if market_name:
                                         market = db.query(Market).filter(Market.name.ilike(f"%{market_name}%")).first()
+                                        if not market:
+                                            log_detail(f"Creating missing Market '{market_name}'...")
+                                            market = Market(name=market_name)
+                                            db.add(market)
+                                            db.flush()
+                                            
                                         if market:
                                             cset = db.query(ComparisonSet).join(MarketComparisonSetLink).filter(
                                                 MarketComparisonSetLink.market_id == market.id,
