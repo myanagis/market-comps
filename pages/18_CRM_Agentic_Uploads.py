@@ -621,6 +621,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     amount = fin_details.get("amount")
                                     market_name = fin_details.get("market_name")
                                     segment_name = fin_details.get("segment_name") or "Financing Comps"
+                                    date_str = fin_details.get("date")
                                     
                                     if not company_name or not round_name:
                                         continue
@@ -632,6 +633,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         round_name=round_name,
                                         status="announced"
                                     )
+                                    if date_str:
+                                        from datetime import datetime
+                                        try:
+                                            fin.announced_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                                        except ValueError:
+                                            pass
                                     db.add(fin)
                                     db.flush()
                                     
@@ -653,6 +660,18 @@ if prompt or st.session_state.get("manual_proceed", False):
                                             financing_round_id=fin.id,
                                             investor_id=inv_org.id,
                                             role="lead"
+                                        )
+                                        db.add(inv_link)
+                                        
+                                    part_investors = fin_details.get("participating_investors", [])
+                                    for inv_name in part_investors:
+                                        inv_org = get_or_create(db, inv_name)
+                                        if not inv_org.organization_type:
+                                            inv_org.organization_type = "INVESTOR"
+                                        inv_link = RoundInvestor(
+                                            financing_round_id=fin.id,
+                                            investor_id=inv_org.id,
+                                            role="participant"
                                         )
                                         db.add(inv_link)
                                     

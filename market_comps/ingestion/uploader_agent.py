@@ -152,6 +152,7 @@ ACTION_SCHEMA = {
                     "amount": {"type": ["number", "null"], "description": "Amount raised in numbers (e.g. 12600000 for 12.6M)."},
                     "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
                     "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
+                    "participating_investors": {"type": "array", "items": {"type": "string"}, "description": "List of participating/other investor names."},
                     "date": {"type": ["string", "null"], "description": "Date of the round (YYYY-MM-DD format), if provided."}
                 },
                 "required": ["company_name", "round_name"]

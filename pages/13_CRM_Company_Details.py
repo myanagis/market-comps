@@ -640,33 +640,50 @@ def display_company_details(company_id):
         if org.financing_rounds:
             from datetime import datetime as dt_cls
             def get_rnd_sort_key(r):
-                dates = [inv.reported_at for inv in r.investors if inv.reported_at]
-                return max(dates) if dates else (r.created_at or dt_cls.min)
+                return r.announced_date or r.created_at or dt_cls.min
+                
             rounds_sorted = sorted(org.financing_rounds, key=get_rnd_sort_key, reverse=True)
+            
+            rounds_data = []
             for rnd in rounds_sorted:
-                dates = [inv.reported_at for inv in rnd.investors if inv.reported_at]
-                date_str = f" ({max(dates).strftime('%b %Y')})" if dates else ""
-                with st.expander(f"💰 {rnd.round_name or 'Unknown Round'}{date_str} - {rnd.status.upper()}"):
-                    fact_amt = next((f.value_text or str(f.value_numeric) for f in rnd.facts if f.fact_type == 'amount_raised'), None)
-                    if fact_amt:
-                        st.write(f"**Amount Raised:** {fact_amt}")
-                    
-                    if rnd.investors:
-                        st.write("**Investors:**")
-                        inv_data = []
-                        for inv in rnd.investors:
-                            name = inv.investor.name if inv.investor else "Unknown"
-                            inv_date_lbl = inv.reported_at.strftime("%Y-%m-%d") if inv.reported_at else "Unknown Date"
-                            inv_data.append({
-                                "Investor": name,
-                                "Role": inv.role,
-                                "Status": inv.status,
-                                "Date": inv_date_lbl,
-                                "Notes": inv.notes
-                            })
-                        st.dataframe(inv_data, hide_index=True, use_container_width=True)
+                date_str = rnd.announced_date.strftime("%Y-%m-%d") if rnd.announced_date else "Unknown Date"
+                
+                fact_amt = next((f.value_text or str(f.value_numeric) for f in rnd.facts if f.fact_type == 'amount_raised'), "Unknown")
+                if fact_amt != "Unknown":
+                    try:
+                        val = float(fact_amt)
+                        if val >= 1e9: fact_amt = f"${val/1e9:.2f}B"
+                        elif val >= 1e6: fact_amt = f"${val/1e6:.2f}M"
+                        else: fact_amt = f"${val:,.0f}"
+                    except ValueError:
+                        pass
+                
+                lead_invs = []
+                part_invs = []
+                for inv in rnd.investors:
+                    if not inv.investor: continue
+                    if inv.role == 'lead':
+                        lead_invs.append(inv.investor.name)
                     else:
-                        st.caption("No investors recorded.")
+                        part_invs.append(inv.investor.name)
+                        
+                inv_strs = []
+                if lead_invs:
+                    inv_strs.append(f"Lead: {', '.join(lead_invs)}")
+                if part_invs:
+                    inv_strs.append(f"Participating: {', '.join(part_invs)}")
+                    
+                investors_str = " | ".join(inv_strs) if inv_strs else "None recorded"
+                
+                rounds_data.append({
+                    "Date": date_str,
+                    "Round": rnd.round_name or "Unknown Round",
+                    "Amount Raised": fact_amt,
+                    "Investors": investors_str,
+                    "Status": rnd.status.upper() if rnd.status else ""
+                })
+                
+            st.dataframe(rounds_data, hide_index=True, use_container_width=True)
         else:
             st.info("No financing rounds recorded for this company.")
 
