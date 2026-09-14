@@ -15,20 +15,24 @@ def inject_global_styles():
         h2, .stHeadingContainer h2 {
             margin-top: 48px !important;
             margin-bottom: 16px !important;
-            font-size: 1.5rem !important;
+            font-size: 1.4rem !important;
             font-weight: 600 !important;
-            color: #1f2937 !important;
-            border-bottom: 1px solid #f3f4f6;
-            padding-bottom: 8px;
+            color: #ffffff !important;
+            background-color: #1e3a8a !important; /* Dark blue banner */
+            padding: 8px 16px !important;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
         /* H3 subsections */
         h3, .stHeadingContainer h3 {
-            margin-top: 24px !important;
+            margin-top: 32px !important;
             margin-bottom: 12px !important;
-            font-size: 1.1rem !important;
+            font-size: 1.15rem !important;
             font-weight: 600 !important;
-            color: #374151 !important;
+            color: #1e40af !important; /* Slightly lighter blue text */
+            border-bottom: 2px solid #bfdbfe !important;
+            padding-bottom: 4px;
         }
         
         /* Market Map Eyebrow */
@@ -73,14 +77,15 @@ def inject_global_styles():
         /* Header Rows (Identify via strong tags in columns) */
         div[data-testid="stHorizontalBlock"]:has(> div > div[data-testid="stMarkdownContainer"] > p > strong) {
             background-color: #f8f9fa !important;
-            padding-top: 10px !important;
-            padding-bottom: 10px !important;
+            padding-top: 4px !important;
+            padding-bottom: 4px !important;
             padding-left: 8px !important;
             padding-right: 8px !important;
             border-bottom: 2px solid #e5e7eb !important;
             border-top: 1px solid #f3f4f6 !important;
-            margin-bottom: 4px !important;
+            margin-bottom: 2px !important;
             border-radius: 4px 4px 0 0;
+            gap: 0.5rem !important;
         }
         
         /* Make column header text slightly muted but bold */
@@ -95,12 +100,13 @@ def inject_global_styles():
         /* Data Rows (Exclude headers, target generic column blocks that don't have buttons with strong) 
            We can just target all stHorizontalBlock inside the main layout, but exclude headers. */
         div[data-testid="stHorizontalBlock"]:not(:has(> div > div[data-testid="stMarkdownContainer"] > p > strong)) {
-            padding-top: 8px !important;
-            padding-bottom: 8px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
             padding-left: 8px !important;
             padding-right: 8px !important;
             border-bottom: 1px solid #f3f4f6 !important;
             transition: background-color 0.15s ease-in-out;
+            gap: 0.5rem !important;
         }
         
         /* Data Row Hover State */
@@ -118,8 +124,10 @@ def inject_global_styles():
             border: none !important;
             background: transparent !important;
             color: #9ca3af !important;
-            font-size: 0.85rem !important;
-            padding: 4px 8px !important;
+            font-size: 0.75rem !important;
+            padding: 0px 4px !important;
+            min-height: 0 !important;
+            height: auto !important;
         }
         
         div[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {

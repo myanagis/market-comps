@@ -134,7 +134,7 @@ with get_db_context() as db:
     # -------------------------------------------------------------
     col_h, col_a = st.columns([0.85, 0.15])
     with col_h:
-        st.subheader("Companies")
+        st.write("") # Empty space to push the button right
     with col_a:
         st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
         with st.popover("➕ Link Org"):
@@ -176,7 +176,7 @@ with get_db_context() as db:
             grouped_links[s_name].append(link)
             
         for s_name, links in grouped_links.items():
-            st.subheader(s_name)
+            st.subheader(f"Companies: {s_name}")
             
             h1, h2, h3, h4, h5 = st.columns([2, 3, 1.5, 1.5, 0.5])
             h1.markdown("**Organization**")
