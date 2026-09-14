@@ -129,34 +129,6 @@ with get_db_context() as db:
     else:
         st.info("No segments in this market yet.")
 
-    # -------------------------------------------------------------
-    # ##### Organizations mapped to segments
-    # -------------------------------------------------------------
-    col_h, col_a = st.columns([0.85, 0.15])
-    with col_h:
-        st.write("") # Empty space to push the button right
-    with col_a:
-        st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
-        with st.popover("➕ Link Org"):
-            with st.form("link_company_map_form_head"):
-                all_orgs = db.query(Organization).order_by(Organization.name).all()
-                org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
-                seg_opts = {s.name: s.id for s in segments}
-                if org_opts and seg_opts:
-                    comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
-                    seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
-                    diff_text = st.text_area("Differentiation", placeholder="How does this organization differentiate in this segment?")
-                    if st.form_submit_button("Link Organization"):
-                        if comp_sel and seg_sel:
-                            from market_comps.crm.competitor_manager import add_company_to_segment
-                            add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
-                            db.commit()
-                            st.success("Organization linked to segment!")
-                            st.rerun()
-                else:
-                    st.write("Ensure organizations and segments exist.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
     segment_links = (
         db.query(MarketSegmentCompanyLink)
         .join(MarketSegment, MarketSegmentCompanyLink.market_segment_id == MarketSegment.id)
@@ -165,18 +137,42 @@ with get_db_context() as db:
         .all()
     )
     
-    if segment_links:
+    if segments:
         from market_comps.db.models import FinancingRound, FinancingRoundFact, MetricObservation, MetricType
         
-        grouped_links = {}
+        grouped_links = {s.name: [] for s in segments}
         for link in segment_links:
-            s_name = link.market_segment.name
-            if s_name not in grouped_links:
-                grouped_links[s_name] = []
-            grouped_links[s_name].append(link)
+            if link.market_segment:
+                s_name = link.market_segment.name
+                if s_name in grouped_links:
+                    grouped_links[s_name].append(link)
             
         for s_name, links in grouped_links.items():
-            st.subheader(f"Companies: {s_name}")
+            col_h, col_a = st.columns([0.85, 0.15])
+            with col_h:
+                st.subheader(f"Companies: {s_name}")
+            with col_a:
+                st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
+                with st.popover("➕ Link Org"):
+                    with st.form(f"link_company_map_form_{s_name.replace(' ', '_')}"):
+                        all_orgs = db.query(Organization).order_by(Organization.name).all()
+                        org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
+                        seg_opts = {s.name: s.id for s in segments}
+                        seg_idx = list(seg_opts.keys()).index(s_name) if s_name in seg_opts else 0
+                        if org_opts and seg_opts:
+                            comp_sel = st.selectbox("Organization", options=list(org_opts.keys()), key=f"org_{s_name}")
+                            seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()), index=seg_idx, key=f"seg_{s_name}")
+                            diff_text = st.text_area("Differentiation", placeholder="How does this organization differentiate in this segment?", key=f"diff_{s_name}")
+                            if st.form_submit_button("Link Organization"):
+                                if comp_sel and seg_sel:
+                                    from market_comps.crm.competitor_manager import add_company_to_segment
+                                    add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
+                                    db.commit()
+                                    st.success("Organization linked to segment!")
+                                    st.rerun()
+                        else:
+                            st.write("Ensure organizations and segments exist.")
+                st.markdown('</div>', unsafe_allow_html=True)
             
             h1, h2, h3, h4, h5 = st.columns([2, 3, 1.5, 1.5, 0.5])
             h1.markdown("**Organization**")
@@ -266,7 +262,7 @@ with get_db_context() as db:
                                     db.commit()
                                     st.rerun()
     else:
-        st.info("No organizations linked to segments in this market yet.")
+        st.info("No segments exist in this market yet. Add a segment to begin mapping organizations.")
 
     # -------------------------------------------------------------
     # ##### Comparison Sets

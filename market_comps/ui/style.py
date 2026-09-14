@@ -31,8 +31,22 @@ def inject_global_styles():
             font-size: 1.15rem !important;
             font-weight: 600 !important;
             color: #1e40af !important; /* Slightly lighter blue text */
-            border-bottom: 2px solid #bfdbfe !important;
+            border-bottom: 2px solid #bfdbfe; /* Default fallback */
             padding-bottom: 4px;
+        }
+        
+        /* When H3 is inside a column, apply the border to the block so it spans the full width */
+        div[data-testid="stHorizontalBlock"]:has(h3) {
+            border-bottom: 2px solid #bfdbfe !important;
+            padding-bottom: 8px !important;
+            margin-bottom: 16px !important;
+            align-items: flex-end !important;
+        }
+        
+        div[data-testid="stHorizontalBlock"]:has(h3) h3 {
+            border-bottom: none !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
         }
         
         /* Market Map Eyebrow */
@@ -75,10 +89,11 @@ def inject_global_styles():
            ------------------------------------- */
            
         /* Header Rows (Identify via strong tags in columns) */
-        div[data-testid="stHorizontalBlock"]:has(> div > div[data-testid="stMarkdownContainer"] > p > strong) {
+        /* Streamlit nests deeply, so we need a broader :has selector */
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stMarkdownContainer"] p strong) {
             background-color: #f8f9fa !important;
-            padding-top: 4px !important;
-            padding-bottom: 4px !important;
+            padding-top: 6px !important;
+            padding-bottom: 6px !important;
             padding-left: 8px !important;
             padding-right: 8px !important;
             border-bottom: 2px solid #e5e7eb !important;
@@ -89,7 +104,7 @@ def inject_global_styles():
         }
         
         /* Make column header text slightly muted but bold */
-        div[data-testid="stHorizontalBlock"]:has(> div > div[data-testid="stMarkdownContainer"] > p > strong) p {
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stMarkdownContainer"] p strong) p {
             color: #4b5563 !important;
             font-size: 0.85rem !important;
             text-transform: uppercase;
@@ -97,11 +112,10 @@ def inject_global_styles():
             margin-bottom: 0 !important;
         }
         
-        /* Data Rows (Exclude headers, target generic column blocks that don't have buttons with strong) 
-           We can just target all stHorizontalBlock inside the main layout, but exclude headers. */
-        div[data-testid="stHorizontalBlock"]:not(:has(> div > div[data-testid="stMarkdownContainer"] > p > strong)) {
-            padding-top: 2px !important;
-            padding-bottom: 2px !important;
+        /* Data Rows (Exclude headers, target generic column blocks that don't have buttons with strong) */
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stMarkdownContainer"] p strong)) {
+            padding-top: 4px !important;
+            padding-bottom: 4px !important;
             padding-left: 8px !important;
             padding-right: 8px !important;
             border-bottom: 1px solid #f3f4f6 !important;
@@ -109,8 +123,13 @@ def inject_global_styles():
             gap: 0.5rem !important;
         }
         
+        /* Remove internal paragraph margins in data rows to eliminate whitespace */
+        div[data-testid="stHorizontalBlock"]:not(:has(h1, h2, h3)) div[data-testid="stMarkdownContainer"] p {
+            margin-bottom: 0 !important;
+        }
+        
         /* Data Row Hover State */
-        div[data-testid="stHorizontalBlock"]:not(:has(> div > div[data-testid="stMarkdownContainer"] > p > strong)):hover {
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stMarkdownContainer"] p strong)):hover {
             background-color: #f9fafb !important;
         }
         
