@@ -134,6 +134,12 @@ def inject_global_styles():
             color: #374151 !important;
             background: #f3f4f6 !important;
         }
+        
+        /* Pull consecutive data rows together to counteract Streamlit's 1rem vertical flex gap */
+        /* We exclude blocks with headings so we don't accidentally squash section headers */
+        div[data-testid="stHorizontalBlock"]:not(:has(h1, h2, h3)) + div[data-testid="stHorizontalBlock"]:not(:has(h1, h2, h3)) {
+            margin-top: -1rem !important;
+        }
         </style>
         """,
         unsafe_allow_html=True
