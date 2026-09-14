@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 from sqlalchemy.orm import joinedload
 from market_comps.db.session import get_db
 from market_comps.db.models import SourceDocument, PipelineRun, ExtractionJob, ExtractedEntity, EntityMatch, Organization, FundProfile, Person

@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import pandas as pd
 from market_comps.db.session import SessionLocal
 from market_comps.db.models import PipelineRun, CompanyAugmentationReport, Organization

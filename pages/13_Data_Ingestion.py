@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import json
 from market_comps.db.session import get_db
 import pandas as pd

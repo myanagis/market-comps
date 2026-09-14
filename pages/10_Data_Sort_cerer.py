@@ -1,5 +1,7 @@
 import time
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 
 st.set_page_config(
     page_title="Data Sort-cerer",

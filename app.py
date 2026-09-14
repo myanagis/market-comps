@@ -7,6 +7,8 @@ Run with:
 """
 
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import streamlit.components.v1 as components
 from market_comps.db.auth import (
     get_supabase_project_ref,

@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 from market_comps.db.models import Base
 
 st.set_page_config(page_title="Database Schema ERD", page_icon="🗄️", layout="wide")

@@ -6,6 +6,8 @@ Currently supports: Term Sheet extraction and general document summarization.
 from __future__ import annotations
 
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 
 from market_comps.config import settings, MODEL_OPTIONS, DEFAULT_LLM_MODEL
 from market_comps.pdf_parser.models import ParserResult

@@ -8,6 +8,8 @@ from typing import Literal, Optional
 import polars as pl
 import requests
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 from pydantic import BaseModel, Field
 
 from market_comps.config import MODEL_OPTIONS, settings, DEFAULT_LLM_MODEL

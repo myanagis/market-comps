@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import pandas as pd
 from sqlalchemy import MetaData, Table, select, func, or_
 from market_comps.db.session import engine

@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import pandas as pd
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_, func

@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import pandas as pd
 from sqlalchemy.orm import joinedload
 from sqlalchemy import or_
@@ -341,20 +343,57 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("📊 Metrics & KPIs")
         if org.metric_observations:
-            # Group by metric_type to get the latest
-            metrics_dict = {}
+            import pandas as pd
+            
+            records = []
             for obs in org.metric_observations:
-                code = obs.metric_type.code
-                if code not in metrics_dict or (obs.recorded_at and metrics_dict[code].recorded_at and obs.recorded_at > metrics_dict[code].recorded_at):
-                    metrics_dict[code] = obs
+                date_str = obs.recorded_at.strftime("%Y-%m") if obs.recorded_at else "Unknown"
+                val_str = f"{obs.currency_code or ''} {obs.value_numeric}" if obs.value_numeric else obs.value_text
+                
+                if obs.value_numeric is not None:
+                    try:
+                        val = float(obs.value_numeric)
+                        if val >= 1e9: val_str = f"{obs.currency_code or '$'}{val/1e9:.2f}B"
+                        elif val >= 1e6: val_str = f"{obs.currency_code or '$'}{val/1e6:.2f}M"
+                        else: val_str = f"{obs.currency_code or '$'}{val:,.0f}"
+                    except ValueError:
+                        pass
+                elif not val_str:
+                    val_str = "N/A"
                     
-            if metrics_dict:
-                cols = st.columns(min(len(metrics_dict), 4))
-                for i, (code, obs) in enumerate(metrics_dict.items()):
-                    with cols[i % 4]:
-                        val_str = f"{obs.currency_code or ''} {obs.value_numeric}" if obs.value_numeric else obs.value_text
-                        st.metric(label=obs.metric_type.display_name, value=val_str, help=obs.observation_status)
-                        if st.button("View History", key=f"hist_{obs.id}"):
+                records.append({
+                    "Metric": obs.metric_type.display_name,
+                    "Date": date_str,
+                    "Value": val_str,
+                    "recorded_at": obs.recorded_at
+                })
+            
+            if records:
+                df = pd.DataFrame(records)
+                df = df.sort_values(by="recorded_at", ascending=False).drop_duplicates(subset=["Metric", "Date"])
+                
+                pivot_df = df.pivot(index="Metric", columns="Date", values="Value")
+                
+                cols = sorted([c for c in pivot_df.columns if c != "Unknown"])
+                if "Unknown" in pivot_df.columns:
+                    cols.insert(0, "Unknown")
+                    
+                pivot_df = pivot_df[cols]
+                
+                if len(cols) > 0 and cols[-1] != "Unknown":
+                    latest_col = cols[-1]
+                    pivot_df = pivot_df.rename(columns={latest_col: f"✨ {latest_col} (Latest)"})
+                    
+                pivot_df.fillna("-", inplace=True)
+                
+                st.dataframe(pivot_df, use_container_width=True)
+                
+                with st.popover("View Metric History"):
+                    m_names = sorted(df["Metric"].unique())
+                    sel_m = st.selectbox("Select Metric", m_names)
+                    if st.button("View Details"):
+                        code = next((obs.metric_type.code for obs in org.metric_observations if obs.metric_type.display_name == sel_m), None)
+                        if code:
                             view_metric_history_dialog(org.id, code)
             else:
                 st.info("No metric data available.")

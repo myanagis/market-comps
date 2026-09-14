@@ -11,6 +11,8 @@ from typing import Optional
 
 import pandas as pd
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(

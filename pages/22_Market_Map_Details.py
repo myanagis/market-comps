@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 import pandas as pd
 from sqlalchemy.orm import joinedload
 from market_comps.db.session import get_db_context
@@ -31,15 +33,20 @@ with get_db_context() as db:
         st.error(f"Market with ID {market_id_str} not found.")
         st.stop()
         
-    col_t1, col_t2 = st.columns([0.8, 0.2])
+    col_t1, col_t2 = st.columns([0.85, 0.15])
     with col_t1:
-        st.title(f"🗺️ {market.name}")
+        st.markdown('<div class="market-eyebrow">MARKET MAP</div>', unsafe_allow_html=True)
+        st.title(market.name)
+        
+        st.markdown('<div class="market-notes">', unsafe_allow_html=True)
         if market.sectors:
             st.write(f"**Sectors:** {', '.join(market.sectors)}")
         if market.description:
             st.write(market.description)
+        st.markdown('</div>', unsafe_allow_html=True)
             
     with col_t2:
+        st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
         with st.popover("✏️ Edit Details", use_container_width=True):
             with st.form("edit_market_form"):
                 new_name = st.text_input("Name", value=market.name)
@@ -51,6 +58,7 @@ with get_db_context() as db:
                     market.description = new_desc
                     db.commit()
                     st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         
     segments = get_market_segments(db, market.id)
     
@@ -58,15 +66,35 @@ with get_db_context() as db:
     # ##### Segments
     # -------------------------------------------------------------
     st.header("Market Segments and Competition")
-    st.markdown("##### Segmentation")
+    
+    col_h, col_a = st.columns([0.85, 0.15])
+    with col_h:
+        st.subheader("Segmentation")
+    with col_a:
+        st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
+        with st.popover("➕ Add Segment"):
+            with st.form("new_segment_form_map_head"):
+                s_name = st.text_input("Segment Name")
+                s_desc = st.text_area("Description")
+                s_type = st.text_input("Segment Type (Optional)")
+                s_sort = st.number_input("Sort Order", value=0, step=10)
+                if st.form_submit_button("Create Segment"):
+                    if s_name:
+                        seg = create_market_segment(db, market.id, s_name, s_desc, s_type)
+                        seg.sort_order = s_sort
+                        db.commit()
+                        st.success(f"Segment '{s_name}' added!")
+                        st.rerun()
+                    else:
+                        st.error("Segment name is required.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     if segments:
         h1, h2, h3, h4 = st.columns([2, 3, 2, 0.5])
         h1.markdown("**Segment Name**")
         h2.markdown("**Description**")
         h3.markdown("**Segment Type**")
-        
-        st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+        h4.markdown("** **")
         
         for seg in segments:
             c1, c2, c3, c4 = st.columns([2, 3, 2, 0.5])
@@ -98,43 +126,36 @@ with get_db_context() as db:
                                 db.delete(s_obj)
                                 db.commit()
                                 st.rerun()
-                                
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.popover("➕ Add Segment"):
-            with st.form("new_segment_form_map"):
-                    s_name = st.text_input("Segment Name")
-                    s_desc = st.text_area("Description")
-                    s_type = st.text_input("Segment Type (Optional)")
-                    s_sort = st.number_input("Sort Order", value=0, step=10)
-                    if st.form_submit_button("Create Segment"):
-                        if s_name:
-                            seg = create_market_segment(db, market.id, s_name, s_desc, s_type)
-                            seg.sort_order = s_sort
-                            db.commit()
-                            st.success(f"Segment '{s_name}' added!")
-                            st.rerun()
-                        else:
-                            st.error("Segment name is required.")
     else:
         st.info("No segments in this market yet.")
-        with st.popover("➕ Add Segment"):
-            with st.form("new_segment_form_map_empty"):
-                s_name = st.text_input("Segment Name")
-                s_desc = st.text_area("Description")
-                s_type = st.text_input("Segment Type (Optional)")
-                s_sort = st.number_input("Sort Order", value=0, step=10)
-                if st.form_submit_button("Create Segment"):
-                    if s_name:
-                        seg = create_market_segment(db, market.id, s_name, s_desc, s_type)
-                        seg.sort_order = s_sort
-                        db.commit()
-                        st.success(f"Segment '{s_name}' added!")
-                        st.rerun()
 
     # -------------------------------------------------------------
     # ##### Organizations mapped to segments
     # -------------------------------------------------------------
-    st.markdown("##### Companies")
+    col_h, col_a = st.columns([0.85, 0.15])
+    with col_h:
+        st.subheader("Companies")
+    with col_a:
+        st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
+        with st.popover("➕ Link Org"):
+            with st.form("link_company_map_form_head"):
+                all_orgs = db.query(Organization).order_by(Organization.name).all()
+                org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
+                seg_opts = {s.name: s.id for s in segments}
+                if org_opts and seg_opts:
+                    comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
+                    seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
+                    diff_text = st.text_area("Differentiation", placeholder="How does this organization differentiate in this segment?")
+                    if st.form_submit_button("Link Organization"):
+                        if comp_sel and seg_sel:
+                            from market_comps.crm.competitor_manager import add_company_to_segment
+                            add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
+                            db.commit()
+                            st.success("Organization linked to segment!")
+                            st.rerun()
+                else:
+                    st.write("Ensure organizations and segments exist.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     segment_links = (
         db.query(MarketSegmentCompanyLink)
@@ -155,15 +176,14 @@ with get_db_context() as db:
             grouped_links[s_name].append(link)
             
         for s_name, links in grouped_links.items():
-            st.markdown(f"###### {s_name}")
+            st.subheader(s_name)
             
             h1, h2, h3, h4, h5 = st.columns([2, 3, 1.5, 1.5, 0.5])
             h1.markdown("**Organization**")
             h2.markdown("**Differentiation**")
             h3.markdown("**Total / Last Raised**")
             h4.markdown("**Valuation**")
-            
-            st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+            h5.markdown("** **")
             
             for link in links:
                 comp_org = link.company
@@ -245,45 +265,8 @@ with get_db_context() as db:
                                     db.delete(link_obj)
                                     db.commit()
                                     st.rerun()
-                                    
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-        with st.popover("➕ Link Org to Segment"):
-            with st.form("link_company_map_form"):
-                    all_orgs = db.query(Organization).order_by(Organization.name).all()
-                    org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
-                    seg_opts = {s.name: s.id for s in segments}
-                    if org_opts and seg_opts:
-                        comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
-                        seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
-                        diff_text = st.text_area("Differentiation", placeholder="How does this organization differentiate in this segment?")
-                        if st.form_submit_button("Link Organization"):
-                            if comp_sel and seg_sel:
-                                from market_comps.crm.competitor_manager import add_company_to_segment
-                                add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
-                                db.commit()
-                                st.success("Organization linked to segment!")
-                                st.rerun()
-                    else:
-                        st.write("Ensure organizations and segments exist.")
     else:
         st.info("No organizations linked to segments in this market yet.")
-        with st.popover("➕ Link Org to Segment"):
-            with st.form("link_company_map_form_empty"):
-                all_orgs = db.query(Organization).order_by(Organization.name).all()
-                org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
-                seg_opts = {s.name: s.id for s in segments}
-                if org_opts and seg_opts:
-                    comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
-                    seg_sel = st.selectbox("Segment", options=list(seg_opts.keys()))
-                    diff_text = st.text_area("Differentiation", placeholder="How does this organization differentiate in this segment?")
-                    if st.form_submit_button("Link Organization"):
-                        if comp_sel and seg_sel:
-                            from market_comps.crm.competitor_manager import add_company_to_segment
-                            add_company_to_segment(db, org_opts[comp_sel], seg_opts[seg_sel], diff_text, False)
-                            db.commit()
-                            st.success("Organization linked to segment!")
-                            st.rerun()
 
     # -------------------------------------------------------------
     # ##### Comparison Sets
@@ -315,16 +298,16 @@ with get_db_context() as db:
         if not csets: continue
         
         st.header(stype)
-        st.divider()
         
         for cset in csets:
-            st.markdown(f"###### 📚 {cset.name}")
-            col_c1, col_c2 = st.columns([0.8, 0.2])
+            col_c1, col_c2 = st.columns([0.85, 0.15])
             with col_c1:
+                st.subheader(f"📚 {cset.name}")
                 if cset.description:
-                    st.caption(cset.description)
+                    st.markdown(f"<div class='market-notes' style='margin-top: 0px; margin-bottom: 16px; font-size: 0.9em; padding-left: 10px; border-left: 3px solid #e5e7eb;'>{cset.description}</div>", unsafe_allow_html=True)
             with col_c2:
-                with st.popover("✏️ Edit Section", use_container_width=True):
+                st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
+                with st.popover("✏️ Edit Section"):
                     with st.form(f"edit_cset_form_{cset.id}"):
                         new_name = st.text_input("Name", value=cset.name)
                         new_desc = st.text_area("Description", value=cset.description or "")
@@ -333,10 +316,10 @@ with get_db_context() as db:
                             cset.description = new_desc
                             db.commit()
                             st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
             
             companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
             if companies_in_set:
-                st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
                 clink_map = {cl.organization_id: cl for cl in cset.organization_links if cl.included and cl.organization}
                 
                 if cset.set_type == "M&A Precedents":
@@ -346,8 +329,7 @@ with get_db_context() as db:
                     h3.markdown("**Transaction Value**")
                     h4.markdown("**Date**")
                     h5.markdown("**Notes**")
-                    
-                    st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+                    h6.markdown("** **")
                     
                     for comp in companies_in_set:
                         from market_comps.db.models import Transaction
@@ -405,8 +387,7 @@ with get_db_context() as db:
                     h3.markdown("**Amount Raised**")
                     h4.markdown("**Lead Investors**")
                     h5.markdown("**Notes**")
-                    
-                    st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
+                    h6.markdown("** **")
                     
                     for comp in companies_in_set:
                         from market_comps.db.models import FinancingRound, FinancingRoundFact, RoundInvestor
@@ -471,8 +452,6 @@ with get_db_context() as db:
                     for i, m_name in enumerate(metric_names): header_cols[2+i].markdown(f"**{m_name}**")
                     header_cols[2+len(metric_names)].markdown("**Last Updated**")
                     header_cols[3+len(metric_names)].markdown("**Notes**")
-                    
-                    st.markdown("<hr style='margin: 0; padding: 0; margin-bottom: 10px;'>", unsafe_allow_html=True)
                     
                     for comp in companies_in_set:
                         c_cols = st.columns(cols)
@@ -546,8 +525,8 @@ with get_db_context() as db:
                         db.commit()
                         st.rerun()
 
-    st.divider()
-    st.markdown("###### Set Management")
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.subheader("Set Management")
     with st.popover("🔗 Link Existing Set"):
         with st.form("link_existing_set"):
             all_sets = db.query(ComparisonSet).order_by(ComparisonSet.name).all()

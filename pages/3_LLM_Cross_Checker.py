@@ -7,6 +7,8 @@ from __future__ import annotations
 import re
 
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 
 from market_comps.config import settings
 from market_comps.cross_checker import LLMChorus, ChorusResult

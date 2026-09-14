@@ -5,6 +5,8 @@ FAQ Page — Answers to common questions, including data privacy and model train
 from __future__ import annotations
 
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 
 st.set_page_config(
     page_title="FAQ",

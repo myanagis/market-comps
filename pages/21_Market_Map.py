@@ -1,4 +1,6 @@
 import streamlit as st
+from market_comps.ui.style import inject_global_styles
+inject_global_styles()
 from sqlalchemy import or_
 from market_comps.db.session import get_db_context
 from market_comps.db.models import Market, Sector
