@@ -307,8 +307,7 @@ def process_and_score_evidence(documents: List[Dict]) -> Dict:
     try:
         result, usage = client.structured_output(
             prompt=prompt,
-            json_schema=schema,
-            model="google/gemini-2.5-pro" # Use a stronger model for complex processing
+            json_schema=schema
         )
         return result, usage
     except Exception as e:

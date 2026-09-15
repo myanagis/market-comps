@@ -312,6 +312,81 @@ with get_db_context() as db:
                             cset.description = new_desc
                             db.commit()
                             st.rerun()
+                
+                if cset.set_type == "Public Comps" and st.session_state.get("yfinance_enabled", True):
+                    if st.button("📈 Pull Market Data", key=f"pull_yf_{cset.id}"):
+                        with st.spinner("Fetching data from Yahoo Finance..."):
+                            from market_comps.metrics_fetcher import MetricsFetcher
+                            from market_comps.db.models import CompanyCandidate, Organization
+                            fetcher = MetricsFetcher(max_fetch_workers=4)
+                            
+                            # Convert to candidates
+                            candidates = []
+                            for link in cset.organization_links:
+                                if link.included and link.organization:
+                                    candidates.append(
+                                        CompanyCandidate(
+                                            name=link.organization.name,
+                                            ticker=link.organization.ticker_symbol or "",
+                                            exchange=link.organization.stock_exchange,
+                                            is_public=True,
+                                            confidence=1.0,
+                                            reasoning=""
+                                        )
+                                    )
+                            
+                            # Run fetcher
+                            metrics_list = fetcher.enrich_candidates(candidates)
+                            
+                            # Update DB
+                            for comp_link in cset.organization_links:
+                                if not comp_link.included or not comp_link.organization: continue
+                                org = comp_link.organization
+                                
+                                # Find corresponding metrics
+                                match = next((m for m in metrics_list if m.ticker == org.ticker_symbol), None)
+                                if match and match.data_available:
+                                    from market_comps.db.models import MetricType, MetricObservation
+                                    import datetime
+                                    
+                                    # Update ticker/exchange on org
+                                    org.stock_exchange = match.exchange
+                                    
+                                    # Prepare metrics dict
+                                    updates = {
+                                        "Market Cap": (match.market_cap, "currency"),
+                                        "Enterprise Value": (match.enterprise_value, "currency"),
+                                        "Revenue (TTM)": (match.revenue_ttm, "currency"),
+                                        "Revenue (NTM)": (match.revenue_ntm, "currency"),
+                                        "Gross Margin (%)": (match.gross_margin_pct, "percentage"),
+                                        "Revenue Growth (YoY)": (match.revenue_growth_yoy_pct, "percentage"),
+                                    }
+                                    
+                                    # Insert/Update MetricObservations
+                                    now = datetime.datetime.utcnow()
+                                    for m_name, (val, v_type) in updates.items():
+                                        if val is None: continue
+                                        mt = db.query(MetricType).filter_by(display_name=m_name).first()
+                                        if not mt:
+                                            mt = MetricType(display_name=m_name, value_type=v_type)
+                                            db.add(mt)
+                                            db.flush()
+                                            
+                                        obs = db.query(MetricObservation).filter_by(
+                                            company_id=org.id, 
+                                            metric_type_id=mt.id,
+                                            reporting_basis="trailing_twelve_months"
+                                        ).first()
+                                        if not obs:
+                                            obs = MetricObservation(company_id=org.id, metric_type_id=mt.id, reporting_basis="trailing_twelve_months")
+                                            db.add(obs)
+                                            
+                                        obs.value_numeric = val
+                                        obs.recorded_at = now
+                                        
+                            db.commit()
+                            st.rerun()
+
                 st.markdown('</div>', unsafe_allow_html=True)
             
             companies_in_set = [cl.organization for cl in cset.organization_links if cl.included and cl.organization]
