@@ -209,7 +209,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                     "ownership_type": ownership,
                                     "organization_type": org_type,
                                     "parameters": parameters,
-                                    "canonical_source_name": comp.get("canonical_source_name")
+                                    "canonical_source_name": comp.get("canonical_source_name"),
+                                    "source_url": comp.get("source_url")
                                 })
                     
                     needs_rerun = True
@@ -227,21 +228,28 @@ if prompt or st.session_state.get("manual_proceed", False):
                             for comp in st.session_state.pending_companies:
                                 with st.status(f"Processing {comp['name']}...", expanded=True) as status:
                                     try:
-                                        st.write("Creating database record...")
-                                        org = create_company(
-                                            db=db,
-                                            name=comp["name"],
-                                            domain=comp["domain"],
-                                            description=comp["description"],
-                                            ticker_symbol=comp.get("ticker_symbol"),
-                                            stock_exchange=comp.get("stock_exchange"),
-                                            ownership_type=comp.get("ownership_type"),
-                                            organization_type=comp.get("organization_type", "COMPANY"),
-                                            parameters=comp.get("parameters", {})
-                                        )
-                                        # Must commit here so the augmentation pipeline (which uses a new session) can see the org!
-                                        db.commit()
-                                        created_orgs.append(comp["name"])
+                                        existing_org = find_existing_company(db, comp["name"], comp.get("domain"))
+                                        if existing_org:
+                                            org = existing_org
+                                            st.write(f"Company {comp['name']} already exists. Skipping creation.")
+                                            # We will still run augmentation if requested below, and append to created_orgs so it shows success
+                                            created_orgs.append(comp["name"])
+                                        else:
+                                            st.write("Creating database record...")
+                                            org = create_company(
+                                                db=db,
+                                                name=comp["name"],
+                                                domain=comp.get("domain"),
+                                                description=comp.get("description"),
+                                                ticker_symbol=comp.get("ticker_symbol"),
+                                                stock_exchange=comp.get("stock_exchange"),
+                                                ownership_type=comp.get("ownership_type"),
+                                                organization_type=comp.get("organization_type", "COMPANY"),
+                                                parameters=comp.get("parameters", {})
+                                            )
+                                            # Must commit here so the augmentation pipeline (which uses a new session) can see the org!
+                                            db.commit()
+                                            created_orgs.append(comp["name"])
                                         
                                         # Link canonical source if provided
                                         source_name = comp.get("canonical_source_name")
@@ -249,11 +257,11 @@ if prompt or st.session_state.get("manual_proceed", False):
                                             from sqlalchemy import func
                                             source = db.query(Source).filter(func.lower(Source.name) == source_name.lower()).first()
                                             if not source:
-                                                source = Source(name=source_name, source_type="webpage")
+                                                source = Source(name=source_name, url=comp.get("source_url"), source_type="webpage")
                                                 db.add(source)
                                                 db.flush()
                                             
-                                            link = OrganizationSourceLink(organization_id=org.id, source_id=source.id)
+                                            link = OrganizationSourceLink(organization_id=org.id, source_id=source.id, source_url=comp.get("source_url"))
                                             db.add(link)
                                             db.commit()
                                         
@@ -356,10 +364,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                 if not comp_name:
                                                     continue
                                                     
-                                                org = db.query(Organization).filter(
-                                                    (Organization.name.ilike(f"%{comp_name}%")) | 
-                                                    (Organization.ticker.ilike(f"{comp_name}"))
-                                                ).first()
+                                                org = find_existing_company(db, comp_name, comp_domain)
+                                                if not org:
+                                                    org = db.query(Organization).filter(
+                                                        (Organization.name.ilike(f"%{comp_name}%")) | 
+                                                        (Organization.ticker.ilike(f"{comp_name}"))
+                                                    ).first()
                                                 
                                                 if not org:
                                                     log_detail(f"Company '{comp_name}' not found. Creating it...")
@@ -432,10 +442,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                 if not comp_name:
                                                     continue
                                                     
-                                                org = db.query(Organization).filter(
-                                                    (Organization.name.ilike(f"%{comp_name}%")) | 
-                                                    (Organization.ticker.ilike(f"{comp_name}"))
-                                                ).first()
+                                                org = find_existing_company(db, comp_name, comp_domain)
+                                                if not org:
+                                                    org = db.query(Organization).filter(
+                                                        (Organization.name.ilike(f"%{comp_name}%")) | 
+                                                        (Organization.ticker.ilike(f"{comp_name}"))
+                                                    ).first()
                                                 
                                                 if not org:
                                                     log_detail(f"Company '{comp_name}' not found. Creating it...")
@@ -509,7 +521,9 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         details.append(msg)
                                     
                                     def get_or_create(db, name):
-                                        org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
+                                        org = find_existing_company(db, name)
+                                        if not org:
+                                            org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
                                         if not org:
                                             log_detail(f"Creating missing company '{name}'...")
                                             org = create_company(db=db, name=name, created_by="AgenticUploads")
@@ -524,6 +538,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         notes = tx_details.get("notes")
                                         date_str = tx_details.get("date")
                                         year = tx_details.get("year")
+                                        source_name = tx_details.get("source_name")
+                                        source_url = tx_details.get("source_url")
+                                        
+                                        if source_name or source_url:
+                                            source_text = f"Source: {source_name or 'Provided URL'} {source_url or ''}".strip()
+                                            notes = f"{notes}\n{source_text}" if notes else source_text
                                         
                                         if not acq_name or not tgt_name:
                                             continue
@@ -613,7 +633,9 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         details.append(msg)
                                     
                                     def get_or_create(db, name):
-                                        org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
+                                        org = find_existing_company(db, name)
+                                        if not org:
+                                            org = db.query(Organization).filter(Organization.name.ilike(f"%{name}%")).first()
                                         if not org:
                                             log_detail(f"Creating missing company '{name}'...")
                                             org = create_company(db=db, name=name, created_by="AgenticUploads")
@@ -628,6 +650,12 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         market_name = fin_details.get("market_name")
                                         segment_name = fin_details.get("segment_name") or "Financing Comps"
                                         date_str = fin_details.get("date")
+                                        source_name = fin_details.get("source_name")
+                                        source_url = fin_details.get("source_url")
+                                        
+                                        source_notes = ""
+                                        if source_name or source_url:
+                                            source_notes = f"Source: {source_name or 'Provided URL'} {source_url or ''}".strip()
                                         
                                         if not company_name or not round_name:
                                             continue
@@ -653,7 +681,8 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                 financing_round_id=fin.id,
                                                 fact_type="amount_raised",
                                                 value_numeric=amount,
-                                                certainty="announced"
+                                                certainty="announced",
+                                                notes=source_notes if source_notes else None
                                             )
                                             db.add(fact)
                                         

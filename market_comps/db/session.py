@@ -7,11 +7,21 @@ from contextlib import contextmanager
 
 def get_database_url(direct: bool = False) -> str:
     """Read DB URL from st.secrets or fallback to simple parsing of secrets.toml for Alembic."""
+    def normalize_url(u: str) -> str:
+        if not u: return u
+        if u.startswith("postgres://"):
+            return u.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif u.startswith("postgresql://"):
+            return u.replace("postgresql://", "postgresql+psycopg2://", 1)
+        elif u.startswith("postgresql+psycopg://"):
+            return u.replace("postgresql+psycopg://", "postgresql+psycopg2://", 1)
+        return u
+
     try:
         import streamlit as st
         url = st.secrets.get("SUPABASE_DIRECT_URL" if direct else "SUPABASE_URL")
         if url:
-            return url
+            return normalize_url(url)
     except Exception:
         pass
     
@@ -22,9 +32,9 @@ def get_database_url(direct: bool = False) -> str:
         key = "SUPABASE_DIRECT_URL" if direct else "SUPABASE_URL"
         match = re.search(fr'{key}\s*=\s*"([^"]+)"', content)
         if match:
-            return match.group(1)
+            return normalize_url(match.group(1))
             
-    return os.environ.get("SUPABASE_DIRECT_URL" if direct else "SUPABASE_URL", "")
+    return normalize_url(os.environ.get("SUPABASE_DIRECT_URL" if direct else "SUPABASE_URL", ""))
 
 # We use the standard URL for the app engine
 url = get_database_url(direct=False)

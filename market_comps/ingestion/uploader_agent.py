@@ -35,6 +35,8 @@ If the text describes an investment firm, VC, PE firm, or similar, set organizat
 
 When validation rules are provided, you MUST adhere to them. If a field listed in `required_fields` is missing or cannot be inferred from the text, you MUST output a `clarify` action to ask the user for it, and DO NOT output an `extract` action.
 If `extract_parameters` is provided, you should attempt to extract those specific fields into the `parameters` dictionary.
+If the user mentions a specific source or provides a source URL (e.g., a LinkedIn post), extract it into `canonical_source_name` and `source_url`.
+For transactions and financings, any extra columns or details provided (like "capabilities acquired") MUST be summarized and placed in the `notes` field.
 
 IMPORTANT: You MUST ONLY reply with a JSON object format matching the required schema. Do not include markdown formatting or extra text.
 You can return MULTIPLE operations in a single response to satisfy complex user intents (e.g., extracting a company and adding it to a market map and adding a transaction).
@@ -79,6 +81,10 @@ ACTION_SCHEMA = {
                                 "canonical_source_name": {
                                     "type": ["string", "null"],
                                     "description": "If the user mentions a specific source they found this from (e.g. 'CT Business Registry', 'Luma Demo Day'), extract it here. Use the closest matching valid canonical source if you recognize it."
+                                },
+                                "source_url": {
+                                    "type": ["string", "null"],
+                                    "description": "The URL of the source if provided by the user."
                                 }
                             },
                             "required": ["name"]
@@ -140,8 +146,10 @@ ACTION_SCHEMA = {
                                 "target": {"type": "string"},
                                 "price": {"type": ["number", "null"], "description": "The price of the transaction, if specified (e.g. 500000000 for 500M)."},
                                 "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
-                                "notes": {"type": ["string", "null"]},
-                                "date": {"type": ["string", "null"], "description": "Date of the transaction (YYYY-MM-DD format), if provided."}
+                                "notes": {"type": ["string", "null"], "description": "Any additional context, or extra columns provided (e.g. capabilities acquired)."},
+                                "date": {"type": ["string", "null"], "description": "Date of the transaction (YYYY-MM-DD format), if provided."},
+                                "source_name": {"type": ["string", "null"], "description": "Name of the source if provided."},
+                                "source_url": {"type": ["string", "null"], "description": "URL of the source if provided."}
                             },
                             "required": ["acquirer", "target"]
                         }
@@ -160,7 +168,9 @@ ACTION_SCHEMA = {
                                 "currency": {"type": ["string", "null"], "description": "Currency code like USD."},
                                 "lead_investors": {"type": "array", "items": {"type": "string"}, "description": "List of lead investor names."},
                                 "participating_investors": {"type": "array", "items": {"type": "string"}, "description": "List of participating/other investor names."},
-                                "date": {"type": ["string", "null"], "description": "Date of the round (YYYY-MM-DD format), if provided."}
+                                "date": {"type": ["string", "null"], "description": "Date of the round (YYYY-MM-DD format), if provided."},
+                                "source_name": {"type": ["string", "null"], "description": "Name of the source if provided."},
+                                "source_url": {"type": ["string", "null"], "description": "URL of the source if provided."}
                             },
                             "required": ["company_name", "round_name"]
                         }
