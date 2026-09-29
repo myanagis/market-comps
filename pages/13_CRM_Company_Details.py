@@ -76,11 +76,19 @@ def edit_company_dialog(org):
             founded = st.number_input("Founded Year", value=prof.founded_year if prof and prof.founded_year else None, step=1, placeholder="YYYY")
             
         all_themes = get_all_company_themes(db)
-        selected_themes = st.multiselect("Themes", options=all_themes, default=prof.themes if prof and prof.themes else [])
+        def_themes = prof.themes if prof and prof.themes else []
+        for t in def_themes:
+            if t not in all_themes:
+                all_themes.append(t)
+        selected_themes = st.multiselect("Themes", options=all_themes, default=def_themes)
         new_themes = st.text_input("Add New Themes (comma separated)")
         
         all_sectors = get_all_sectors(db)
-        selected_sectors = st.multiselect("Sectors", options=all_sectors, default=prof.sectors if prof and prof.sectors else [])
+        def_sectors = prof.sectors if prof and prof.sectors else []
+        for s in def_sectors:
+            if s not in all_sectors:
+                all_sectors.append(s)
+        selected_sectors = st.multiselect("Sectors", options=all_sectors, default=def_sectors)
         new_sectors = st.text_input("Add New Sectors (comma separated)")
             
         if st.form_submit_button("Save Changes"):
