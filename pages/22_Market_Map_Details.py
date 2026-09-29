@@ -14,6 +14,55 @@ from market_comps.crm.competitor_manager import (
 )
 from market_comps.integrations.yahoo_finance import YahooFinanceClient
 
+@st.dialog("Edit Segment Companies", width="large")
+def edit_segment_companies_dialog(s_name, links, segments):
+    df_data = []
+    for link in links:
+        comp_org = link.company
+        if not comp_org: continue
+        df_data.append({
+            "_link_id": link.id,
+            "_company_id": link.company_id,
+            "Company (Read Only)": comp_org.display_name,
+            "Segment": s_name,
+            "Differentiation": link.differentiation or ""
+        })
+    df = pd.DataFrame(df_data)
+    
+    with st.form(f"edit_seg_companies_{s_name}"):
+        seg_opts = [s.name for s in segments]
+        edited_df = st.data_editor(
+            df,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "_link_id": None,
+                "_company_id": None,
+                "Company (Read Only)": st.column_config.TextColumn(disabled=True),
+                "Segment": st.column_config.SelectboxColumn(
+                    options=seg_opts,
+                    required=True
+                ),
+                "Differentiation": st.column_config.TextColumn(disabled=False)
+            }
+        )
+        if st.form_submit_button("💾 Save Edits"):
+            from market_comps.db.session import SessionLocal
+            with SessionLocal() as local_db:
+                seg_map = {s.name: s.id for s in segments}
+                for _, row in edited_df.iterrows():
+                    l_id = int(row["_link_id"])
+                    n_seg_id = seg_map.get(row["Segment"])
+                    n_diff = row["Differentiation"]
+                    
+                    link_obj = local_db.query(MarketSegmentCompanyLink).get(l_id)
+                    if link_obj:
+                        link_obj.market_segment_id = n_seg_id
+                        link_obj.differentiation = n_diff
+                local_db.commit()
+            st.success("Changes saved!")
+            st.rerun()
+
 st.set_page_config(page_title="Market Details", page_icon="🗺️", layout="wide")
 
 market_id_str = st.query_params.get("id")
@@ -153,6 +202,8 @@ with get_db_context() as db:
                 st.subheader(f"Companies: {s_name}")
             with col_a:
                 st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
+                if st.button("✏️ Edit Segment", key=f"edit_seg_btn_{s_name.replace(' ', '_')}"):
+                    edit_segment_companies_dialog(s_name, links, segments)
                 with st.popover("➕ Link Org"):
                     with st.form(f"link_company_map_form_{s_name.replace(' ', '_')}"):
                         all_orgs = db.query(Organization).order_by(Organization.name).all()
@@ -234,43 +285,16 @@ with get_db_context() as db:
                 c4.write(val_str)
                 
                 with c5:
-                    with st.popover("✏️"):
-                        with st.form(f"edit_comp_{link.company_id}_{link.market_segment_id}"):
-                            seg_opts = {s.name: s.id for s in segments}
-                            seg_idx = list(seg_opts.values()).index(seg_obj.id) if seg_obj.id in seg_opts.values() else 0
-                            new_seg_name = st.selectbox("Segment", options=list(seg_opts.keys()), index=seg_idx)
-                            new_diff = st.text_area("Differentiation", value=link.differentiation or "")
-                            save_btn = st.form_submit_button("Save")
-                            del_btn = st.form_submit_button("🗑️ Unlink from Segment")
-                            if save_btn:
-                                link_obj = db.query(MarketSegmentCompanyLink).filter_by(
-                                    company_id=link.company_id,
-                                    market_segment_id=link.market_segment_id
-                                ).first()
-                                if link_obj:
-                                    new_seg_id = seg_opts[new_seg_name]
-                                    if new_seg_id != link.market_segment_id:
-                                        db.delete(link_obj)
-                                        db.flush()
-                                        new_link = MarketSegmentCompanyLink(
-                                            company_id=link.company_id,
-                                            market_segment_id=new_seg_id,
-                                            differentiation=new_diff
-                                        )
-                                        db.add(new_link)
-                                    else:
-                                        link_obj.differentiation = new_diff
-                                    db.commit()
-                                    st.rerun()
-                            elif del_btn:
-                                link_obj = db.query(MarketSegmentCompanyLink).filter_by(
-                                    company_id=link.company_id,
-                                    market_segment_id=link.market_segment_id
-                                ).first()
-                                if link_obj:
-                                    db.delete(link_obj)
-                                    db.commit()
-                                    st.rerun()
+                    with st.form(f"unlink_comp_{link.company_id}_{link.market_segment_id}", border=False):
+                        if st.form_submit_button("🗑️"):
+                            link_obj = db.query(MarketSegmentCompanyLink).filter_by(
+                                company_id=link.company_id,
+                                market_segment_id=link.market_segment_id
+                            ).first()
+                            if link_obj:
+                                db.delete(link_obj)
+                                db.commit()
+                                st.rerun()
     else:
         st.info("No segments exist in this market yet. Add a segment to begin mapping organizations.")
 
