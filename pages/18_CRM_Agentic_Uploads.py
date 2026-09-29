@@ -186,9 +186,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                             # Check if exists
                             existing = find_existing_company(db, name, domain)
                             if existing:
-                                st.warning(f"Company '{name}' already exists in the CRM. Skipping.")
-                                continue
-                                
+                                st.info(f"Company '{name}' already exists. It will be updated when you proceed.")
                             # Check if already in pending list
                             already_pending = False
                             for p in st.session_state.pending_companies:
