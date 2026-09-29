@@ -616,15 +616,28 @@ def display_company_details(company_id):
                     
                 investors_str = " | ".join(inv_strs) if inv_strs else "None recorded"
                 
+                source_urls = set()
+                for fact in rnd.facts:
+                    if fact.source_document and fact.source_document.source_url:
+                        source_urls.add(fact.source_document.source_url)
+                
                 rounds_data.append({
                     "Date": date_str,
                     "Round": rnd.round_name or "Unknown Round",
                     "Amount Raised": fact_amt,
                     "Investors": investors_str,
-                    "Status": rnd.status.upper() if rnd.status else ""
+                    "Status": rnd.status.upper() if rnd.status else "",
+                    "Source": list(source_urls)[0] if source_urls else None
                 })
                 
-            st.dataframe(rounds_data, hide_index=True, use_container_width=True)
+            st.dataframe(
+                rounds_data, 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    "Source": st.column_config.LinkColumn("Source", display_text="🔗 Link")
+                }
+            )
         else:
             st.info("No financing rounds recorded for this company.")
 
