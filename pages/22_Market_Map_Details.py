@@ -35,6 +35,7 @@ def edit_segment_companies_dialog(s_name, links, segments):
             df,
             hide_index=True,
             use_container_width=True,
+            num_rows="dynamic",
             column_config={
                 "_link_id": None,
                 "_company_id": None,
@@ -50,15 +51,29 @@ def edit_segment_companies_dialog(s_name, links, segments):
             from market_comps.db.session import SessionLocal
             with SessionLocal() as local_db:
                 seg_map = {s.name: s.id for s in segments}
+                edited_ids = set()
+                
+                # Update existing rows
                 for _, row in edited_df.iterrows():
-                    l_id = int(row["_link_id"])
-                    n_seg_id = seg_map.get(row["Segment"])
-                    n_diff = row["Differentiation"]
-                    
-                    link_obj = local_db.query(MarketSegmentCompanyLink).get(l_id)
+                    if pd.notnull(row["_link_id"]):
+                        l_id = int(row["_link_id"])
+                        edited_ids.add(l_id)
+                        n_seg_id = seg_map.get(row["Segment"])
+                        n_diff = row["Differentiation"]
+                        
+                        link_obj = local_db.query(MarketSegmentCompanyLink).get(l_id)
+                        if link_obj:
+                            link_obj.market_segment_id = n_seg_id
+                            link_obj.differentiation = n_diff
+                
+                # Delete removed rows
+                original_ids = set([l.id for l in links])
+                deleted_ids = original_ids - edited_ids
+                for d_id in deleted_ids:
+                    link_obj = local_db.query(MarketSegmentCompanyLink).get(d_id)
                     if link_obj:
-                        link_obj.market_segment_id = n_seg_id
-                        link_obj.differentiation = n_diff
+                        local_db.delete(link_obj)
+                        
                 local_db.commit()
             st.success("Changes saved!")
             st.rerun()
@@ -197,14 +212,14 @@ with get_db_context() as db:
                     grouped_links[s_name].append(link)
             
         for s_name, links in grouped_links.items():
-            col_h, col_a = st.columns([0.85, 0.15])
+            col_h, col_e, col_l = st.columns([0.7, 0.15, 0.15], vertical_alignment="bottom")
             with col_h:
                 st.subheader(f"Companies: {s_name}")
-            with col_a:
-                st.markdown('<div class="header-action-container">', unsafe_allow_html=True)
-                if st.button("✏️ Edit Segment", key=f"edit_seg_btn_{s_name.replace(' ', '_')}"):
+            with col_e:
+                if st.button("✏️ Edit Segment", key=f"edit_seg_btn_{s_name.replace(' ', '_')}", use_container_width=True):
                     edit_segment_companies_dialog(s_name, links, segments)
-                with st.popover("➕ Link Org"):
+            with col_l:
+                with st.popover("➕ Link Org", use_container_width=True):
                     with st.form(f"link_company_map_form_{s_name.replace(' ', '_')}"):
                         all_orgs = db.query(Organization).order_by(Organization.name).all()
                         org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
