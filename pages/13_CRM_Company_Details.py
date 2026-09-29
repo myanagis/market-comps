@@ -475,7 +475,7 @@ def display_company_details(company_id):
             ca_segs_map = {cas.market_segment_id: cas for cas in ca.analysis_segments} if ca else {}
             my_seg_links_map = {link.market_segment_id: link for link in my_segs if link.market_segment_id}
             
-            seg_df_data = []
+            _seg_df_data_list = []
             if market_segments:
                 for seg_obj in market_segments:
                     link = my_seg_links_map.get(seg_obj.id)
@@ -484,7 +484,7 @@ def display_company_details(company_id):
                     threat_val = ca_seg.threat_level if (ca_seg and ca_seg.threat_level in THREAT_LEVELS) else "N/A"
                     notes_val = ca_seg.analysis_notes if (ca_seg and ca_seg.analysis_notes) else ""
                     
-                    seg_df_data.append({
+                    _seg_df_data_list.append({
                         "_seg_id": seg_obj.id,
                         "Segment (Read Only)": seg_obj.name,
                         "Differentiation / Info (Read Only)": link.differentiation if link else "",
@@ -492,7 +492,7 @@ def display_company_details(company_id):
                         "Threat Notes": notes_val
                     })
                 
-            df_seg = pd.DataFrame(seg_df_data)
+            df_seg = pd.DataFrame(_seg_df_data_list)
             
             edited_seg_df = st.data_editor(
                 df_seg,
