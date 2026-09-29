@@ -353,6 +353,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                     comp_ticker = None
                                                     comp_exchange = None
                                                     comp_ownership = None
+                                                    comp_diff = None
                                                 else:
                                                     comp_name = comp_obj.get("name")
                                                     comp_domain = comp_obj.get("domain")
@@ -360,6 +361,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                     comp_ticker = comp_obj.get("ticker_symbol")
                                                     comp_exchange = comp_obj.get("stock_exchange")
                                                     comp_ownership = comp_obj.get("ownership_type")
+                                                    comp_diff = comp_obj.get("differentiation_notes")
                                                     
                                                 if not comp_name:
                                                     continue
@@ -398,7 +400,9 @@ if prompt or st.session_state.get("manual_proceed", False):
                                                         threading.Thread(target=run_augmentation, args=(org.id,), daemon=True).start()
                                                         
                                                 from market_comps.crm.competitor_manager import add_company_to_segment
-                                                add_company_to_segment(db, org.id, seg.id, notes, False)
+                                                # Use the company-specific differentiation if available, otherwise fallback to the group-level notes
+                                                final_diff = comp_diff if comp_diff else notes
+                                                add_company_to_segment(db, org.id, seg.id, final_diff, False)
                                                 added_count += 1
                                                 
                                             db.commit()

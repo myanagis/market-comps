@@ -422,9 +422,20 @@ def display_company_details(company_id):
         # Determine all markets this company participates in or analyzes
         my_segs = get_company_segments(db, org.id)
         linked_market_ids = {link.market_segment.market_id for link in my_segs if link.market_segment and link.market_segment.market_id}
+        
         ca_list = db.query(CompetitiveAnalysis).filter_by(subject_company_id=org.id).all()
         ca_market_ids = {ca.market_id for ca in ca_list}
-        all_my_market_ids = sorted(list(linked_market_ids | ca_market_ids))
+        
+        from market_comps.db.models import ComparisonSetOrganizationLink, MarketComparisonSetLink
+        cset_links = db.query(MarketComparisonSetLink.market_id).join(
+            ComparisonSetOrganizationLink, 
+            ComparisonSetOrganizationLink.comparison_set_id == MarketComparisonSetLink.comparison_set_id
+        ).filter(
+            ComparisonSetOrganizationLink.organization_id == org.id
+        ).all()
+        cset_market_ids = {r[0] for r in cset_links if r[0]}
+        
+        all_my_market_ids = sorted(list(linked_market_ids | ca_market_ids | cset_market_ids))
 
         all_markets = get_all_markets(db)
 
@@ -737,16 +748,30 @@ def display_company_details(company_id):
         all_txs = list(org.transactions_as_target) + list(org.transactions_as_acquirer)
         if all_txs:
             all_txs_sorted = sorted(all_txs, key=lambda x: x.announced_date or x.created_at, reverse=True)
+            
+            tx_data = []
             for tx in all_txs_sorted:
-                role_label = "Target" if tx.target_company_id == org.id else "Acquirer"
-                with st.expander(f"🤝 {tx.transaction_name} ({tx.transaction_type}) - {role_label} - {tx.status}"):
-                    t_val = f"{tx.currency_code or ''} {tx.transaction_value_numeric or ''} {tx.transaction_value_text or ''}".strip()
-                    if t_val:
-                        st.write(f"**Value:** {t_val}")
-                    if tx.announced_date:
-                        st.write(f"**Announced:** {tx.announced_date.strftime('%Y-%m-%d')}")
-                    if tx.description:
-                        st.write(tx.description)
+                role = "Target" if tx.target_company_id == org.id else "Acquirer"
+                other_party = ""
+                if role == "Target" and tx.acquirer_company:
+                    other_party = tx.acquirer_company.name
+                elif role == "Acquirer" and tx.target_company:
+                    other_party = tx.target_company.name
+                
+                val_str = f"{tx.currency_code or ''} {tx.transaction_value_numeric or ''} {tx.transaction_value_text or ''}".strip()
+                notes_str = "\n".join(filter(None, [tx.description, tx.notes]))
+                
+                tx_data.append({
+                    "Date": tx.announced_date.strftime('%Y-%m-%d') if tx.announced_date else "",
+                    "Type": tx.transaction_type,
+                    "Role": role,
+                    "Other Party": other_party,
+                    "Value": val_str,
+                    "Status": tx.status,
+                    "Notes": notes_str
+                })
+            
+            st.dataframe(pd.DataFrame(tx_data), use_container_width=True, hide_index=True)
         else:
             st.info("No transactions recorded for this company.")
 

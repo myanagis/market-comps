@@ -124,7 +124,8 @@ ACTION_SCHEMA = {
                                         "description": {"type": ["string", "null"]},
                                         "ticker_symbol": {"type": ["string", "null"]},
                                         "stock_exchange": {"type": ["string", "null"]},
-                                        "ownership_type": {"type": ["string", "null"]}
+                                        "ownership_type": {"type": ["string", "null"]},
+                                        "differentiation_notes": {"type": ["string", "null"], "description": "Specific differentiation or wedge notes for this company."}
                                     },
                                     "required": ["name"]
                                 },
