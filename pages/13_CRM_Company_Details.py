@@ -573,9 +573,15 @@ def display_company_details(company_id):
         st.divider()
         st.subheader("💸 Financing Rounds")
         if org.financing_rounds:
-            from datetime import datetime as dt_cls
+            from datetime import date, datetime
             def get_rnd_sort_key(r):
-                return r.announced_date or r.created_at or dt_cls.min
+                if r.announced_date:
+                    if isinstance(r.announced_date, datetime): return r.announced_date.date()
+                    return r.announced_date
+                if r.created_at:
+                    if isinstance(r.created_at, datetime): return r.created_at.date()
+                    return r.created_at
+                return date.min
                 
             rounds_sorted = sorted(org.financing_rounds, key=get_rnd_sort_key, reverse=True)
             
