@@ -481,52 +481,40 @@ def display_company_details(company_id):
                         "Threat Notes": notes_val
                     })
                 
-                df_seg = pd.DataFrame(seg_df_data)
-                
-                edited_seg_df = st.data_editor(
-                    df_seg,
-                    hide_index=True,
-                    use_container_width=True,
-                    column_config={
-                        "_seg_id": None,
-                        "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
-                        "Differentiation / Info (Read Only)": st.column_config.TextColumn(disabled=True),
-                        "Threat Level": st.column_config.SelectboxColumn(
-                            options=THREAT_LEVELS,
-                            required=True
-                        ),
-                        "Threat Notes": st.column_config.TextColumn(disabled=False)
-                    },
-                    key=f"data_editor_seg_{ca.id if ca else m_id}"
-                )
-                
-                col_sb1, col_sb2 = st.columns([1, 1])
-                with col_sb1:
-                    if st.button("💾 Save Segment Edits", key=f"save_seg_btn_{ca.id if ca else m_id}"):
-                        from market_comps.crm.competitor_manager import add_competitive_analysis_segment
-                        for _, row in edited_seg_df.iterrows():
-                            s_id = int(row["_seg_id"])
-                            t_val = row["Threat Level"]
-                            n_val = row["Threat Notes"]
-                            add_competitive_analysis_segment(db, ca.id, s_id, t_val, n_val)
-                        db.commit()
-                        st.success("Segment edits saved!")
-                        st.rerun()
-                with col_sb2:
-                    with st.popover("➕ Add Segment to Market"):
-                        with st.form(f"add_seg_market_{ca.id if ca else m_id}"):
-                            s_name = st.text_input("Segment Name")
-                            s_desc = st.text_area("Description")
-                            if st.form_submit_button("Create Segment"):
-                                if s_name:
-                                    create_market_segment(db, m_id, s_name, s_desc)
-                                    db.commit()
-                                    st.success(f"Segment '{s_name}' created!")
-                                    st.rerun()
-            else:
-                st.info("No segments defined in this market yet.")
+            df_seg = pd.DataFrame(seg_df_data)
+            
+            edited_seg_df = st.data_editor(
+                df_seg,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "_seg_id": None,
+                    "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
+                    "Differentiation / Info (Read Only)": st.column_config.TextColumn(disabled=True),
+                    "Threat Level": st.column_config.SelectboxColumn(
+                        options=THREAT_LEVELS,
+                        required=True
+                    ),
+                    "Threat Notes": st.column_config.TextColumn(disabled=False)
+                },
+                key=f"data_editor_seg_{ca.id if ca else m_id}"
+            )
+            
+            col_sb1, col_sb2 = st.columns([1, 1])
+            with col_sb1:
+                if st.button("💾 Save Segment Edits", key=f"save_seg_btn_{ca.id if ca else m_id}"):
+                    from market_comps.crm.competitor_manager import add_competitive_analysis_segment
+                    for _, row in edited_seg_df.iterrows():
+                        s_id = int(row["_seg_id"])
+                        t_val = row["Threat Level"]
+                        n_val = row["Threat Notes"]
+                        add_competitive_analysis_segment(db, ca.id, s_id, t_val, n_val)
+                    db.commit()
+                    st.success("Segment edits saved!")
+                    st.rerun()
+            with col_sb2:
                 with st.popover("➕ Add Segment to Market"):
-                    with st.form(f"add_seg_market_empty_{ca.id if ca else m_id}"):
+                    with st.form(f"add_seg_market_{ca.id if ca else m_id}"):
                         s_name = st.text_input("Segment Name")
                         s_desc = st.text_area("Description")
                         if st.form_submit_button("Create Segment"):
