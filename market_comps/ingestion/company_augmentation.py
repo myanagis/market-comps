@@ -340,6 +340,7 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
     prompt = f"""
     Extract the following company basics from the text.
     IMPORTANT: Only extract a field if you are highly certain it is correct based explicitly on the text. If you are unsure or the information is not present, return null for that field. Do not hallucinate or guess.
+    EXCEPTION: For `is_public` and `ticker_symbol`, you MAY and SHOULD use your pre-trained knowledge to identify well-known public companies (e.g. if the company is "FactSet", you should output is_public: true and ticker_symbol: "FDS" even if it's not explicitly in the text).
     
     Fields:
     - website: The company's primary website URL
