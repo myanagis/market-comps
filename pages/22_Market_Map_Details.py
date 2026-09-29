@@ -291,12 +291,12 @@ with get_db_context() as db:
                     c1.markdown(
                         f'<div style="display: flex; align-items: center; gap: 0.5rem;">'
                         f'<img src="{logo_url}" width="24" height="24" style="border-radius: 4px; object-fit: contain;" onerror="this.style.display=\'none\'"/>'
-                        f'<a href="/CRM_Company_Details?id={comp_org.id}" target="_self" style="text-decoration: none; font-weight: 500;">{comp_org.display_name}</a>'
+                        f'<a href="/company?id={comp_org.id}" target="_self" style="text-decoration: none; font-weight: 500;">{comp_org.display_name}</a>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
                 else:
-                    c1.markdown(f"[{comp_org.display_name}](/CRM_Company_Details?id={comp_org.id})")
+                    c1.markdown(f"[{comp_org.display_name}](/company?id={comp_org.id})")
                 c2.write(link.differentiation or "")
                 c3.write(raised_str)
                 c4.write(val_str)
