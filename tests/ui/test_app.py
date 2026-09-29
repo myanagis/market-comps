@@ -16,7 +16,7 @@ def test_app_startup():
     assert not at.exception, f"App raised an exception: {at.exception[0]}"
     
     # Check that the basic layout or expected static text rendered
-    assert "Admin Login" in [exp.label for exp in at.expanders], "Expected Admin Login expander to exist on the sidebar"
+    assert "🔑 Admin Login" in [exp.label for exp in at.expander], "Expected Admin Login expander to exist on the sidebar"
 
 def test_bypass_login_renders_sidebar():
     """
