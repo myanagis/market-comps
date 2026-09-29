@@ -250,7 +250,18 @@ def display_company_details(company_id):
     with st.container(border=True):
         col_h1, col_h2 = st.columns([5, 1])
         with col_h1:
-            st.subheader(f"🏢 {org.name}")
+            if org.primary_domain:
+                logo_url = f"https://cdn.brandfetch.io/domain/{org.primary_domain}?c=1idKA4AYTsIYh2Mtoxn"
+                st.markdown(
+                    f'<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">'
+                    f'<img src="{logo_url}" width="48" height="48" style="border-radius: 6px; object-fit: contain;" onerror="this.style.display=\'none\'"/>'
+                    f'<h3 style="margin: 0; padding: 0;">{org.name}</h3>'
+                    f'</div>', 
+                    unsafe_allow_html=True
+                )
+            else:
+                st.subheader(f"🏢 {org.name}")
+            
             date_added = org.created_at.strftime('%B %d, %Y') if org.created_at else "Unknown Date"
             st.caption(f"Added on {date_added}")
         with col_h2:
@@ -453,8 +464,8 @@ def display_company_details(company_id):
             ca_segs_map = {cas.market_segment_id: cas for cas in ca.analysis_segments} if ca else {}
             my_seg_links_map = {link.market_segment_id: link for link in my_segs if link.market_segment_id}
             
+            seg_df_data = []
             if market_segments:
-                seg_df_data = []
                 for seg_obj in market_segments:
                     link = my_seg_links_map.get(seg_obj.id)
                     ca_seg = ca_segs_map.get(seg_obj.id)

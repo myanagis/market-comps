@@ -218,7 +218,17 @@ with get_db_context() as db:
                             else: val_str = f"${val:,.0f}{date_str}"
                 
                 c1, c2, c3, c4, c5 = st.columns([2, 3, 1.5, 1.5, 0.5])
-                c1.markdown(f"[{comp_org.name}](/company?id={comp_org.id})")
+                if comp_org.primary_domain:
+                    logo_url = f"https://cdn.brandfetch.io/domain/{comp_org.primary_domain}?c=1idKA4AYTsIYh2Mtoxn"
+                    c1.markdown(
+                        f'<div style="display: flex; align-items: center; gap: 0.5rem;">'
+                        f'<img src="{logo_url}" width="24" height="24" style="border-radius: 4px; object-fit: contain;" onerror="this.style.display=\'none\'"/>'
+                        f'<a href="/CRM_Company_Details?id={comp_org.id}" target="_self" style="text-decoration: none; font-weight: 500;">{comp_org.name}</a>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    c1.markdown(f"[{comp_org.name}](/CRM_Company_Details?id={comp_org.id})")
                 c2.write(link.differentiation or "")
                 c3.write(raised_str)
                 c4.write(val_str)
