@@ -475,6 +475,7 @@ def extract_investments(documents: List[Dict], target_company_name: str = "") ->
     - investor_name: The name of the firm or person who invested
     - round_type: e.g. "Series A", "Seed", "Venture Round"
     - total_round_amount: The total amount raised in the round (e.g. "$10M")
+    - post_money_valuation: The post-money valuation of the company after the round (e.g. "$100M"), if mentioned
     - firm_investment_amount: The specific amount this investor contributed, if mentioned (e.g. "$2M")
     - investment_date: When the round happened (YYYY-MM-DD or YYYY-01-01)
     - is_lead: boolean, true if this investor lead the round
@@ -497,6 +498,7 @@ def extract_investments(documents: List[Dict], target_company_name: str = "") ->
                         "investor_name": {"type": "string"},
                         "round_type": {"type": "string"},
                         "total_round_amount": {"type": ["string", "null"]},
+                        "post_money_valuation": {"type": ["string", "null"]},
                         "firm_investment_amount": {"type": ["string", "null"]},
                         "investment_date": {"type": ["string", "null"]},
                         "is_lead": {"type": "boolean"},
@@ -777,9 +779,25 @@ def run_extraction_on_documents(db, org, docs_data, run):
             if inv.get("total_round_amount"):
                 fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=source_doc_id)
                 db.add(fact)
+            if inv.get("post_money_valuation"):
+                fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="post_money_valuation", value_text=inv.get("post_money_valuation"), certainty="reported", source_id=source_doc_id)
+                db.add(fact)
         elif not rnd.announced_date and inv_date:
             rnd.announced_date = inv_date
             db.commit()
+            
+        if rnd:
+            if inv.get("total_round_amount"):
+                existing_amt = db.query(FinancingRoundFact).filter_by(financing_round_id=rnd.id, fact_type="amount_raised").first()
+                if not existing_amt:
+                    fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=source_doc_id)
+                    db.add(fact)
+            if inv.get("post_money_valuation"):
+                existing_val = db.query(FinancingRoundFact).filter_by(financing_round_id=rnd.id, fact_type="post_money_valuation").first()
+                if not existing_val:
+                    fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="post_money_valuation", value_text=inv.get("post_money_valuation"), certainty="reported", source_id=source_doc_id)
+                    db.add(fact)
+            db.flush()
 
         existing_rinv = db.query(RoundInvestor).filter_by(
             financing_round_id=rnd.id,
