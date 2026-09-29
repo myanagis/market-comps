@@ -204,6 +204,9 @@ with get_db_context() as db:
     if segments:
         from market_comps.db.models import FinancingRound, FinancingRoundFact, MetricObservation, MetricType
         
+        global_all_orgs = db.query(Organization).order_by(Organization.name).all()
+        global_org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in global_all_orgs}
+        
         grouped_links = {s.name: [] for s in segments}
         for link in segment_links:
             if link.market_segment:
@@ -221,8 +224,7 @@ with get_db_context() as db:
             with col_l:
                 with st.popover("➕ Link Org", use_container_width=True):
                     with st.form(f"link_company_map_form_{s_name.replace(' ', '_')}"):
-                        all_orgs = db.query(Organization).order_by(Organization.name).all()
-                        org_opts = {f"{o.name} ({o.organization_type or 'Company'})": o.id for o in all_orgs}
+                        org_opts = global_org_opts
                         seg_opts = {s.name: s.id for s in segments}
                         seg_idx = list(seg_opts.keys()).index(s_name) if s_name in seg_opts else 0
                         if org_opts and seg_opts:
@@ -626,8 +628,7 @@ with get_db_context() as db:
             col_c1, col_c2 = st.columns([1, 1])
             with col_c1:
                 with st.popover("➕ Add organization"):
-                    all_orgs = db.query(Organization).filter(Organization.organization_type != "Investor").order_by(Organization.name).all()
-                    org_opts = {o.name: o.id for o in all_orgs}
+                    org_opts = {name: oid for name, oid in global_org_opts.items() if "Investor" not in name}
                     with st.form(f"add_comp_cset_{cset.id}"):
                         comp_sel = st.selectbox("Organization", options=list(org_opts.keys()))
                         if st.form_submit_button("Add to Set"):
