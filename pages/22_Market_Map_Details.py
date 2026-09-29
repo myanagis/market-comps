@@ -375,7 +375,8 @@ with get_db_context() as db:
                     if st.button("📈 Pull Market Data", key=f"pull_yf_{cset.id}"):
                         with st.spinner("Fetching data from Yahoo Finance..."):
                             from market_comps.metrics_fetcher import MetricsFetcher
-                            from market_comps.db.models import CompanyCandidate, Organization
+                            from market_comps.models import CompanyCandidate
+                            from market_comps.db.models import Organization
                             fetcher = MetricsFetcher(max_fetch_workers=4)
                             
                             # Convert to candidates
@@ -385,8 +386,8 @@ with get_db_context() as db:
                                     candidates.append(
                                         CompanyCandidate(
                                             name=link.organization.display_name,
-                                            ticker=link.organization.ticker_symbol or "",
-                                            exchange=link.organization.stock_exchange,
+                                            ticker=link.organization.ticker or "",
+                                            exchange=link.organization.exchange,
                                             is_public=True,
                                             confidence=1.0,
                                             reasoning=""
