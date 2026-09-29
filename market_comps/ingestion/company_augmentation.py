@@ -755,10 +755,21 @@ def run_extraction_on_documents(db, org, docs_data, run):
         if doc_idx is not None and 0 <= doc_idx < len(docs_data):
             source_doc_id = docs_data[doc_idx].get("db_id")
             
+        date_str = inv.get("investment_date")
+        inv_date = None
+        if date_str:
+            try:
+                # Handle YYYY-MM or YYYY if provided
+                if len(date_str) == 4: date_str += "-01-01"
+                elif len(date_str) == 7: date_str += "-01"
+                inv_date = datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                pass
+
         rname = inv.get("round_type") or "Venture Round"
         rnd = db.query(FinancingRound).filter_by(company_id=org.id, round_name=rname).first()
         if not rnd:
-            rnd = FinancingRound(company_id=org.id, round_name=rname, status="closed")
+            rnd = FinancingRound(company_id=org.id, round_name=rname, status="closed", announced_date=inv_date)
             db.add(rnd)
             db.flush()
             db.add(AuditTrail(canonical_entity_type="FINANCING_ROUND", canonical_entity_id=str(rnd.id), mutation_type="CREATE", source="WEB_AUGMENTATION", created_by="SYSTEM"))
@@ -766,14 +777,9 @@ def run_extraction_on_documents(db, org, docs_data, run):
             if inv.get("total_round_amount"):
                 fact = FinancingRoundFact(financing_round_id=rnd.id, fact_type="amount_raised", value_text=inv.get("total_round_amount"), certainty="reported", source_id=source_doc_id)
                 db.add(fact)
-
-        date_str = inv.get("investment_date")
-        inv_date = None
-        if date_str:
-            try:
-                inv_date = datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
-                pass
+        elif not rnd.announced_date and inv_date:
+            rnd.announced_date = inv_date
+            db.commit()
 
         existing_rinv = db.query(RoundInvestor).filter_by(
             financing_round_id=rnd.id,

@@ -47,7 +47,7 @@ ACTION_SCHEMA = {
     "properties": {
         "message": {
             "type": "string",
-            "description": "Conversational reply or question to the user. Explain what you are doing or what you need."
+            "description": "Conversational reply or question to the user. You MUST explicitly state what actions you are taking (e.g. 'I am extracting the financing round for X' or 'I am passing the URL Y to the scraper to process for company Z')."
         },
         "operations": {
             "type": "array",

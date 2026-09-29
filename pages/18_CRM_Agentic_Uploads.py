@@ -753,6 +753,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                 status.update(label=f"Failed to record financing: {str(e)}", state="error", expanded=True)
                                 st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Error: {str(e)}"})
                     needs_rerun = True
+                elif action_type == "process_link":
                     url = action_data.get("url")
                     target_name = action_data.get("target_entity_name")
                     target_type = action_data.get("target_entity_type")
