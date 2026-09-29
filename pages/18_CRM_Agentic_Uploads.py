@@ -217,9 +217,10 @@ if prompt or st.session_state.get("manual_proceed", False):
                     if not st.session_state.pending_companies:
                         st.info("No companies in the pending list to create.")
                     else:
-                        st.write("### Creating Companies...")
+                        st.write("### Processing Companies...")
                         
                         created_orgs = []
+                        updated_orgs = []
                         failed_orgs = []
                         
                         with get_db_context() as db:
@@ -230,8 +231,7 @@ if prompt or st.session_state.get("manual_proceed", False):
                                         if existing_org:
                                             org = existing_org
                                             st.write(f"Company {comp['name']} already exists. Skipping creation.")
-                                            # We will still run augmentation if requested below, and append to created_orgs so it shows success
-                                            created_orgs.append(comp["name"])
+                                            updated_orgs.append(comp["name"])
                                         else:
                                             st.write("Creating database record...")
                                             org = create_company(
@@ -291,8 +291,10 @@ if prompt or st.session_state.get("manual_proceed", False):
                         
                         if created_orgs:
                             st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully created {len(created_orgs)} organization(s): {', '.join(created_orgs)}"})
+                        if updated_orgs:
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"✅ Successfully queued {len(updated_orgs)} existing organization(s) for update: {', '.join(updated_orgs)}"})
                         if failed_orgs:
-                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to create {len(failed_orgs)} organization(s):\n" + "\n".join(failed_orgs)})
+                            st.session_state.uploader_messages.append({"role": "assistant", "content": f"❌ Failed to process {len(failed_orgs)} organization(s):\n" + "\n".join(failed_orgs)})
                             
                     needs_rerun = True
                         
