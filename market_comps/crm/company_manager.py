@@ -14,6 +14,7 @@ def find_existing_company(db: Session, name: str, domain: Optional[str] = None) 
     """
     Checks if a company already exists in the database by exact domain match or normalized name match.
     """
+    clean_domain = None
     if domain:
         clean_domain = domain.strip().lower().replace("http://", "").replace("https://", "").replace("www.", "").split('/')[0]
         if clean_domain:
@@ -23,8 +24,10 @@ def find_existing_company(db: Session, name: str, domain: Optional[str] = None) 
                 
     norm_name = normalize_company_name(name)
     if norm_name:
-        org = db.query(Organization).filter(Organization.normalized_name == norm_name).first()
-        if org:
+        orgs = db.query(Organization).filter(Organization.normalized_name == norm_name).all()
+        for org in orgs:
+            if clean_domain and org.primary_domain and org.primary_domain != clean_domain:
+                continue # Domain conflict! It's a different company sharing the same name.
             return org
             
     return None
