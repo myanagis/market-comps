@@ -223,12 +223,12 @@ with get_db_context() as db:
                     c1.markdown(
                         f'<div style="display: flex; align-items: center; gap: 0.5rem;">'
                         f'<img src="{logo_url}" width="24" height="24" style="border-radius: 4px; object-fit: contain;" onerror="this.style.display=\'none\'"/>'
-                        f'<a href="/CRM_Company_Details?id={comp_org.id}" target="_self" style="text-decoration: none; font-weight: 500;">{comp_org.name}</a>'
+                        f'<a href="/CRM_Company_Details?id={comp_org.id}" target="_self" style="text-decoration: none; font-weight: 500;">{comp_org.display_name}</a>'
                         f'</div>',
                         unsafe_allow_html=True
                     )
                 else:
-                    c1.markdown(f"[{comp_org.name}](/CRM_Company_Details?id={comp_org.id})")
+                    c1.markdown(f"[{comp_org.display_name}](/CRM_Company_Details?id={comp_org.id})")
                 c2.write(link.differentiation or "")
                 c3.write(raised_str)
                 c4.write(val_str)
@@ -336,7 +336,7 @@ with get_db_context() as db:
                                 if link.included and link.organization:
                                     candidates.append(
                                         CompanyCandidate(
-                                            name=link.organization.name,
+                                            name=link.organization.display_name,
                                             ticker=link.organization.ticker_symbol or "",
                                             exchange=link.organization.stock_exchange,
                                             is_public=True,
@@ -417,7 +417,7 @@ with get_db_context() as db:
                         import datetime
                         tx = db.query(Transaction).filter_by(target_company_id=comp.id, transaction_type="ACQUISITION").order_by(Transaction.id.desc()).first()
                         
-                        acq_name = tx.acquirer_company.name if tx and tx.acquirer_company else ""
+                        acq_name = tx.acquirer_company.display_name if tx and tx.acquirer_company else ""
                         acq_link = f"/company?id={tx.acquirer_company.id}" if tx and tx.acquirer_company else None
                         
                         val_str = "Undisclosed"
@@ -430,7 +430,7 @@ with get_db_context() as db:
                         date_str = tx.announced_date.strftime("%Y-%m-%d") if tx and tx.announced_date else "Unknown"
                         
                         c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1.5, 1.5, 3, 0.5])
-                        c1.markdown(f"[{comp.name}](/company?id={comp.id})")
+                        c1.markdown(f"[{comp.display_name}](/company?id={comp.id})")
                         if acq_link: c2.markdown(f"[{acq_name}]({acq_link})")
                         else: c2.write(acq_name)
                         c3.write(val_str)
@@ -490,7 +490,7 @@ with get_db_context() as db:
                             if invs: lead_invs = ", ".join([inv.investor.name for inv in invs if inv.investor])
                             
                         c1, c2, c3, c4, c5, c6 = st.columns([2, 1.5, 1.5, 2, 3, 0.5])
-                        c1.markdown(f"[{comp.name}](/company?id={comp.id})")
+                        c1.markdown(f"[{comp.display_name}](/company?id={comp.id})")
                         c2.write(round_name)
                         c3.write(val_str)
                         c4.write(lead_invs)
@@ -536,7 +536,7 @@ with get_db_context() as db:
                     
                     for comp in companies_in_set:
                         c_cols = st.columns(cols)
-                        c_cols[0].markdown(f"[{comp.name}](/company?id={comp.id})")
+                        c_cols[0].markdown(f"[{comp.display_name}](/company?id={comp.id})")
                         c_cols[1].write(comp.ticker or "")
                         
                         obs_list = db.query(MetricObservation).filter_by(

@@ -44,11 +44,11 @@ def get_all_sectors(db):
 @st.dialog("Edit Company")
 def edit_company_dialog(org):
     with st.form("edit_company"):
-        st.write(f"Edit details for **{org.name}**")
+        st.write(f"Edit details for **{org.display_name}**")
         
         col1, col2 = st.columns(2)
         with col1:
-            name = st.text_input("Name", value=org.name or "")
+            name = st.text_input("Name", value=org.display_name or "")
             domain = st.text_input("Domain", value=org.primary_domain or "")
             website = st.text_input("Website URL", value=org.website_url or "")
             linkedin = st.text_input("LinkedIn URL", value=org.linkedin_url or "")
@@ -99,7 +99,7 @@ def edit_company_dialog(org):
                     )
                     setattr(obj, field_name, new_val)
                     
-            check_and_update("ORGANIZATION", org.id, "name", org.name, name, org)
+            check_and_update("ORGANIZATION", org.id, "name", org.display_name, name, org)
             check_and_update("ORGANIZATION", org.id, "primary_domain", org.primary_domain, domain, org)
             check_and_update("ORGANIZATION", org.id, "website_url", org.website_url, website, org)
             check_and_update("ORGANIZATION", org.id, "linkedin_url", org.linkedin_url, linkedin, org)
@@ -227,6 +227,74 @@ def add_transaction_dialog(company_id):
             else:
                 st.error("Transaction Name is required.")
 
+@st.dialog("Edit Segments", width="large")
+def edit_segments_dialog(ca_id, df_seg):
+    with st.form("edit_segments_form"):
+        edited_df = st.data_editor(
+            df_seg,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "_seg_id": None,
+                "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
+                "Differentiation / Info (Read Only)": st.column_config.TextColumn(disabled=True),
+                "Threat Level": st.column_config.SelectboxColumn(
+                    options=["High", "Medium", "Low", "N/A"],
+                    required=True
+                ),
+                "Threat Notes": st.column_config.TextColumn(disabled=False)
+            }
+        )
+        if st.form_submit_button("💾 Save Segment Edits"):
+            from market_comps.db.session import SessionLocal
+            from market_comps.crm.competitor_manager import add_competitive_analysis_segment
+            with SessionLocal() as local_db:
+                for _, row in edited_df.iterrows():
+                    s_id = int(row["_seg_id"])
+                    t_val = row["Threat Level"]
+                    n_val = row["Threat Notes"]
+                    add_competitive_analysis_segment(local_db, ca_id, s_id, t_val, n_val)
+                local_db.commit()
+            st.success("Segment edits saved!")
+            st.rerun()
+
+@st.dialog("Edit Companies", width="large")
+def edit_companies_dialog(ca_id, df_comp, rel_display_options, rel_map_reverse):
+    with st.form("edit_companies_form"):
+        edited_df = st.data_editor(
+            df_comp,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "_comp_id": None,
+                "_seg_id": None,
+                "Company (Read Only)": st.column_config.TextColumn(disabled=True),
+                "Segments (Read Only)": st.column_config.TextColumn(disabled=True),
+                "Differentiation (Read Only)": st.column_config.TextColumn(disabled=True),
+                "Relationship": st.column_config.SelectboxColumn(
+                    options=rel_display_options,
+                    required=True
+                ),
+                "Notes": st.column_config.TextColumn(disabled=False)
+            }
+        )
+        if st.form_submit_button("💾 Save Company Edits"):
+            from market_comps.db.session import SessionLocal
+            from market_comps.crm.competitor_manager import add_competitive_analysis_company
+            import pandas as pd
+            with SessionLocal() as local_db:
+                for _, row in edited_df.iterrows():
+                    c_id = int(row["_comp_id"])
+                    s_id = int(row["_seg_id"]) if pd.notna(row["_seg_id"]) else None
+                    rel_str = row["Relationship"]
+                    n_str = row["Notes"]
+                    
+                    real_rel = rel_map_reverse.get(rel_str, "COMPETITOR")
+                    add_competitive_analysis_company(local_db, ca_id, c_id, s_id, real_rel, n_str)
+                local_db.commit()
+            st.success("Company edits saved!")
+            st.rerun()
+
 # Helper to render company details below the table
 def display_company_details(company_id):
     org = db.query(Organization).options(
@@ -255,12 +323,12 @@ def display_company_details(company_id):
                 st.markdown(
                     f'<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">'
                     f'<img src="{logo_url}" width="48" height="48" style="border-radius: 6px; object-fit: contain;" onerror="this.style.display=\'none\'"/>'
-                    f'<h3 style="margin: 0; padding: 0;">{org.name}</h3>'
+                    f'<h3 style="margin: 0; padding: 0;">{org.display_name}</h3>'
                     f'</div>', 
                     unsafe_allow_html=True
                 )
             else:
-                st.subheader(f"🏢 {org.name}")
+                st.subheader(f"🏢 {org.display_name}")
             
             date_added = org.created_at.strftime('%B %d, %Y') if org.created_at else "Unknown Date"
             st.caption(f"Added on {date_added}")
@@ -449,7 +517,7 @@ def display_company_details(company_id):
             st.markdown(f"#### Market: {market.name}")
             ca = db.query(CompetitiveAnalysis).filter_by(subject_company_id=org.id, market_id=m_id).first()
             if not ca:
-                ca = get_or_create_competitive_analysis(db, org.id, m_id, f"{org.name} {market.name} Landscape")
+                ca = get_or_create_competitive_analysis(db, org.id, m_id, f"{org.display_name} {market.name} Landscape")
                 db.commit()
                 
             with st.expander(f"📝 Market Dynamics & Competition Notes ({market.name})"):
@@ -494,35 +562,17 @@ def display_company_details(company_id):
                 
             df_seg = pd.DataFrame(_seg_df_data_list)
             
-            edited_seg_df = st.data_editor(
+            st.dataframe(
                 df_seg,
                 hide_index=True,
                 use_container_width=True,
-                column_config={
-                    "_seg_id": None,
-                    "Segment (Read Only)": st.column_config.TextColumn(disabled=True),
-                    "Differentiation / Info (Read Only)": st.column_config.TextColumn(disabled=True),
-                    "Threat Level": st.column_config.SelectboxColumn(
-                        options=THREAT_LEVELS,
-                        required=True
-                    ),
-                    "Threat Notes": st.column_config.TextColumn(disabled=False)
-                },
-                key=f"data_editor_seg_{ca.id if ca else m_id}"
+                column_config={"_seg_id": None}
             )
             
             col_sb1, col_sb2 = st.columns([1, 1])
             with col_sb1:
-                if st.button("💾 Save Segment Edits", key=f"save_seg_btn_{ca.id if ca else m_id}"):
-                    from market_comps.crm.competitor_manager import add_competitive_analysis_segment
-                    for _, row in edited_seg_df.iterrows():
-                        s_id = int(row["_seg_id"])
-                        t_val = row["Threat Level"]
-                        n_val = row["Threat Notes"]
-                        add_competitive_analysis_segment(db, ca.id, s_id, t_val, n_val)
-                    db.commit()
-                    st.success("Segment edits saved!")
-                    st.rerun()
+                if ca and st.button("✏️ Edit Segments", key=f"edit_seg_btn_{ca.id if ca else m_id}"):
+                    edit_segments_dialog(ca.id, df_seg)
             with col_sb2:
                 with st.popover("➕ Add Segment to Market"):
                     with st.form(f"add_seg_market_{ca.id if ca else m_id}"):
@@ -559,7 +609,7 @@ def display_company_details(company_id):
                     if not comp_org: continue
                     if comp_id not in company_summary:
                         company_summary[comp_id] = {
-                            "name": comp_org.name,
+                            "name": comp_org.display_name,
                             "segments": [],
                             "differentiation": [],
                             "relationship": "Direct Competitor",
@@ -592,37 +642,17 @@ def display_company_details(company_id):
                 
                 df_comp = pd.DataFrame(comp_df_data)
                 
-                edited_comp_df = st.data_editor(
+                st.dataframe(
                     df_comp,
                     hide_index=True,
                     use_container_width=True,
-                    column_config={
-                        "_comp_id": None,
-                        "_seg_id": None,
-                        "Company (Read Only)": st.column_config.TextColumn(disabled=True),
-                        "Segments (Read Only)": st.column_config.TextColumn(disabled=True),
-                        "Differentiation (Read Only)": st.column_config.TextColumn(disabled=True),
-                        "Relationship": st.column_config.SelectboxColumn(
-                            options=rel_display_options,
-                            required=True
-                        ),
-                        "Notes": st.column_config.TextColumn(disabled=False)
-                    },
-                    key=f"data_editor_comp_{ca.id if ca else m_id}"
+                    column_config={"_comp_id": None, "_seg_id": None}
                 )
                 
                 col_cb1, col_cb2 = st.columns([1, 1])
                 with col_cb1:
-                    if st.button("💾 Save Competitor Edits", key=f"save_comp_btn_{ca.id if ca else m_id}"):
-                        for _, row in edited_comp_df.iterrows():
-                            c_id = int(row["_comp_id"])
-                            s_id = int(row["_seg_id"]) if pd.notnull(row["_seg_id"]) else None
-                            rel_str = rel_map_reverse.get(row["Relationship"], "direct_competitor")
-                            n_str = row["Notes"]
-                            add_competitive_analysis_company(db, ca.id, c_id, s_id, rel_str, None, None, n_str)
-                        db.commit()
-                        st.success("Competitor edits saved!")
-                        st.rerun()
+                    if ca and st.button("✏️ Edit Competitors", key=f"edit_comp_btn_{ca.id if ca else m_id}"):
+                        edit_companies_dialog(ca.id, df_comp, rel_display_options, rel_map_reverse)
                 with col_cb2:
                     with st.popover("➕ Add Competitor"):
                         all_orgs = db.query(Organization).order_by(Organization.name).all()
@@ -678,7 +708,7 @@ def display_company_details(company_id):
                     m_sel = st.selectbox("Select Market to Analyze", options=list(m_opts.keys()))
                     if st.form_submit_button("Create Market Analysis"):
                         if m_sel:
-                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, f"{org.name} {m_sel} Landscape")
+                            get_or_create_competitive_analysis(db, org.id, m_opts[m_sel].id, f"{org.display_name} {m_sel} Landscape")
                             db.commit()
                             st.success("Market Analysis created!")
                             st.rerun()
@@ -754,9 +784,9 @@ def display_company_details(company_id):
                 role = "Target" if tx.target_company_id == org.id else "Acquirer"
                 other_party = ""
                 if role == "Target" and tx.acquirer_company:
-                    other_party = tx.acquirer_company.name
+                    other_party = tx.acquirer_company.display_name
                 elif role == "Acquirer" and tx.target_company:
-                    other_party = tx.target_company.name
+                    other_party = tx.target_company.display_name
                 
                 val_str = f"{tx.currency_code or ''} {tx.transaction_value_numeric or ''} {tx.transaction_value_text or ''}".strip()
                 notes_str = "\n".join(filter(None, [tx.description, tx.notes]))
@@ -854,7 +884,7 @@ def display_company_details(company_id):
         with st.expander("ℹ️ How Search & Source Filtering Works"):
             st.markdown("""
             **Exa Search Protocol & Guardrails:**
-            1. **Query Generation**: LLM constructs 4 queries targeting Overview, Team, Traction, and Funding for `{org.name}`.
+            1. **Query Generation**: LLM constructs 4 queries targeting Overview, Team, Traction, and Funding for `{org.display_name}`.
             2. **Exa Retrieval**: Fetches top web page contents.
             3. **Quality & Relevance Checks**:
                - ⚠️ **Junk / Error Filter**: Drops pages with <150 chars, 404s, or Cloudflare/Captcha blocks from LLM prompt inputs.

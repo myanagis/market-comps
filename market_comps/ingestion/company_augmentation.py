@@ -347,6 +347,8 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
     - hq_location: The headquarters location (City, State, Country)
     - founded_year: The year the company was founded (integer)
     - sectors: A list of broad industry categories or sectors (e.g., ["B2B SaaS", "Fintech"])
+    - is_public: A boolean indicating whether the company is publicly traded on a stock exchange
+    - ticker_symbol: The stock ticker symbol if public (e.g., "AAPL", "QBTS"), else null
     
     If the target is an INVESTMENT FIRM, also extract:
     - investor_stages: A list of typical investment stages (e.g., ["Seed", "Series A", "Growth Equity"])
@@ -366,6 +368,8 @@ def extract_company_basics(documents: List[Dict]) -> Dict:
             "hq_location": {"type": ["string", "null"]},
             "founded_year": {"type": ["integer", "null"]},
             "sectors": {"type": ["array", "null"], "items": {"type": "string"}},
+            "is_public": {"type": ["boolean", "null"]},
+            "ticker_symbol": {"type": ["string", "null"]},
             "investor_stages": {"type": ["array", "null"], "items": {"type": "string"}},
             "investor_specialties": {"type": ["array", "null"], "items": {"type": "string"}},
             "check_size_min": {"type": ["number", "null"]},
@@ -626,6 +630,13 @@ def run_extraction_on_documents(db, org, docs_data, run):
             if len(parts) >= 1: org.city = parts[0]
             if len(parts) >= 2: org.state = parts[1]
             if len(parts) >= 3: org.country = parts[2]
+            
+        if basics.get("is_public") is True:
+            org.ownership_type = "PUBLIC"
+            if basics.get("ticker_symbol") and not org.ticker:
+                org.ticker = basics["ticker_symbol"]
+        elif basics.get("is_public") is False and org.ownership_type != "PUBLIC":
+            org.ownership_type = "PRIVATE"
             
         is_investor = (org.organization_type == "INVESTOR")
         if is_investor:

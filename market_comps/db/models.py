@@ -39,6 +39,12 @@ class Organization(Base, TimestampMixin):
     status = Column(String)
     is_active = Column(Boolean, default=True)
 
+    @property
+    def display_name(self):
+        if self.ownership_type and self.ownership_type.upper() == "PUBLIC" and self.ticker:
+            return f"{self.name} ({self.ticker})"
+        return self.name
+
     company_profile = relationship("CompanyProfile", back_populates="organization", uselist=False)
     investor_profile = relationship("InvestorProfile", back_populates="organization", uselist=False)
     fund_profiles = relationship("FundProfile", back_populates="parent_organization")

@@ -83,7 +83,7 @@ with tab_all:
                 st.subheader("🏢 Companies")
                 for c in companies:
                     with st.container(border=True):
-                        st.markdown(f"**[{c.name}](/company?id={c.id})**")
+                        st.markdown(f"**[{c.display_name}](/company?id={c.id})**")
                         stage = c.company_profile.company_stage if c.company_profile else "N/A"
                         ind = c.company_profile.industry if c.company_profile else "N/A"
                         st.caption(f"Domain: {c.primary_domain or 'N/A'} | Stage: {stage} | Industry: {ind}")
@@ -101,7 +101,7 @@ with tab_all:
                 st.subheader("🏦 Investment Firms")
                 for i in investors:
                     with st.container(border=True):
-                        st.markdown(f"**[{i.name}](/investment_firm?id={i.id})**")
+                        st.markdown(f"**[{i.display_name}](/investment_firm?id={i.id})**")
                         itype = i.investor_profile.investor_type if i.investor_profile else "N/A"
                         pstage = i.investor_profile.preferred_stage if i.investor_profile else "N/A"
                         st.caption(f"Domain: {i.primary_domain or 'N/A'} | Type: {itype} | Pref Stage: {pstage}")
@@ -150,7 +150,7 @@ with tab_co:
         for i, o in enumerate(row):
             with cols[i]:
                 with st.container(border=True):
-                    st.markdown(f"<h5 style='margin-bottom:0; margin-top:0;'>{o.name}</h5>", unsafe_allow_html=True)
+                    st.markdown(f"<h5 style='margin-bottom:0; margin-top:0;'>{o.display_name}</h5>", unsafe_allow_html=True)
                     meta_tags = []
                     if o.company_profile and o.company_profile.industry: meta_tags.append(o.company_profile.industry)
                     if o.city: meta_tags.append(o.city)
@@ -182,7 +182,7 @@ with tab_firm:
         for i, f in enumerate(row):
             with cols[i]:
                 with st.container(border=True):
-                    st.markdown(f"<h5 style='margin-bottom:0; margin-top:0;'>{f.name}</h5>", unsafe_allow_html=True)
+                    st.markdown(f"<h5 style='margin-bottom:0; margin-top:0;'>{f.display_name}</h5>", unsafe_allow_html=True)
                     meta_tags = []
                     if f.investor_profile and f.investor_profile.investor_type: meta_tags.append(f.investor_profile.investor_type)
                     if f.city: meta_tags.append(f.city)
