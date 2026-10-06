@@ -387,10 +387,7 @@ with get_db_context() as db:
                                         CompanyCandidate(
                                             name=link.organization.display_name,
                                             ticker=link.organization.ticker or "",
-                                            exchange=link.organization.exchange,
-                                            is_public=True,
-                                            confidence=1.0,
-                                            reasoning=""
+                                            exchange=link.organization.exchange or ""
                                         )
                                     )
                             
