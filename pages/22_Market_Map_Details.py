@@ -427,7 +427,11 @@ with get_db_context() as db:
                                         if val is None: continue
                                         mt = db.query(MetricType).filter_by(display_name=m_name).first()
                                         if not mt:
-                                            mt = MetricType(display_name=m_name, value_type=v_type)
+                                            import re
+                                            base_code = m_name.lower().replace('%', 'pct')
+                                            base_code = re.sub(r'[^a-z0-9]', '_', base_code).strip('_')
+                                            base_code = re.sub(r'_+', '_', base_code)
+                                            mt = MetricType(code=base_code, display_name=m_name, value_type=v_type)
                                             db.add(mt)
                                             db.flush()
                                             
