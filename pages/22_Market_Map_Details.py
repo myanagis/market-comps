@@ -392,7 +392,7 @@ with get_db_context() as db:
                                     )
                             
                             # Run fetcher
-                            metrics_list = fetcher.enrich_candidates(candidates)
+                            metrics_list, _ = fetcher.fetch(candidates)
                             
                             # Update DB
                             for comp_link in cset.organization_links:
@@ -400,22 +400,22 @@ with get_db_context() as db:
                                 org = comp_link.organization
                                 
                                 # Find corresponding metrics
-                                match = next((m for m in metrics_list if m.ticker == org.ticker_symbol), None)
+                                match = next((m for m in metrics_list if m.ticker == org.ticker), None)
                                 if match and match.data_available:
                                     from market_comps.db.models import MetricType, MetricObservation
                                     import datetime
                                     
                                     # Update ticker/exchange on org
-                                    org.stock_exchange = match.exchange
+                                    org.exchange = match.exchange
                                     
                                     # Prepare metrics dict
                                     updates = {
-                                        "Market Cap": (match.market_cap, "currency"),
-                                        "Enterprise Value": (match.enterprise_value, "currency"),
-                                        "Revenue (TTM)": (match.revenue_ttm, "currency"),
-                                        "Revenue (NTM)": (match.revenue_ntm, "currency"),
-                                        "Gross Margin (%)": (match.gross_margin_pct, "percentage"),
-                                        "Revenue Growth (YoY)": (match.revenue_growth_yoy_pct, "percentage"),
+                                        "Market Cap": (match.market_cap_usd, "currency"),
+                                        "Enterprise Value": (match.ev_usd, "currency"),
+                                        "Revenue (TTM)": (match.revenue_ttm_usd, "currency"),
+                                        "Revenue (NTM)": (match.revenue_ntm_usd, "currency"),
+                                        "Gross Margin (%)": (match.gross_margin, "percentage"),
+                                        "Revenue Growth (YoY)": (match.rev_growth, "percentage"),
                                     }
                                     
                                     # Insert/Update MetricObservations
