@@ -416,9 +416,9 @@ with get_db_context() as db:
                                             "Market Cap": (match.market_cap_usd, "currency"),
                                             "Enterprise Value": (match.ev_usd, "currency"),
                                             "Revenue (TTM)": (match.revenue_ttm_usd, "currency"),
-                                            "Revenue (NTM)": (match.revenue_ntm_usd, "currency"),
-                                            "Gross Margin (%)": (match.gross_margin_pct, "percentage"),
                                             "Revenue Growth (YoY)": (match.revenue_growth_yoy_pct, "percentage"),
+                                            "EV / Revenue (TTM)": (match.ev_to_revenue_ttm, "multiple"),
+                                            "EV / EBITDA (TTM)": (match.ev_to_ebitda_ttm, "multiple"),
                                         }
                                         
                                         # Insert/Update MetricObservations
@@ -447,6 +447,7 @@ with get_db_context() as db:
                                                 
                                             obs.value_numeric = val
                                             obs.recorded_at = now
+                                            obs.as_of_date = match.as_of_date
                                             
                                 db.commit()
                                 st.rerun()
@@ -580,16 +581,18 @@ with get_db_context() as db:
                     for obs in obs_list_all:
                         mt = db.query(MetricType).get(obs.metric_type_id)
                         if mt and mt.display_name not in metric_types:
-                            metric_types[mt.display_name] = mt
+                            if "Margin" not in mt.display_name and "Revenue (NTM)" not in mt.display_name:
+                                metric_types[mt.display_name] = mt
                             
                     metric_names = list(metric_types.keys())
-                    cols = [2, 1] + [1.5] * len(metric_names) + [1, 2, 0.5]
+                    cols = [2, 1] + [1.5] * len(metric_names) + [1, 1, 2, 0.5]
                     header_cols = st.columns(cols)
                     header_cols[0].markdown("**Organization**")
                     header_cols[1].markdown("**Ticker**")
                     for i, m_name in enumerate(metric_names): header_cols[2+i].markdown(f"**{m_name}**")
-                    header_cols[2+len(metric_names)].markdown("**Last Updated**")
-                    header_cols[3+len(metric_names)].markdown("**Notes**")
+                    header_cols[2+len(metric_names)].markdown("**As of Date**")
+                    header_cols[3+len(metric_names)].markdown("**Last Updated**")
+                    header_cols[4+len(metric_names)].markdown("**Notes**")
                     
                     for comp in companies_in_set:
                         c_cols = st.columns(cols)
@@ -602,6 +605,7 @@ with get_db_context() as db:
                         
                         m_values = {m: "" for m in metric_names}
                         last_updated = None
+                        as_of_date = None
                         
                         for obs in obs_list:
                             mt = db.query(MetricType).get(obs.metric_type_id)
@@ -619,12 +623,15 @@ with get_db_context() as db:
                                 
                                 if hasattr(obs, 'recorded_at') and obs.recorded_at:
                                     if not last_updated or obs.recorded_at > last_updated: last_updated = obs.recorded_at
+                                if hasattr(obs, 'as_of_date') and obs.as_of_date:
+                                    if not as_of_date or obs.as_of_date > as_of_date: as_of_date = obs.as_of_date
                                         
                         for i, m_name in enumerate(metric_names): c_cols[2+i].write(m_values[m_name])
-                        c_cols[2+len(metric_names)].write(last_updated.strftime("%Y-%m-%d") if last_updated else "")
-                        c_cols[3+len(metric_names)].write(clink_map[comp.id].notes or "")
+                        c_cols[2+len(metric_names)].write(as_of_date.strftime("%Y-%m-%d") if as_of_date else "")
+                        c_cols[3+len(metric_names)].write(last_updated.strftime("%Y-%m-%d") if last_updated else "")
+                        c_cols[4+len(metric_names)].write(clink_map[comp.id].notes or "")
                         
-                        with c_cols[4+len(metric_names)]:
+                        with c_cols[5+len(metric_names)]:
                             with st.popover("✏️"):
                                 with st.form(f"edit_notes_{cset.id}_{comp.id}"):
                                     new_notes = st.text_area("Notes", value=clink_map[comp.id].notes or "")

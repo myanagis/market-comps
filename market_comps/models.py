@@ -86,6 +86,7 @@ class CompanyMetrics(BaseModel):
     # NTM (Next Twelve Months) estimates — from analyst consensus where available
     revenue_ntm_usd: Optional[float] = None
     ev_to_revenue_ntm: Optional[float] = None  # EV / NTM Revenue
+    ev_to_ebitda_ttm: Optional[float] = None
 
     # Supplemental
     gross_margin_pct: Optional[float] = None
@@ -95,6 +96,7 @@ class CompanyMetrics(BaseModel):
     # Data quality flag — True if yfinance returned valid data
     data_available: bool = True
     data_notes: str = ""
+    as_of_date: Optional[datetime] = None
 
 
 class LLMCallTrace(BaseModel):

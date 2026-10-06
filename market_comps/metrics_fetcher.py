@@ -235,7 +235,23 @@ class MetricsFetcher:
         gross_margin = _safe_float(info.get("grossMargins"))
         ebitda_margin = _safe_float(info.get("ebitdaMargins"))
         rev_growth = _safe_float(info.get("revenueGrowth"))
+        
+        ev_to_ebitda_ttm: Optional[float] = None
+        if ev and revenue_ttm and ebitda_margin and revenue_ttm > 0 and ebitda_margin > 0:
+            ebitda = revenue_ttm * ebitda_margin
+            if ebitda > 0:
+                ev_to_ebitda_ttm = ev / ebitda
 
+        # Extract as_of_date from mostRecentQuarter
+        as_of_date = None
+        mrq = info.get("mostRecentQuarter")
+        if mrq:
+            import datetime
+            try:
+                as_of_date = datetime.datetime.fromtimestamp(mrq)
+            except Exception:
+                pass
+                
         # Exchange: prefer yfinance's value over LLM-provided
         exchange = info.get("exchange") or candidate.exchange
 
@@ -252,10 +268,12 @@ class MetricsFetcher:
             revenue_ntm_usd=revenue_ntm,
             ev_to_revenue_ttm=ev_to_rev_ttm,
             ev_to_revenue_ntm=ev_to_rev_ntm,
+            ev_to_ebitda_ttm=ev_to_ebitda_ttm,
             gross_margin_pct=gross_margin * 100 if gross_margin is not None else None,
             ebitda_margin_pct=ebitda_margin * 100 if ebitda_margin is not None else None,
             revenue_growth_yoy_pct=rev_growth * 100 if rev_growth is not None else None,
             data_available=True,
+            as_of_date=as_of_date,
         )
 
     def _batch_descriptions(
