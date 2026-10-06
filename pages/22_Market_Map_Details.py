@@ -395,60 +395,64 @@ with get_db_context() as db:
                             metrics_list, _ = fetcher.fetch(candidates)
                             print(f"Fetched metrics for {len(candidates)} candidates. Returned {len(metrics_list)} metrics.")
                             
-                            # Update DB
-                            for comp_link in cset.organization_links:
-                                if not comp_link.included or not comp_link.organization: continue
-                                org = comp_link.organization
-                                
-                                # Find corresponding metrics
-                                match = next((m for m in metrics_list if org.ticker and m.ticker.upper() == org.ticker.strip().upper()), None)
-                                print(f"Processing {org.name} (Ticker: {org.ticker}). Match found: {match is not None}")
-                                if match and match.data_available:
-                                    from market_comps.db.models import MetricType, MetricObservation
-                                    import datetime
+                            try:
+                                # Update DB
+                                for comp_link in cset.organization_links:
+                                    if not comp_link.included or not comp_link.organization: continue
+                                    org = comp_link.organization
                                     
-                                    # Update ticker/exchange on org
-                                    org.exchange = match.exchange
-                                    
-                                    # Prepare metrics dict
-                                    updates = {
-                                        "Market Cap": (match.market_cap_usd, "currency"),
-                                        "Enterprise Value": (match.ev_usd, "currency"),
-                                        "Revenue (TTM)": (match.revenue_ttm_usd, "currency"),
-                                        "Revenue (NTM)": (match.revenue_ntm_usd, "currency"),
-                                        "Gross Margin (%)": (match.gross_margin_pct, "percentage"),
-                                        "Revenue Growth (YoY)": (match.revenue_growth_yoy_pct, "percentage"),
-                                    }
-                                    
-                                    # Insert/Update MetricObservations
-                                    now = datetime.datetime.utcnow()
-                                    inserted_count = 0
-                                    for m_name, (val, v_type) in updates.items():
-                                        if val is None: continue
-                                        mt = db.query(MetricType).filter_by(display_name=m_name).first()
-                                        if not mt:
-                                            import re
-                                            base_code = m_name.lower().replace('%', 'pct')
-                                            base_code = re.sub(r'[^a-z0-9]', '_', base_code).strip('_')
-                                            base_code = re.sub(r'_+', '_', base_code)
-                                            mt = MetricType(code=base_code, display_name=m_name, value_type=v_type)
-                                            db.add(mt)
-                                            db.flush()
-                                            
-                                        obs = db.query(MetricObservation).filter_by(
-                                            company_id=org.id, 
-                                            metric_type_id=mt.id,
-                                            reporting_basis="trailing_twelve_months"
-                                        ).first()
-                                        if not obs:
-                                            obs = MetricObservation(company_id=org.id, metric_type_id=mt.id, reporting_basis="trailing_twelve_months", observation_status="external_estimate")
-                                            db.add(obs)
-                                            
-                                        obs.value_numeric = val
-                                        obs.recorded_at = now
+                                    # Find corresponding metrics
+                                    match = next((m for m in metrics_list if org.ticker and m.ticker.upper() == org.ticker.strip().upper()), None)
+                                    print(f"Processing {org.name} (Ticker: {org.ticker}). Match found: {match is not None}")
+                                    if match and match.data_available:
+                                        from market_comps.db.models import MetricType, MetricObservation
+                                        import datetime
                                         
-                            db.commit()
-                            st.rerun()
+                                        # Update ticker/exchange on org
+                                        org.exchange = match.exchange
+                                        
+                                        # Prepare metrics dict
+                                        updates = {
+                                            "Market Cap": (match.market_cap_usd, "currency"),
+                                            "Enterprise Value": (match.ev_usd, "currency"),
+                                            "Revenue (TTM)": (match.revenue_ttm_usd, "currency"),
+                                            "Revenue (NTM)": (match.revenue_ntm_usd, "currency"),
+                                            "Gross Margin (%)": (match.gross_margin_pct, "percentage"),
+                                            "Revenue Growth (YoY)": (match.revenue_growth_yoy_pct, "percentage"),
+                                        }
+                                        
+                                        # Insert/Update MetricObservations
+                                        now = datetime.datetime.utcnow()
+                                        inserted_count = 0
+                                        for m_name, (val, v_type) in updates.items():
+                                            if val is None: continue
+                                            mt = db.query(MetricType).filter_by(display_name=m_name).first()
+                                            if not mt:
+                                                import re
+                                                base_code = m_name.lower().replace('%', 'pct')
+                                                base_code = re.sub(r'[^a-z0-9]', '_', base_code).strip('_')
+                                                base_code = re.sub(r'_+', '_', base_code)
+                                                mt = MetricType(code=base_code, display_name=m_name, value_type=v_type)
+                                                db.add(mt)
+                                                db.flush()
+                                                
+                                            obs = db.query(MetricObservation).filter_by(
+                                                company_id=org.id, 
+                                                metric_type_id=mt.id,
+                                                reporting_basis="trailing_twelve_months"
+                                            ).first()
+                                            if not obs:
+                                                obs = MetricObservation(company_id=org.id, metric_type_id=mt.id, reporting_basis="trailing_twelve_months", observation_status="external_estimate")
+                                                db.add(obs)
+                                                
+                                            obs.value_numeric = val
+                                            obs.recorded_at = now
+                                            
+                                db.commit()
+                                st.rerun()
+                            except Exception as e:
+                                db.rollback()
+                                st.error(f"Failed to pull market data: {str(e)}")
 
                 st.markdown('</div>', unsafe_allow_html=True)
             
