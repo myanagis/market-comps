@@ -400,7 +400,7 @@ with get_db_context() as db:
                                 org = comp_link.organization
                                 
                                 # Find corresponding metrics
-                                match = next((m for m in metrics_list if m.ticker == org.ticker), None)
+                                match = next((m for m in metrics_list if org.ticker and m.ticker.upper() == org.ticker.upper()), None)
                                 if match and match.data_available:
                                     from market_comps.db.models import MetricType, MetricObservation
                                     import datetime
@@ -414,8 +414,8 @@ with get_db_context() as db:
                                         "Enterprise Value": (match.ev_usd, "currency"),
                                         "Revenue (TTM)": (match.revenue_ttm_usd, "currency"),
                                         "Revenue (NTM)": (match.revenue_ntm_usd, "currency"),
-                                        "Gross Margin (%)": (match.gross_margin, "percentage"),
-                                        "Revenue Growth (YoY)": (match.rev_growth, "percentage"),
+                                        "Gross Margin (%)": (match.gross_margin_pct, "percentage"),
+                                        "Revenue Growth (YoY)": (match.revenue_growth_yoy_pct, "percentage"),
                                     }
                                     
                                     # Insert/Update MetricObservations
