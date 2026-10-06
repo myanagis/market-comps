@@ -393,6 +393,7 @@ with get_db_context() as db:
                             
                             # Run fetcher
                             metrics_list, _ = fetcher.fetch(candidates)
+                            print(f"Fetched metrics for {len(candidates)} candidates. Returned {len(metrics_list)} metrics.")
                             
                             # Update DB
                             for comp_link in cset.organization_links:
@@ -400,7 +401,8 @@ with get_db_context() as db:
                                 org = comp_link.organization
                                 
                                 # Find corresponding metrics
-                                match = next((m for m in metrics_list if org.ticker and m.ticker.upper() == org.ticker.upper()), None)
+                                match = next((m for m in metrics_list if org.ticker and m.ticker.upper() == org.ticker.strip().upper()), None)
+                                print(f"Processing {org.name} (Ticker: {org.ticker}). Match found: {match is not None}")
                                 if match and match.data_available:
                                     from market_comps.db.models import MetricType, MetricObservation
                                     import datetime
@@ -420,6 +422,7 @@ with get_db_context() as db:
                                     
                                     # Insert/Update MetricObservations
                                     now = datetime.datetime.utcnow()
+                                    inserted_count = 0
                                     for m_name, (val, v_type) in updates.items():
                                         if val is None: continue
                                         mt = db.query(MetricType).filter_by(display_name=m_name).first()
@@ -434,7 +437,7 @@ with get_db_context() as db:
                                             reporting_basis="trailing_twelve_months"
                                         ).first()
                                         if not obs:
-                                            obs = MetricObservation(company_id=org.id, metric_type_id=mt.id, reporting_basis="trailing_twelve_months")
+                                            obs = MetricObservation(company_id=org.id, metric_type_id=mt.id, reporting_basis="trailing_twelve_months", observation_status="external_estimate")
                                             db.add(obs)
                                             
                                         obs.value_numeric = val
@@ -603,6 +606,8 @@ with get_db_context() as db:
                                         else: m_values[mt.display_name] = f"${val:,.0f}"
                                 elif mt.value_type == "multiple":
                                     m_values[mt.display_name] = f"{obs.value_numeric:.1f}x" if obs.value_numeric else ""
+                                elif mt.value_type == "percentage":
+                                    m_values[mt.display_name] = f"{obs.value_numeric:.1f}%" if obs.value_numeric is not None else ""
                                 
                                 if hasattr(obs, 'recorded_at') and obs.recorded_at:
                                     if not last_updated or obs.recorded_at > last_updated: last_updated = obs.recorded_at
