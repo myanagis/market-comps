@@ -377,7 +377,7 @@ with get_db_context() as db:
                             from market_comps.metrics_fetcher import MetricsFetcher
                             from market_comps.models import CompanyCandidate
                             from market_comps.db.models import Organization
-                            fetcher = MetricsFetcher(max_fetch_workers=4)
+                            fetcher = MetricsFetcher(max_workers=4)
                             
                             # Convert to candidates
                             candidates = []
