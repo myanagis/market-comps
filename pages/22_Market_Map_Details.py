@@ -201,18 +201,18 @@ with get_db_context() as db:
         .all()
     )
     
+    global_all_orgs = db.query(Organization).order_by(Organization.name).all()
+    company_org_opts = {}
+    global_org_opts = {}
+    for o in global_all_orgs:
+        domain_str = f" [{o.primary_domain}]" if o.primary_domain else ""
+        type_str = f" ({o.organization_type or 'COMPANY'})"
+        global_org_opts[f"{o.name}{domain_str}{type_str}"] = o.id
+        if o.organization_type == "COMPANY":
+            company_org_opts[f"{o.name}{domain_str}"] = o.id
+
     if segments:
         from market_comps.db.models import FinancingRound, FinancingRoundFact, MetricObservation, MetricType
-        
-        global_all_orgs = db.query(Organization).order_by(Organization.name).all()
-        company_org_opts = {}
-        global_org_opts = {}
-        for o in global_all_orgs:
-            domain_str = f" [{o.primary_domain}]" if o.primary_domain else ""
-            type_str = f" ({o.organization_type or 'COMPANY'})"
-            global_org_opts[f"{o.name}{domain_str}{type_str}"] = o.id
-            if o.organization_type == "COMPANY":
-                company_org_opts[f"{o.name}{domain_str}"] = o.id
         
         grouped_links = {s.name: [] for s in segments}
         for link in segment_links:
